@@ -2,8 +2,8 @@ name: Weekly Job Scraper
 
 on:
   schedule:
-    # This runs at 08:00 UTC every Sunday (which is 11:00 AM in Egypt)
-    - cron: '0 8 * * 0'
+    # This runs at 01:00 UTC every Friday (which is 4:00 AM in Egypt)
+    - cron: '0 1 * * 5'
   workflow_dispatch: # This allows you to trigger the script manually from GitHub
 
 jobs:
