@@ -193,10 +193,31 @@ def main():
         
     print(f"🎯 Found {len(filtered_jobs)} matching jobs out of {len(all_jobs)} scraped.")
 
-    # --- STATE MANAGEMENT (Prevent Duplicate Alerts) ---
+    import glob
+    import time
     import os
     import json
     import datetime
+
+    # Save the best 100 found jobs after reranking
+    if not filtered_jobs.empty:
+        best_100 = filtered_jobs.head(100)
+        current_date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"found_jobs_{current_date_str}.csv"
+        best_100.to_csv(filename, index=False)
+        print(f"💾 Saved {len(best_100)} best jobs to {filename}")
+
+        # Delete found_jobs files older than 30 days
+        thirty_days_ago = time.time() - (30 * 24 * 60 * 60)
+        for f in glob.glob("found_jobs_*.csv"):
+            try:
+                if os.path.getmtime(f) < thirty_days_ago:
+                    os.remove(f)
+                    print(f"🗑️ Deleted old job file: {f}")
+            except Exception as e:
+                print(f"⚠️ Failed to delete old job file {f}: {e}")
+
+    # --- STATE MANAGEMENT (Prevent Duplicate Alerts) ---
     
     STATE_FILE = "sent_jobs.json"
     sent_jobs = {}
