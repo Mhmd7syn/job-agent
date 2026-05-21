@@ -1,76 +1,47 @@
 import pandas as pd
-import requests
 from jobspy import scrape_jobs
 import sys
 import time
 import random
 import html
 
+from config import *
+from wuzzuf_scraper import scrape_wuzzuf
+from telegram_notifier import send_telegram_message
+
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
-
-TELEGRAM_BOT_TOKEN = "8890636648:AAF7zcc8VKpe3XLDiEjPefhr0NGFvV2MgFc"
-TELEGRAM_CHAT_ID = "6431446621"
-
-SEARCH_TERMS = [
-    "AI Engineer", "Machine Learning Engineer", "Artificial Intelligence",
-    "Data Scientist", "Data Science", 
-    "Data Analyst", "Data Analysis",
-    "AI Instructor", "Data Science Instructor", "Machine Learning Instructor", "Data Analytics Instructor", "Python Instructor", "Programming Instructor", "Coding Instructor"
-]
-USE_KEYWORD_FILTER = False
-MUST_HAVE_KEYWORDS = ["pytorch", "tensorflow", "yolo", "mediapipe", "python", "computer vision", "deep learning"]
-
-LOCATION = ["Remote", "Egypt"]
-FILTER_BY_SPECIFIC_LOCATIONS = False
-TARGET_LOCATIONS = [
-    "cairo", "giza", "new capital", "administrative capital", 
-    "maadi", "masr el gedida", "heliopolis", "nasr city", 
-    "new cairo", "tagamoa", "6th of october", "october", 
-    "sheikh zayed", "zayed", "shorouk", "obour", "badr", "10th of ramadan",
-    "smart village"
-]
-
-FILTER_BY_LEVEL = True
-TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry"]
-
-SITES = ["linkedin", "indeed", "glassdoor", "bayt", "google"]
-RESULTS_PER_TERM = 15
-HOURS_OLD = 7 * 24
-MAX_JOBS_TO_SEND = 10
-
-def send_telegram_message(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    
-    response = requests.post(url, json=payload)
-    if response.status_code == 200:
-        print("✅ Message successfully sent to Telegram.")
-    else:
-        print(f"❌ Failed to send message. Error: {response.text}")
 
 def main():
     print("🤖 Starting the JobSpy Agent...")
     
-    all_jobs = pd.DataFrame()
+    jobs_list = []
     
     for term in SEARCH_TERMS:
         for loc in LOCATION:
             print(f"🔍 Scraping for: '{term}' in {loc}...")
             try:
+                is_remote_flag = False
+                search_loc = loc
+                if loc.lower() == "remote":
+                    search_loc = "worldwide"
+                    is_remote_flag = True
+                    
                 jobs = scrape_jobs(
                     site_name=SITES,
                     search_term=term,
-                    location=loc,
+                    location=search_loc,
+                    is_remote=is_remote_flag,
                     results_wanted=RESULTS_PER_TERM,
                     hours_old=HOURS_OLD,
                 )
-                all_jobs = pd.concat([all_jobs, jobs], ignore_index=True)
+                if jobs is not None and not jobs.empty:
+                    jobs_list.append(jobs)
+                    
+                wuzzuf_jobs = scrape_wuzzuf(term, loc, RESULTS_PER_TERM)
+                if wuzzuf_jobs is not None and not wuzzuf_jobs.empty:
+                    jobs_list.append(wuzzuf_jobs)
+                    
             except Exception as e:
                 print(f"⚠️ Error scraping '{term}' in {loc}: {e}")
             
@@ -78,9 +49,11 @@ def main():
             print(f"⏳ Sleeping for {delay:.2f} seconds to avoid rate limits...")
             time.sleep(delay)
             
-    if all_jobs.empty:
+    if not jobs_list:
         print("No jobs found across any platform.")
         return
+
+    all_jobs = pd.concat(jobs_list, ignore_index=True)
 
     all_jobs = all_jobs.drop_duplicates(subset=["job_url"])
     
@@ -89,17 +62,17 @@ def main():
     all_jobs['company'] = all_jobs['company'].fillna("")
     
     def location_filter(row):
-        loc = str(row.get('location', '')).lower()
-        title = str(row.get('title', '')).lower()
+        loc_val = str(row.get('location', '')).lower()
+        title_val = str(row.get('title', '')).lower()
         is_remote_col = row.get('is_remote', False)
         
         is_remote = False
         allow_remote = any('remote' in l.lower() for l in LOCATION)
         if allow_remote:
-            is_remote = (is_remote_col == True) or ('remote' in loc) or ('remote' in title)
+            is_remote = (is_remote_col == True) or ('remote' in loc_val) or ('remote' in title_val)
             
         if FILTER_BY_SPECIFIC_LOCATIONS:
-            is_in_target = any(target in loc for target in TARGET_LOCATIONS)
+            is_in_target = any(target in loc_val for target in TARGET_LOCATIONS)
         else:
             is_in_target = True
             
@@ -110,10 +83,9 @@ def main():
         
     if FILTER_BY_LEVEL and not all_jobs.empty:
         def level_filter(row):
-            title = str(row.get('title', '')).lower()
-            job_type = str(row.get('job_type', '')).lower()
-            # If the job explicitly states it's one of these levels in the title or job_type
-            return any(level in title or level in job_type for level in TARGET_LEVELS)
+            title_val = str(row.get('title', '')).lower()
+            job_type_val = str(row.get('job_type', '')).lower()
+            return any(level in title_val or level in job_type_val for level in TARGET_LEVELS)
             
         all_jobs = all_jobs[all_jobs.apply(level_filter, axis=1)]
     
@@ -151,7 +123,6 @@ def main():
         company = html.escape(str(row['company']))
         location = html.escape(str(row.get('location', 'Location N/A')))
         
-        # Format the job type nicely (e.g. "fulltime" -> "Fulltime")
         job_type = str(row.get('job_type', 'Not specified')).title()
         if job_type.lower() == 'nan' or not job_type.strip():
             job_type = 'Not specified'
