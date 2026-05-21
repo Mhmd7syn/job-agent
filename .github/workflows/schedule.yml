@@ -1,0 +1,27 @@
+name: Weekly Job Scraper
+
+on:
+  schedule:
+    # This runs at 08:00 UTC every Sunday (which is 11:00 AM in Egypt)
+    - cron: '0 8 * * 0'
+  workflow_dispatch: # This allows you to trigger the script manually from GitHub
+
+jobs:
+  run-job-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run Job Agent
+        run: python job_agent.py
