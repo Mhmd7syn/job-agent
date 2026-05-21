@@ -44,23 +44,31 @@ def extract_job_with_ai(post_text):
     {post_text}
     """
     
-    try:
-        # Use a fast, free model with the new SDK
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        
-        # Clean up response if it contains markdown formatting
-        text = response.text
-        match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
-        if match:
-            text = match.group(1)
+    for attempt in range(5):
+        try:
+            # Use a fast, free model with the new SDK
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
             
-        data = json.loads(text)
-        return data
-    except Exception as e:
-        return {"error": str(e)}
+            # Clean up response if it contains markdown formatting
+            text = response.text
+            match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
+            if match:
+                text = match.group(1)
+                
+            data = json.loads(text)
+            return data
+        except Exception as e:
+            if "429" in str(e):
+                print(f"    (Rate limited. Waiting 60s before retry {attempt+1}/5...)")
+                import time
+                time.sleep(60)
+                continue
+            return {"error": str(e)}
+            
+    return {"error": "Exceeded retries for 429"}
 
 def scrape_linkedin_posts_playwright(keyword):
     if not LINKEDIN_LI_AT:
@@ -132,20 +140,31 @@ def get_posts_as_dataframe(term, loc):
     posts = scrape_linkedin_posts_playwright(keyword)
     
     valid_jobs = []
-    for p in posts:
+    print(f"--- Processing {len(posts)} Posts with Gemini AI ---")
+    for i, p in enumerate(posts):
+        print(f"Post {i+1}/{len(posts)}: Sending to Gemini...")
         ai_data = extract_job_with_ai(p['text'])
-        if ai_data and not ai_data.get("error") and ai_data.get("is_job"):
-            valid_jobs.append({
-                'title': ai_data.get('title', 'Unknown'),
-                'company': ai_data.get('company', 'Unknown'),
-                'location': ai_data.get('location', loc),
-                'job_url': ai_data.get('apply_method', 'No link provided'),
-                'description': p['text'],
-                'is_remote': 'remote' in str(ai_data.get('location', '')).lower(),
-                'date_posted': date.today(),
-                'job_type': 'Not specified',
-                'site': 'linkedin_posts'
-            })
+        
+        if ai_data and not ai_data.get("error"):
+            if ai_data.get("is_job"):
+                print(f"✅ Found Job: {ai_data.get('title')} at {ai_data.get('company')}")
+                valid_jobs.append({
+                    'title': ai_data.get('title', 'Unknown'),
+                    'company': ai_data.get('company', 'Unknown'),
+                    'location': ai_data.get('location', loc),
+                    'job_url': ai_data.get('apply_method', 'No link provided'),
+                    'description': p['text'],
+                    'is_remote': 'remote' in str(ai_data.get('location', '')).lower(),
+                    'date_posted': date.today(),
+                    'job_type': 'Not specified',
+                    'site': 'linkedin_posts'
+                })
+            else:
+                print("❌ Not a job post.")
+        else:
+            print(f"⚠️ Error from Gemini: {ai_data.get('error') if ai_data else 'Unknown'}")
+            
+        time.sleep(5) # Avoid Gemini Rate Limits
             
     if valid_jobs:
         return pd.DataFrame(valid_jobs)
@@ -169,6 +188,7 @@ if __name__ == "__main__":
                 print("🧠 Gemini Extraction:")
                 ai_data = extract_job_with_ai(p['text'])
                 print(json.dumps(ai_data, indent=2, ensure_ascii=False))
+                time.sleep(5) # Avoid rate limits
             print("-" * 50)
     else:
         print("\nNo posts were found. Check your cookie or search terms.")

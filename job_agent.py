@@ -50,20 +50,21 @@ def main():
                     is_remote_flag = True
                     
                 jobs = None
-                for attempt in range(3): # Auto-Retries for Network Errors
-                    try:
-                        jobs = scrape_jobs(
-                            site_name=SITES,
-                            search_term=term,
-                            location=search_loc,
-                            is_remote=is_remote_flag,
-                            results_wanted=RESULTS_PER_TERM,
-                            hours_old=HOURS_OLD,
-                        )
-                        break
-                    except Exception as e:
-                        print(f"⚠️ Retry {attempt+1}/3 for scrape_jobs failed: {e}")
-                        time.sleep(3)
+                if SITES:
+                    for attempt in range(3): # Auto-Retries for Network Errors
+                        try:
+                            jobs = scrape_jobs(
+                                site_name=SITES,
+                                search_term=term,
+                                location=search_loc,
+                                is_remote=is_remote_flag,
+                                results_wanted=RESULTS_PER_TERM,
+                                hours_old=HOURS_OLD,
+                            )
+                            break
+                        except Exception as e:
+                            print(f"⚠️ Retry {attempt+1}/3 for scrape_jobs failed: {e}")
+                            time.sleep(3)
                         
                 if jobs is not None and not jobs.empty:
                     jobs_list.append(jobs)

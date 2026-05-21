@@ -9,7 +9,11 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 SEARCH_TERMS = [
-    "AI Engineer"]
+    "AI Engineer", "Machine Learning Engineer", "Artificial Intelligence", "Computer Vision", "NLP",
+    "Data Scientist", "Data Science",
+    "Data Analyst", "Data Analysis", "Data Analytics",
+    "AI Instructor", "Data Science Instructor", "Machine Learning Instructor", "Data Analytics Instructor", "Python Instructor", "Programming Instructor", "Coding Instructor"
+]
 
 RESUME_KEYWORDS = [
     # Programming & Core
