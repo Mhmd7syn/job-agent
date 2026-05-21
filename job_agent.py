@@ -4,10 +4,18 @@ import sys
 import time
 import random
 import html
+import glob
+import os
+import json
+import datetime
 
 from config import *
 from wuzzuf_scraper import scrape_wuzzuf
 from telegram_notifier import send_telegram_message
+try:
+    from playwright_scraper import get_posts_as_dataframe
+except ImportError:
+    get_posts_as_dataframe = None
 
 # Monkey-patch jobspy's Country.from_string to avoid crashing on unknown countries (e.g. Albania)
 from jobspy.model import Country
@@ -61,9 +69,17 @@ def main():
                     jobs_list.append(jobs)
                     
                 if USE_WUZZUF:
-                    wuzzuf_jobs = scrape_wuzzuf(term, loc, RESULTS_PER_TERM)
+                    wuzzuf_jobs = scrape_wuzzuf(term, loc, RESULTS_PER_TERM, HOURS_OLD)
                     if wuzzuf_jobs is not None and not wuzzuf_jobs.empty:
                         jobs_list.append(wuzzuf_jobs)
+                        
+                if SCRAPE_LINKEDIN_POSTS and get_posts_as_dataframe:
+                    try:
+                        post_jobs = get_posts_as_dataframe(term, loc)
+                        if post_jobs is not None and not post_jobs.empty:
+                            jobs_list.append(post_jobs)
+                    except Exception as e:
+                        print(f"⚠️ Error scraping posts for '{term}' in {loc}: {e}")
                     
             except Exception as e:
                 print(f"⚠️ Error scraping '{term}' in {loc}: {e}")
@@ -193,11 +209,7 @@ def main():
         
     print(f"🎯 Found {len(filtered_jobs)} matching jobs out of {len(all_jobs)} scraped.")
 
-    import glob
-    import time
-    import os
-    import json
-    import datetime
+
 
     # Save the best 100 found jobs after reranking
     if not filtered_jobs.empty:

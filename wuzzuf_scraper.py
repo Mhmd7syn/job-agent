@@ -3,6 +3,8 @@ import urllib.parse
 from bs4 import BeautifulSoup
 import pandas as pd
 import time
+import re
+import datetime
 
 def fetch_with_retries(url, retries=3, timeout=10):
     for attempt in range(retries):
@@ -40,7 +42,18 @@ def get_wuzzuf_description(url):
         print(f"⚠️ Error parsing description for {url}: {e}")
         return ""
 
-def scrape_wuzzuf(search_term, location, results_wanted=15):
+def parse_wuzzuf_date_to_hours(date_str):
+    date_str = date_str.lower()
+    hours = 0
+    months = re.search(r'(\d+)\s*month', date_str)
+    if months: hours += int(months.group(1)) * 30 * 24
+    days = re.search(r'(\d+)\s*day', date_str)
+    if days: hours += int(days.group(1)) * 24
+    hr = re.search(r'(\d+)\s*hour', date_str)
+    if hr: hours += int(hr.group(1))
+    return hours
+
+def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None):
     jobs = []
     query = search_term
     if location.lower() == "worldwide" or location.lower() == "remote":
@@ -56,9 +69,27 @@ def scrape_wuzzuf(search_term, location, results_wanted=15):
         soup = BeautifulSoup(response.content, 'html.parser')
         job_cards = soup.find_all('div', class_=lambda c: c and 'css-pkv5jc' in c)
         
-        for card in job_cards[:results_wanted]:
+        for card in job_cards:
+            if len(jobs) >= results_wanted:
+                break
+                
             title_tag = card.find('h2', class_='css-193uk2c')
             if not title_tag or not title_tag.a: continue
+            
+            # Extract date to filter old posts
+            date_str = ""
+            company_loc_div = card.find('div', class_='css-1k5ee52')
+            if company_loc_div:
+                date_tag = company_loc_div.find('div')
+                if date_tag:
+                    date_str = date_tag.text.strip()
+            
+            job_hours = parse_wuzzuf_date_to_hours(date_str) if date_str else 0
+            if hours_old is not None and job_hours > hours_old:
+                continue
+                
+            date_posted = datetime.datetime.now() - datetime.timedelta(hours=job_hours)
+            
             title = title_tag.a.text.strip()
             job_url = "https://wuzzuf.net" + title_tag.a['href']
             
@@ -82,7 +113,8 @@ def scrape_wuzzuf(search_term, location, results_wanted=15):
                 'job_type': job_type,
                 'description': description,
                 'is_remote': 'remote' in query.lower(),
-                'site': 'wuzzuf'
+                'site': 'wuzzuf',
+                'date_posted': date_posted.date()
             })
             
             # Small delay to respect rate limits
