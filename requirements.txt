@@ -1,5 +1,5 @@
 pandas
 requests
 python-jobspy
-
 beautifulsoup4
+python-dotenv
