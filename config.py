@@ -91,6 +91,6 @@ TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "graduate", "t
 SITES = ["linkedin", "indeed", "google"]
 USE_WUZZUF = True
 SCRAPE_LINKEDIN_POSTS = True
-RESULTS_PER_TERM = 5
+RESULTS_PER_TERM = 15
 HOURS_OLD = 7 * 24
 MAX_JOBS_TO_SEND = 10

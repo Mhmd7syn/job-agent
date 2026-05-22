@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 import sys
-from google import genai
+from llm_parser import extract_post_with_ai, extract_job_page_with_ai
 
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
@@ -17,13 +17,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(BASE_DIR, '.env')
 USER_DATA_DIR = os.path.join(BASE_DIR, "playwright_profile")
 load_dotenv(dotenv_path=env_path)
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY)
-else:
-    client = None
 
 def auto_login_if_needed(page):
     email = os.getenv("LINKEDIN_EMAIL")
@@ -57,53 +50,7 @@ def auto_login_if_needed(page):
         else:
             print("❌ Playwright is logged out but LINKEDIN_EMAIL/LINKEDIN_PASSWORD not in .env")
 
-def extract_job_with_ai(post_text):
-    """Uses Google Gemini to extract job details from a raw post."""
-    if not GEMINI_API_KEY:
-        return {"error": "No Gemini API Key"}
-        
-    prompt = f"""
-    You are an expert HR assistant. Read the following LinkedIn post and extract the job details.
-    If the post is NOT a job listing (e.g. just a generic post, an article, or someone looking for a job), set "is_job" to false.
-    If it IS a job listing, extract the job details.
-    
-    Post:
-    {post_text}
-    """
-    
-    from pydantic import BaseModel, Field
-    from google.genai import types
-    
-    class JobExtraction(BaseModel):
-        is_job: bool
-        title: str = Field(default="Not specified")
-        company: str = Field(default="Not specified")
-        location: str = Field(default="Not specified")
-        apply_method: str = Field(default="Not specified")
-        
-    for attempt in range(5):
-        try:
-            # Use a fast, free model with the new SDK
-            response = client.models.generate_content(
-                model='gemini-flash-lite-latest',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=JobExtraction,
-                )
-            )
-            
-            data = json.loads(response.text)
-            return data
-        except Exception as e:
-            if "429" in str(e) or "503" in str(e):
-                print(f"    (API issue ({str(e)[:15]}...). Waiting 60s before retry {attempt+1}/5...)")
-                import time
-                time.sleep(60)
-                continue
-            return {"error": str(e)}
-            
-    return {"error": "Exceeded retries for 429"}
+
 
 def scrape_linkedin_posts_playwright(keyword):
     found_posts = []
@@ -244,44 +191,26 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
                         except:
                             pass
                             
-                    title = "Unknown"
-                    title_elem = page.query_selector('h1')
-                    if title_elem: title = title_elem.inner_text().strip()
+                    # Fetch all visible text on the page for AI extraction
+                    page_text = page.evaluate("document.body.innerText")
+                    ai_data = extract_job_page_with_ai(page_text[:10000]) # Pass first 10k chars to avoid token limits
                     
-                    company = "Unknown"
-                    comp_elem = page.query_selector('.jobs-unified-top-card__company-name') or \
-                                page.query_selector('.job-details-jobs-unified-top-card__company-name') or \
-                                page.query_selector('.jobs-company-name')
-                    if comp_elem: company = comp_elem.inner_text().strip()
-                    
-                    loc = location
-                    loc_elem = page.query_selector('.jobs-unified-top-card__bullet') or \
-                               page.query_selector('.job-details-jobs-unified-top-card__bullet') or \
-                               page.query_selector('.jobs-unified-top-card__primary-description')
-                    if loc_elem: 
-                        loc_text = loc_elem.inner_text().strip()
-                        # Sometimes primary description contains "Company · Location · Posted"
-                        loc = loc_text.split('·')[0].strip() if '·' in loc_text else loc_text
-                    
-                    desc = ""
-                    desc_elem = page.query_selector('#job-details') or \
-                                page.query_selector('.jobs-description__content') or \
-                                page.query_selector('.jobs-description-content__text') or \
-                                page.query_selector('article')
-                    if desc_elem: desc = desc_elem.inner_text().strip()
-                    
-                    if title != "Unknown":
-                        jobs.append({
-                            'title': title,
-                            'company': company,
-                            'location': loc,
-                            'job_url': job_url,
-                            'description': desc,
-                            'site': 'linkedin',
-                            'is_remote': 'remote' in loc.lower(),
-                            'date_posted': datetime.date.today(),
-                            'job_type': 'Not specified'
-                        })
+                    if ai_data and not ai_data.get("error"):
+                        title = ai_data.get('title', 'Unknown')
+                        if title != "Unknown" and title != "Not specified":
+                            jobs.append({
+                                'title': title,
+                                'company': ai_data.get('company', 'Unknown'),
+                                'location': ai_data.get('location', loc),
+                                'job_url': job_url,
+                                'description': ai_data.get('description', ''),
+                                'site': 'linkedin',
+                                'is_remote': 'remote' in str(ai_data.get('location', '')).lower() or 'remote' in loc.lower(),
+                                'date_posted': datetime.date.today(),
+                                'job_type': 'Not specified'
+                            })
+                    else:
+                        print(f"⚠️ AI Parsing failed for job {job_url}: {ai_data.get('error') if ai_data else 'Unknown'}")
                     
                 except Exception as e:
                     print(f"⚠️ Failed to parse job {job_url}: {e}")
@@ -303,7 +232,7 @@ def get_posts_as_dataframe(term, loc):
     
     valid_jobs = []
     for i, p in enumerate(posts):
-        ai_data = extract_job_with_ai(p['text'])
+        ai_data = extract_post_with_ai(p['text'])
 
         
         if ai_data and not ai_data.get("error"):
@@ -343,9 +272,9 @@ if __name__ == "__main__":
             preview = p['text'][:200].replace('\n', ' ') + "..." if len(p['text']) > 200 else p['text'].replace('\n', ' ')
             print(f"[{preview}]")
             
-            if GEMINI_API_KEY:
-                print("🧠 Gemini Extraction:")
-                ai_data = extract_job_with_ai(p['text'])
+            if True: # Always attempt AI extraction now (via LLM parser)
+                print("🧠 AI Extraction:")
+                ai_data = extract_post_with_ai(p['text'])
                 print(json.dumps(ai_data, indent=2, ensure_ascii=False))
                 time.sleep(5) # Avoid rate limits
             print("-" * 50)
