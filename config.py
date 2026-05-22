@@ -7,9 +7,12 @@ load_dotenv(dotenv_path=env_path)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+LINKEDIN_EMAIL = os.getenv("LINKEDIN_EMAIL")
+LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD")
 
 SEARCH_TERMS = [
-    "AI Engineer",]
+    "AI Engineer"
+]
 
 RESUME_KEYWORDS = [
     # Programming & Core

@@ -22,9 +22,10 @@ from config import *
 from wuzzuf_scraper import scrape_wuzzuf
 from telegram_notifier import send_telegram_message
 try:
-    from playwright_scraper import get_posts_as_dataframe
+    from playwright_scraper import get_posts_as_dataframe, scrape_linkedin_jobs_playwright
 except ImportError:
     get_posts_as_dataframe = None
+    scrape_linkedin_jobs_playwright = None
 
 # Monkey-patch jobspy's Country.from_string to avoid crashing on unknown countries (e.g. Albania)
 from jobspy.model import Country
@@ -60,24 +61,33 @@ def main():
                     
                 jobs = None
                 if SITES:
-                    for attempt in range(3): # Auto-Retries for Network Errors
-                        try:
-                            jobs = scrape_jobs(
-                                site_name=SITES,
-                                search_term=term,
-                                location=search_loc,
-                                results_wanted=RESULTS_PER_TERM,
-                                hours_old=HOURS_OLD,
-                                linkedin_fetch_description=True
-                            )
-                            break
-
-                        except Exception as e:
-                            print(f"⚠️ Retry {attempt+1}/3 for scrape_jobs failed: {e}")
-                            time.sleep(3)
+                    jobspy_sites = [s for s in SITES if s.lower() != 'linkedin']
+                    if jobspy_sites:
+                        for attempt in range(3): # Auto-Retries for Network Errors
+                            try:
+                                jobs = scrape_jobs(
+                                    site_name=jobspy_sites,
+                                    search_term=term,
+                                    location=search_loc,
+                                    results_wanted=RESULTS_PER_TERM,
+                                    hours_old=HOURS_OLD,
+                                    linkedin_fetch_description=False
+                                )
+                                break
+                            except Exception as e:
+                                print(f"⚠️ Retry {attempt+1}/3 for scrape_jobs failed: {e}")
+                                time.sleep(3)
                         
                 if jobs is not None and not jobs.empty:
                     jobs_list.append(jobs)
+                    
+                if 'linkedin' in [s.lower() for s in SITES] and scrape_linkedin_jobs_playwright:
+                    try:
+                        li_jobs = scrape_linkedin_jobs_playwright(term, search_loc, RESULTS_PER_TERM, HOURS_OLD)
+                        if li_jobs is not None and not li_jobs.empty:
+                            jobs_list.append(li_jobs)
+                    except Exception as e:
+                        print(f"⚠️ Error scraping LinkedIn jobs via Playwright for '{term}': {e}")
                     
                 if USE_WUZZUF:
                     wuzzuf_jobs = scrape_wuzzuf(term, loc, RESULTS_PER_TERM, HOURS_OLD)
@@ -120,6 +130,8 @@ def main():
         all_jobs['title_company_lower'] = all_jobs['title'].str.lower() + " " + all_jobs['company'].str.lower()
         all_jobs = all_jobs.drop_duplicates(subset=["title_company_lower"])
         all_jobs = all_jobs.drop(columns=["title_company_lower"])
+        
+        # LinkedIn descriptions are now accurately fetched directly during the Playwright search phase.
         
         # Ensure is_remote is correctly flagged
         def fix_is_remote(row):

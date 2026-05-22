@@ -1,3 +1,8 @@
 .env
 __pycache__/
 *.pyc
+
+# Local Data and Profiles
+playwright_profile/
+*.csv
+sent_jobs.json

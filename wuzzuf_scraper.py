@@ -7,9 +7,13 @@ import re
 import datetime
 
 def fetch_with_retries(url, retries=3, timeout=10):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
     for attempt in range(retries):
         try:
-            response = requests.get(url, timeout=timeout)
+            response = requests.get(url, headers=headers, timeout=timeout)
             if response.status_code == 200:
                 return response
         except Exception as e:
