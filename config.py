@@ -9,11 +9,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 SEARCH_TERMS = [
-    "AI Engineer", "Machine Learning Engineer", "Artificial Intelligence", "Computer Vision", "NLP",
-    "Data Scientist", "Data Science",
-    "Data Analyst", "Data Analysis", "Data Analytics",
-    "AI Instructor", "Data Science Instructor", "Machine Learning Instructor", "Data Analytics Instructor", "Python Instructor", "Programming Instructor", "Coding Instructor"
-]
+    "AI Engineer",]
 
 RESUME_KEYWORDS = [
     # Programming & Core
@@ -92,6 +88,6 @@ TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "graduate", "t
 SITES = ["linkedin", "indeed", "google"]
 USE_WUZZUF = True
 SCRAPE_LINKEDIN_POSTS = True
-RESULTS_PER_TERM = 1
+RESULTS_PER_TERM = 5
 HOURS_OLD = 7 * 24
 MAX_JOBS_TO_SEND = 10

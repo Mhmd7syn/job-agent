@@ -8,8 +8,17 @@ import glob
 import os
 import json
 import datetime
+import logging
+
+logging.basicConfig(level=logging.WARNING)
+
+# Suppress all JobSpy loggers
+for name in logging.Logger.manager.loggerDict.keys():
+    if name.startswith("JobSpy"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 from config import *
+
 from wuzzuf_scraper import scrape_wuzzuf
 from telegram_notifier import send_telegram_message
 try:
@@ -35,13 +44,13 @@ if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
 def main():
-    print("🤖 Starting the JobSpy Agent...")
+
     
     jobs_list = []
     
     for term in SEARCH_TERMS:
         for loc in LOCATION:
-            print(f"🔍 Scraping for: '{term}' in {loc}...")
+
             try:
                 is_remote_flag = False
                 search_loc = loc
@@ -57,11 +66,12 @@ def main():
                                 site_name=SITES,
                                 search_term=term,
                                 location=search_loc,
-                                is_remote=is_remote_flag,
                                 results_wanted=RESULTS_PER_TERM,
                                 hours_old=HOURS_OLD,
+                                linkedin_fetch_description=True
                             )
                             break
+
                         except Exception as e:
                             print(f"⚠️ Retry {attempt+1}/3 for scrape_jobs failed: {e}")
                             time.sleep(3)
@@ -86,8 +96,8 @@ def main():
                 print(f"⚠️ Error scraping '{term}' in {loc}: {e}")
             
             delay = random.uniform(3, 7)
-            print(f"⏳ Sleeping for {delay:.2f} seconds to avoid rate limits...")
             time.sleep(delay)
+
             
     if not jobs_list:
         print("No jobs found across any platform.")
@@ -110,9 +120,19 @@ def main():
         all_jobs['title_company_lower'] = all_jobs['title'].str.lower() + " " + all_jobs['company'].str.lower()
         all_jobs = all_jobs.drop_duplicates(subset=["title_company_lower"])
         all_jobs = all_jobs.drop(columns=["title_company_lower"])
+        
+        # Ensure is_remote is correctly flagged
+        def fix_is_remote(row):
+            if row.get('is_remote') == True:
+                return True
+            if any('remote' in str(row.get(col, '')).lower() for col in ['location', 'title', 'job_type']):
+                return True
+            return False
+        all_jobs['is_remote'] = all_jobs.apply(fix_is_remote, axis=1)
+
     
-    print("🧠 Scoring jobs based on relevance to your search terms...")
     import re
+
     from datetime import date
     def get_relevance_score(row):
         title = str(row.get('title', '')).lower()
@@ -196,8 +216,8 @@ def main():
         # Filter out jobs that don't match any of our keywords or search terms
         all_jobs = all_jobs[all_jobs['relevance_score'] > 0]
 
-    print("🧹 Preparing final jobs list...")
     filtered_jobs = all_jobs
+
     
     if not filtered_jobs.empty:
         sort_cols = ['relevance_score']
@@ -208,26 +228,29 @@ def main():
             
         filtered_jobs = filtered_jobs.sort_values(by=sort_cols, ascending=ascending_flags)
         
-    print(f"🎯 Found {len(filtered_jobs)} matching jobs out of {len(all_jobs)} scraped.")
+
 
 
 
     # Save the best 100 found jobs after reranking
     if not filtered_jobs.empty:
-        best_100 = filtered_jobs.head(100)
+        best_100 = filtered_jobs.head(100).copy()
+        if 'description' in best_100.columns:
+            best_100 = best_100.drop(columns=['description'])
+            
         current_date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"found_jobs_{current_date_str}.csv"
         best_100.to_csv(filename, index=False)
-        print(f"💾 Saved {len(best_100)} best jobs to {filename}")
 
         # Delete found_jobs files older than 30 days
+
         thirty_days_ago = time.time() - (30 * 24 * 60 * 60)
         for f in glob.glob("found_jobs_*.csv"):
             try:
                 if os.path.getmtime(f) < thirty_days_ago:
                     os.remove(f)
-                    print(f"🗑️ Deleted old job file: {f}")
             except Exception as e:
+
                 print(f"⚠️ Failed to delete old job file {f}: {e}")
 
     # --- STATE MANAGEMENT (Prevent Duplicate Alerts) ---
@@ -264,9 +287,9 @@ def main():
         # Create an ID column for checking
         filtered_jobs['job_id'] = filtered_jobs['title'].str.lower().str.strip() + " " + filtered_jobs['company'].str.lower().str.strip()
         filtered_jobs = filtered_jobs[~filtered_jobs['job_id'].isin(sent_jobs.keys())]
-        print(f"📬 After removing previously sent jobs, {len(filtered_jobs)} remain.")
 
     if filtered_jobs.empty:
+
         send_telegram_message("📉 <b>Job Agent Report</b>\nNo new jobs matched your specific keywords this week.")
         return
 

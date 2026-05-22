@@ -13,9 +13,9 @@ if sys.stdout.encoding.lower() != 'utf-8':
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(BASE_DIR, '.env')
+USER_DATA_DIR = os.path.join(BASE_DIR, "playwright_profile")
 load_dotenv(dotenv_path=env_path)
 
-LINKEDIN_LI_AT = os.getenv("LINKEDIN_LI_AT")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if GEMINI_API_KEY:
@@ -71,43 +71,38 @@ def extract_job_with_ai(post_text):
     return {"error": "Exceeded retries for 429"}
 
 def scrape_linkedin_posts_playwright(keyword):
-    if not LINKEDIN_LI_AT:
-        print("❌ Error: Please add LINKEDIN_LI_AT to your .env file.")
+    if not os.path.exists(USER_DATA_DIR):
+        print("❌ Error: Persistent profile not found. Please run 'python linkedin_login.py' first.")
         return []
 
-    print(f"🚀 Launching Playwright browser (invisible)...")
     found_posts = []
 
     with sync_playwright() as p:
-        # Launch browser in headless mode
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
 
-        # Add the authentication cookie
-        context.add_cookies([{
-            "name": "li_at",
-            "value": LINKEDIN_LI_AT,
-            "domain": ".www.linkedin.com",
-            "path": "/"
-        }])
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=USER_DATA_DIR,
+            headless=True
+        )
 
-        page = context.new_page()
+
+        page = context.pages[0] if context.pages else context.new_page()
+
         
         # Format the search URL for LinkedIn Posts
         encoded_keyword = urllib.parse.quote(keyword)
         search_url = f"https://www.linkedin.com/search/results/content/?keywords={encoded_keyword}&origin=GLOBAL_SEARCH_HEADER"
         
-        print(f"🔍 Navigating to LinkedIn search for: '{keyword}'...")
         try:
             page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
+
             
             # Wait a few seconds for the feed to load fully
             time.sleep(5)
             
             # Scroll down to load more posts (simulate human behavior)
-            print("📜 Scrolling down to load more results...")
             for i in range(3):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+
                 time.sleep(4)
                 
             # Extract post elements
@@ -123,11 +118,12 @@ def scrape_linkedin_posts_playwright(keyword):
                         "text": clean_text
                     })
                     
-            print(f"✅ Successfully extracted {len(found_posts)} posts.")
         except Exception as e:
+
             print(f"⚠️ Error during Playwright execution: {e}")
             
-        browser.close()
+        context.close()
+
         
     return found_posts
 
@@ -140,14 +136,12 @@ def get_posts_as_dataframe(term, loc):
     posts = scrape_linkedin_posts_playwright(keyword)
     
     valid_jobs = []
-    print(f"--- Processing {len(posts)} Posts with Gemini AI ---")
     for i, p in enumerate(posts):
-        print(f"Post {i+1}/{len(posts)}: Sending to Gemini...")
         ai_data = extract_job_with_ai(p['text'])
+
         
         if ai_data and not ai_data.get("error"):
             if ai_data.get("is_job"):
-                print(f"✅ Found Job: {ai_data.get('title')} at {ai_data.get('company')}")
                 valid_jobs.append({
                     'title': ai_data.get('title', 'Unknown'),
                     'company': ai_data.get('company', 'Unknown'),
@@ -159,9 +153,8 @@ def get_posts_as_dataframe(term, loc):
                     'job_type': 'Not specified',
                     'site': 'linkedin_posts'
                 })
-            else:
-                print("❌ Not a job post.")
         else:
+
             print(f"⚠️ Error from Gemini: {ai_data.get('error') if ai_data else 'Unknown'}")
             
         time.sleep(5) # Avoid Gemini Rate Limits

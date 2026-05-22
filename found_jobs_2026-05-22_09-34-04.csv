@@ -1,0 +1,132 @@
+id,site,job_url,title,company,location,date_posted,is_remote,job_level,company_url,job_type,description,relevance_score
+,wuzzuf,https://wuzzuf.net/jobs/p/etepim3qc4q5-ai-specialist-ai-engineer-tech-technology-cairo-egypt,AI Specialist / AI Engineer,tech technology,"Cairo, Egypt",2026-05-19,False,,,"Full Time, Remote","Job Description
+We are looking for an AI Specialist / AI Engineer who is passionate about modern technologies and capable of developing AI-powered solutions to improve operations and build intelligent digital products.
+Key Responsibilities:
+- Develop, train, and optimize Artificial Intelligence and Machine Learning models.
+- Analyze, clean, and prepare data for AI models.
+- Build and integrate AI solutions with different systems and applications.
+- Monitor, improve, and maintain AI model performance after deployment.
+- Work on solutions such as chatbots, OCR, recommendation systems, text analysis, and image analysis.
+- Collaborate with software development and product teams to understand requirements and turn them into practical AI solutions.
+- Stay updated with the latest AI tools, technologies, and industry trends.
+- Strong experience with Python and AI/ML libraries such as TensorFlow, PyTorch, or Scikit-learn.
+- Good understanding of NLP, Large Language Models, and Machine Learning.
+- Experience working with APIs and databases.
+- Basic knowledge of software engineering principles and Git.
+- Strong problem-solving and analytical thinking skills.
+- Practical AI projects or previous experience in the field are preferred.
+Additional Advantages:
+- Experience with LangChain or LangGraph.
+- Experience working with vector databases such as Qdrant or Redis.
+- Experience deploying models using Docker or cloud services.
+Job Requirements
+- Strong experience with Python and AI/ML libraries such as TensorFlow, PyTorch, or Scikit-learn.
+- Good understanding of NLP, Large Language Models, and Machine Learning.
+- Experience working with APIs and databases.
+- Basic knowledge of software engineering principles and Git.
+- Strong problem-solving and analytical thinking skills.
+- Practical AI projects or previous experience in the field are preferred.
+Additional Advantages:
+- Experience with LangChain or LangGraph.
+- Experience working with vector databases such as Qdrant or Redis.
+- Experience deploying models using Docker or cloud services.",40
+li-4406556793,linkedin,https://www.linkedin.com/jobs/view/4406556793,SSP - R&D AI/ML Development Intern,Siemens,"Cairo, Cairo, Egypt",2026-05-20,False,,https://de.linkedin.com/company/siemens,,,35
+,wuzzuf,https://wuzzuf.net/jobs/p/dcpp5dcaaamh-ai-data-labeller-cairo-egypt,AI Data Labeller,Confidential,"New Cairo, Cairo, Egypt",2026-05-19,False,,,"Full Time, On-site","Job Description
+About the Company
+We are an innovative technology company specializing in data, analytics, and infrastructure intelligence solutions. Our team builds scalable software and geospatial tools that help organizations manage assets, improve operations, and make informed decisions. We offer a collaborative, growth-oriented environment where technology and real-world impact intersect.
+Position
+As an AI Data Labeller, you will support quality assurance initiatives by reviewing and validating visual data for accuracy, consistency, and completeness. In this role, you will analyze roadway and sidewalk imagery to identify flaws, discrepancies, or data quality issues, helping ensure the integrity and reliability of our datasets.
+Job Requirements
+Qualifications
+Strong attention to detail and accuracy
+Comfortable working with computers and digital tools
+Ability to stay focused on repetitive, detail-oriented tasks
+Able to work independently and within a small team
+Good organizational and time management skills
+Experience with roads, pavement, or infrastructure is an asset
+Previous data annotation or QA experience is an asset",26
+,wuzzuf,https://wuzzuf.net/jobs/p/geuoneusugnu-application-security-engineerpenetration-tester-vertex-technologies-cairo-egypt,Application Security Engineer/Penetration Tester,Vertex Technologies,"Cairo, Egypt",2026-05-21,False,,,"Full Time, On-site","Job Description
+As part of the Security team, you will work closely with product and engineering teams to ensure the security of web and desktop applications.
+You will take ownership of security assessments, contribute to secure development practices, and help drive security maturity across the organization.
+Role and Responsibilities
+Perform penetration testing and security assessments of:
+Web applications and APIs
+Desktop (thick client) applications
+Identify vulnerabilities and clearly communicate risks and impact.
+Produce high-quality security reports with:
+clear reproduction steps
+realistic impact assessment
+practical remediation guidance
+Work closely with developers and product teams to:
+explain vulnerabilities
+support remediation
+validate fixes
+Improve internal security processes, tools, and methodologies.
+Participate in secure coding trainings and knowledge sharing.
+Job Requirements
+Required Technical and Professional Expertise
+3+ years of hands-on experience in application security/penetration testing.
+Strong practical experience in:
+Web application security testing (OWASP WSTG, ASWS or equivalent)
+API security (auth flows, business logic, abuse cases)
+Understanding of desktop application security basics, including:
+Local storage / ACLs / secrets handling
+Reverse engineering basics (static/dynamic analysis)
+Common issues (hardcoded secrets, insecure IPC, weak crypto usage)
+Solid understanding of:
+Common vulnerability classes and their root causes
+Client-server interaction models
+Network communication protocols
+Modern web technologies
+Authentication mechanisms
+Secure Software Development Lifecycle
+Foundational Knowledge of AI Security
+Understanding of the OWASP Top 10 for LLM Applications (e.g., Prompt Injection, Sensitive Data Disclosure, Insecure Output Handling)
+Proficiency in using LLMs and AI-powered tools to accelerate vulnerability analysis, deobfuscate code, and automate the creation of custom security tools or exploit scripts
+Prompt Engineering: Ability to craft and refine complex prompts for deep-dive code analysis (SAST) and generating context-aware test cases for business logic flaws
+Hands-on experience with tools such as:
+Burp Suite (advanced usage)
+Proxies, fuzzers, scanners
+SAST / DAST tools
+Sysinternals Suite (ProcMon, SigCheck, etc.)
+Basic RE tools (Ghidra, jadx, dnSpy — at least on a basic level)
+AI Productivity Tools: AI-assisted coding environments (e.g., GitHub Copilot, Cursor, or Claude Code) to streamline security auditing and remediation workflows
+Strong communication skills:
+Ability to explain security issues to engineers
+Clear and structured reporting in English
+Ability to work independently and take ownership.
+Nice to Have:
+Experience in bug bounty, public vulnerability disclosures or CTF competitions.
+Development background (ability to read and understand production code).
+Experience with Cloud environments, CI/CD and DevSecOps practices.
+Experience in Threat modeling and Architecture reviews
+Familiarity with privacy and compliance frameworks (GDPR, ISO 27001, SOC2, etc.)
+Relevant certifications like CEH, BSCP, eWPT, OSCP, etc.",22
+li-4416490339,linkedin,https://www.linkedin.com/jobs/view/4416490339,Ai Engineer,Capgemini,"Cairo, Cairo, Egypt",2026-05-19,False,,https://fr.linkedin.com/company/capgemini,,,20
+,wuzzuf,https://wuzzuf.net/jobs/p/4oqqt3asg0oi-ai-product-engineer-maplora-tech-cairo-egypt,AI Product Engineer,Maplora Tech,"Cairo, Egypt",2026-05-21,False,,,"Full Time, Remote","Job Description
+We are looking for an AI Product Engineer to build AI-powered product solutions from idea to execution. This role focuses on using AI tools to rapidly prototype, develop, test, and improve products while solving real business and user problems.
+Key Responsibilities:
+Build and launch AI-driven product solutions
+Rapidly prototype and iterate on new ideas
+Use AI tools to generate designs, implementations, and tests
+Analyze problems and develop practical solutions
+Participate in customer demos and gather feedback
+Improve product quality, testing, and performance
+Collaborate closely with product and business teams
+Job Requirements
+Fluent English communication skills (written and spoken)
+Strong experience building products using AI tools
+Ability to rapidly prototype and iterate
+Strong debugging and problem-solving skills
+Understanding of AI systems, workflows, and limitations
+Ability to work independently from idea to implementation
+Knowledge of software quality, testing, and maintainability
+Fast execution and ownership mindset
+Creative and analytical problem-solving abilities
+Comfortable working in a fast-paced startup environment
+Strong focus on building practical, high-impact solutions",18
+li-4250198849,linkedin,https://www.linkedin.com/jobs/view/4250198849,Software Engineer (Python) - AI Platform,Revolut,,,False,,https://uk.linkedin.com/company/revolut,,,13
+li-4416174156,linkedin,https://www.linkedin.com/jobs/view/4416174156,AI-engineer / Agentic Developer  – 100% Remote,Powerprozesse GmbH,,2026-05-20,True,,https://de.linkedin.com/company/powerprozesse,,,10
+li-4416925340,linkedin,https://www.linkedin.com/jobs/view/4416925340,Junior Machine Learning Engineer,KellyMitchell Group,,2026-05-19,False,,https://www.linkedin.com/company/kelly-mitchell-group-inc,,,10
+li-4415925707,linkedin,https://www.linkedin.com/jobs/view/4415925707,AI Developer (Internship),Keyrus,,2026-05-19,False,,https://fr.linkedin.com/company/keyrus,,,10
+li-4302023020,linkedin,https://www.linkedin.com/jobs/view/4302023020,AI Developer,Coca-Cola HBC,"New Cairo, Cairo, Egypt",2026-05-17,False,,https://ch.linkedin.com/company/coca-cola-hbc,,,10
