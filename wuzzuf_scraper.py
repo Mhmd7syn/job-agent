@@ -6,7 +6,7 @@ import time
 import re
 import datetime
 
-def fetch_with_retries(url, retries=3, timeout=10):
+def fetch_with_retries(url, retries=5, timeout=10):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
@@ -17,8 +17,10 @@ def fetch_with_retries(url, retries=3, timeout=10):
             if response.status_code == 200:
                 return response
         except Exception as e:
-            if attempt == retries - 1:
-                print(f"⚠️ Network error on {url}: {e}")
+            if attempt < retries - 1:
+                print(f"    (Wuzzuf network issue. Retrying {attempt+1}/{retries}...)")
+            else:
+                print(f"⚠️ Network error on {url} after {retries} attempts: {e}")
             time.sleep(2)
     return None
 

@@ -201,11 +201,11 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
                             jobs.append({
                                 'title': title,
                                 'company': ai_data.get('company', 'Unknown'),
-                                'location': ai_data.get('location', loc),
+                                'location': ai_data.get('location', location),
                                 'job_url': job_url,
                                 'description': ai_data.get('description', ''),
                                 'site': 'linkedin',
-                                'is_remote': 'remote' in str(ai_data.get('location', '')).lower() or 'remote' in loc.lower(),
+                                'is_remote': 'remote' in str(ai_data.get('location', '')).lower() or 'remote' in location.lower(),
                                 'date_posted': datetime.date.today(),
                                 'job_type': 'Not specified'
                             })

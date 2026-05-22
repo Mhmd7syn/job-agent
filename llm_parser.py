@@ -55,7 +55,7 @@ def extract_post_with_ai(post_text):
             )
             return json.loads(response.text)
         except Exception as e:
-            if "429" in str(e) or "503" in str(e):
+            if "429" in str(e) or "503" in str(e) or "10053" in str(e) or "10054" in str(e):
                 print(f"    (API issue ({str(e)[:15]}...). Waiting 60s before retry {attempt+1}/5...)")
                 time.sleep(60)
                 continue
@@ -87,7 +87,7 @@ def extract_job_page_with_ai(page_text):
             )
             return json.loads(response.text)
         except Exception as e:
-            if "429" in str(e) or "503" in str(e):
+            if "429" in str(e) or "503" in str(e) or "10053" in str(e) or "10054" in str(e):
                 print(f"    (API issue ({str(e)[:15]}...). Waiting 60s before retry {attempt+1}/5...)")
                 time.sleep(60)
                 continue
