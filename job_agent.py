@@ -10,10 +10,16 @@ import json
 import datetime
 import logging
 
+# Configure logging to save to file with timestamps, but print to terminal cleanly
+file_handler = logging.FileHandler("job_agent.log", mode="w", encoding="utf-8")
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(logging.Formatter('%(message)s'))
+
 logging.basicConfig(
-    filename='job_agent.log',
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    handlers=[file_handler, console_handler]
 )
 
 # Suppress all JobSpy loggers
