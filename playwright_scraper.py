@@ -66,9 +66,9 @@ def scrape_linkedin_posts_playwright(keyword):
         page = context.pages[0] if context.pages else context.new_page()
         Stealth().apply_stealth_sync(page)
         
-        # Format the search URL for LinkedIn Posts
+        # Format the search URL for LinkedIn Posts (Sorted by latest)
         encoded_keyword = urllib.parse.quote(keyword)
-        search_url = f"https://www.linkedin.com/search/results/content/?keywords={encoded_keyword}&origin=GLOBAL_SEARCH_HEADER"
+        search_url = f"https://www.linkedin.com/search/results/content/?keywords={encoded_keyword}&origin=GLOBAL_SEARCH_HEADER&sortBy=%22date_posted%22"
         
         try:
             page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
