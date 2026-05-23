@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import logging
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
@@ -55,8 +56,8 @@ def extract_post_with_ai(post_text):
             return json.loads(response.text)
         except Exception as e:
             if "429" in str(e) or "503" in str(e) or "10053" in str(e) or "10054" in str(e):
-                print(f"    (API issue ({str(e)[:15]}...). Waiting 60s before retry {attempt+1}/5...)")
-                time.sleep(60)
+                logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting 15s before retry {attempt+1}/5...)")
+                time.sleep(15)
                 continue
             return {"error": str(e)}
             
@@ -87,8 +88,8 @@ def extract_job_page_with_ai(page_text):
             return json.loads(response.text)
         except Exception as e:
             if "429" in str(e) or "503" in str(e) or "10053" in str(e) or "10054" in str(e):
-                print(f"    (API issue ({str(e)[:15]}...). Waiting 60s before retry {attempt+1}/5...)")
-                time.sleep(60)
+                logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting 15s before retry {attempt+1}/5...)")
+                time.sleep(15)
                 continue
             return {"error": str(e)}
             

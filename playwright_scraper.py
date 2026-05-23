@@ -182,8 +182,19 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
             
             for job_url in links:
                 try:
-                    page.goto(job_url, wait_until="domcontentloaded", timeout=25000)
-                    time.sleep(random.uniform(2, 4))
+                    # Retry loop to handle LinkedIn connection drops or timeouts
+                    import logging
+                    for attempt in range(2):
+                        try:
+                            page.goto(job_url, wait_until="domcontentloaded", timeout=25000)
+                            time.sleep(random.uniform(2, 4))
+                            break
+                        except Exception as page_e:
+                            if attempt == 0:
+                                logging.warning(f"    (Retrying job load: {str(page_e).splitlines()[0][:50]}...)")
+                                time.sleep(random.uniform(4, 7))
+                            else:
+                                raise page_e
                     
                     # Try clicking "See more" if needed
                     see_more_btn = page.query_selector('.jobs-description__footer-button') or \
@@ -214,13 +225,13 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
                                 'job_type': 'Not specified'
                             })
                     else:
-                        print(f"⚠️ AI Parsing failed for job {job_url}: {ai_data.get('error') if ai_data else 'Unknown'}")
+                        logging.warning(f"⚠️ AI Parsing failed for job {job_url}: {ai_data.get('error') if ai_data else 'Unknown'}")
                     
                 except Exception as e:
-                    print(f"⚠️ Failed to parse job {job_url}: {e}")
+                    logging.error(f"⚠️ Failed to parse job {job_url}: {e}")
                     
         except Exception as e:
-            print(f"⚠️ LinkedIn Search failed for {term}: {e}")
+            logging.error(f"⚠️ LinkedIn Search failed for {term}: {e}")
             
         context.close()
         
@@ -253,10 +264,8 @@ def get_posts_as_dataframe(term, loc):
                     'site': 'linkedin_posts'
                 })
         else:
-
-            print(f"⚠️ Error from Gemini: {ai_data.get('error') if ai_data else 'Unknown'}")
-            
-        time.sleep(5) # Avoid Gemini Rate Limits
+            import logging
+            logging.warning(f"⚠️ Error from Gemini: {ai_data.get('error') if ai_data else 'Unknown'}")
             
     if valid_jobs:
         return pd.DataFrame(valid_jobs)
@@ -280,7 +289,6 @@ if __name__ == "__main__":
                 print("🧠 AI Extraction:")
                 ai_data = extract_post_with_ai(p['text'])
                 print(json.dumps(ai_data, indent=2, ensure_ascii=False))
-                time.sleep(5) # Avoid rate limits
             print("-" * 50)
     else:
         print("\nNo posts were found. Check your cookie or search terms.")

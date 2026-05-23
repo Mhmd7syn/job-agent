@@ -10,22 +10,24 @@ import json
 import datetime
 import logging
 
+class RootFilter(logging.Filter):
+    def filter(self, record):
+        return record.name == 'root'
+
 # Configure logging to save to file with timestamps, but print to terminal cleanly
 file_handler = logging.FileHandler("job_agent.log", mode="w", encoding="utf-8")
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+file_handler.addFilter(RootFilter())
 
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(logging.Formatter('%(message)s'))
+console_handler.addFilter(RootFilter())
 
 logging.basicConfig(
     level=logging.INFO,
     handlers=[file_handler, console_handler]
 )
 
-# Suppress all JobSpy loggers
-for name in logging.Logger.manager.loggerDict.keys():
-    if name.startswith("JobSpy"):
-        logging.getLogger(name).setLevel(logging.WARNING)
 
 from config import *
 

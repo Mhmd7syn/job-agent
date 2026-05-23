@@ -11,11 +11,17 @@ LINKEDIN_EMAIL = os.getenv("LINKEDIN_EMAIL")
 LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD")
 
 SEARCH_TERMS = [
-    "AI Engineer", "Machine Learning Engineer", "Artificial Intelligence", "Computer Vision", "NLP",
-    "Data Scientist", "Data Science",
-    "Data Analyst", "Data Analysis", "Data Analytics",
-    "AI Instructor", "Data Science Instructor", "Machine Learning Instructor", "Data Analytics Instructor", "Python Instructor", "Programming Instructor", "Coding Instructor",
-    "مطور بايثون", "مهندس بيانات", "عالم بيانات", "مهندس ذكاء اصطناعي", "محاضر ذكاء اصطناعي", "مدرب بايثون"
+    # Core AI/ML
+    "AI Engineer", "Machine Learning Engineer", "Computer Vision", "NLP",
+    
+    # Core Data
+    "Data Scientist", "Data Analyst", 
+    
+    # Instructing
+    "AI Instructor", "Python Instructor", "Data Science Instructor", "Programming Instructor",
+    
+    # Arabic
+    "مهندس ذكاء اصطناعي", "عالم بيانات", "محلل بيانات", "محاضر بايثون", "مدرب برمجة"
 ]
 
 RESUME_KEYWORDS = [
@@ -34,11 +40,11 @@ RESUME_KEYWORDS = [
     "computer vision", "opencv", "cnn", "yolo", "semantic segmentation", 
     "deeplabv3", "resnet", "clip", "vit", "efficientnet", "inception", "albumentations",
     
-    # NLP
-    "nlp", "nltk", "tf-idf", "tokenizer",
+    # NLP & GenAI
+    "nlp", "nltk", "tf-idf", "tokenizer", "llm", "transformers", "huggingface",
     
     # Deployment & Tools
-    "flask", "restful api", "api", "git", "github", "jupyter", "geopandas"
+    "flask", "fastapi", "restful api", "api", "git", "github", "jupyter", "linux"
 ]
 
 NICE_TO_HAVE_SKILLS = [
@@ -46,25 +52,25 @@ NICE_TO_HAVE_SKILLS = [
     'software', 'backend', 'data engineering',
     
     # LLMs & Generative AI
-    'llm', 'genai', 'prompt engineering',
+    'genai', 'prompt engineering', 'langchain', 'llamaindex', 'rag', 'openai',
     
     # ML & NLP Ecosystem
-    'xgboost', 'lightgbm', 'huggingface', 'transformers', 'spacy',
+    'xgboost', 'lightgbm', 'spacy', 'scipy', 'statistics', 'a/b testing',
     
     # Business Intelligence & Analytics
     'power bi', 'tableau', 'excel', 'looker', 'qlik', 'dax',
     
     # Cloud, MLOps & Deployment
-    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'mlops', 'fastapi', 
+    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'mlops', 'ci/cd',
     
     # Big Data & Databases
-    'spark', 'airflow', 'snowflake', 'bigquery', 'nosql', 'mongodb', 'postgresql',
+    'spark', 'airflow', 'snowflake', 'bigquery', 'nosql', 'mongodb', 'postgresql', 'etl',
     
     # Mentorship & Training
     'programming', 'coding', 'instructor', 'trainer', 'teacher', 'mentor'
 ]
 
-EXCLUDE_KEYWORDS = ["senior", "lead", "manager", "principal", "staff", "head", "director",]
+EXCLUDE_KEYWORDS = ["senior", "lead", "manager", "principal", "staff", "head", "director", "vp", "architect", "supervisor", "executive"]
 
 EXCLUDED_COMPANIES = []
 FAVORITE_COMPANIES = [
@@ -78,7 +84,7 @@ FAVORITE_COMPANIES = [
     "synapse analytics", "dxwand", "avidbeam", "affectiva", "optomatica", "tensor",
     
     # Instructing & Training Academies
-    "iti", "information technology institute", "nti", "epsilon ai", "route", "amit"
+    "iti", "information technology institute", "nti", "epsilon ai", "route", "amit", "ischool", "alx"
 ]
 
 LOCATION = ["Egypt", "Remote"]
@@ -90,7 +96,7 @@ TARGET_LOCATIONS = [
     "smart village"
 ]
 
-TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "graduate", "trainee"]
+TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "graduate", "trainee", "entry-level", "undergrad"]
 
 SITES = ["linkedin", "indeed", "google"]
 USE_WUZZUF = True
