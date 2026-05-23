@@ -10,7 +10,11 @@ import json
 import datetime
 import logging
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(
+    filename='job_agent.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 # Suppress all JobSpy loggers
 for name in logging.Logger.manager.loggerDict.keys():
@@ -75,7 +79,7 @@ def main():
                                 )
                                 break
                             except Exception as e:
-                                print(f"⚠️ Retry {attempt+1}/3 for scrape_jobs failed: {e}")
+                                logging.warning(f"⚠️ Retry {attempt+1}/3 for scrape_jobs failed: {e}")
                                 time.sleep(3)
                         
                 if jobs is not None and not jobs.empty:
@@ -87,7 +91,7 @@ def main():
                         if li_jobs is not None and not li_jobs.empty:
                             jobs_list.append(li_jobs)
                     except Exception as e:
-                        print(f"⚠️ Error scraping LinkedIn jobs via Playwright for '{term}': {e}")
+                        logging.error(f"⚠️ Error scraping LinkedIn jobs via Playwright for '{term}': {e}")
                     
                 if USE_WUZZUF:
                     wuzzuf_jobs = scrape_wuzzuf(term, loc, RESULTS_PER_TERM, HOURS_OLD)
@@ -100,22 +104,22 @@ def main():
                         if post_jobs is not None and not post_jobs.empty:
                             jobs_list.append(post_jobs)
                     except Exception as e:
-                        print(f"⚠️ Error scraping posts for '{term}' in {loc}: {e}")
+                        logging.error(f"⚠️ Error scraping posts for '{term}' in {loc}: {e}")
                     
             except Exception as e:
-                print(f"⚠️ Error scraping '{term}' in {loc}: {e}")
+                logging.error(f"⚠️ Error scraping '{term}' in {loc}: {e}")
             
             delay = random.uniform(3, 7)
             time.sleep(delay)
 
             
     if not jobs_list:
-        print("No jobs found across any platform.")
+        logging.info("No jobs found across any platform.")
         return
 
     cleaned_jobs_list = [df.dropna(axis=1, how='all') for df in jobs_list if not df.empty]
     if not cleaned_jobs_list:
-        print("No jobs found across any platform.")
+        logging.info("No jobs found across any platform.")
         return
         
     all_jobs = pd.concat(cleaned_jobs_list, ignore_index=True)
@@ -263,7 +267,7 @@ def main():
                     os.remove(f)
             except Exception as e:
 
-                print(f"⚠️ Failed to delete old job file {f}: {e}")
+                logging.warning(f"⚠️ Failed to delete old job file {f}: {e}")
 
     # --- STATE MANAGEMENT (Prevent Duplicate Alerts) ---
     
@@ -318,12 +322,16 @@ def main():
         if job_type.lower() == 'nan' or not job_type.strip():
             job_type = 'Not specified'
             
-        link = row['job_url']
+        link = str(row.get('job_url', '')).strip()
         
         message += f"💼 <b>{title}</b>\n"
         message += f"🏢 {company} | 📍 {location}\n"
         message += f"⏱️ Type: {html.escape(job_type)}\n"
-        message += f"🔗 <a href='{link}'>Apply Here</a>\n"
+        
+        # Link to the description/post
+        if link.startswith('http://') or link.startswith('https://'):
+            message += f"🔗 <a href='{link}'>View Job</a>\n"
+                
         message += "━━━━━━━━━━━━━━━━━━━━\n"
         
     send_telegram_message(message)
@@ -337,7 +345,28 @@ def main():
         with open(STATE_FILE, "w") as f:
             json.dump(sent_jobs, f, indent=4)
     except Exception as e:
-        print(f"⚠️ Failed to save state file: {e}")
+        logging.error(f"⚠️ Failed to save state file: {e}")
 
 if __name__ == "__main__":
-    main()
+    start_time = time.time()
+    logging.info("Starting job agent run...")
+    try:
+        main()
+    except Exception as e:
+        logging.error(f"Job agent failed with error: {e}", exc_info=True)
+    finally:
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        
+        # Convert seconds to hours, minutes, seconds for better readability
+        hours, rem = divmod(elapsed_time, 3600)
+        minutes, seconds = divmod(rem, 60)
+        
+        time_str = ""
+        if hours > 0:
+            time_str += f"{int(hours)}h "
+        if minutes > 0 or hours > 0:
+            time_str += f"{int(minutes)}m "
+        time_str += f"{int(seconds)}s"
+        
+        logging.info(f"Finished job agent run. Total time elapsed: {time_str} ({elapsed_time:.2f} seconds).")

@@ -5,6 +5,7 @@ import pandas as pd
 import time
 import re
 import datetime
+import logging
 
 def fetch_with_retries(url, retries=5, timeout=10):
     headers = {
@@ -18,9 +19,9 @@ def fetch_with_retries(url, retries=5, timeout=10):
                 return response
         except Exception as e:
             if attempt < retries - 1:
-                print(f"    (Wuzzuf network issue. Retrying {attempt+1}/{retries}...)")
+                logging.warning(f"    (Wuzzuf network issue. Retrying {attempt+1}/{retries}...)")
             else:
-                print(f"⚠️ Network error on {url} after {retries} attempts: {e}")
+                logging.error(f"⚠️ Network error on {url} after {retries} attempts: {e}")
             time.sleep(2)
     return None
 
@@ -45,7 +46,7 @@ def get_wuzzuf_description(url):
         # Fallback if specific sections not found
         return soup.get_text(separator=' ', strip=True)[:4000] 
     except Exception as e:
-        print(f"⚠️ Error parsing description for {url}: {e}")
+        logging.error(f"⚠️ Error parsing description for {url}: {e}")
         return ""
 
 def parse_wuzzuf_date_to_hours(date_str):
@@ -127,6 +128,6 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None):
             time.sleep(1.5)
             
     except Exception as e:
-        print(f"⚠️ Wuzzuf Scraper Error: {e}")
+        logging.error(f"⚠️ Wuzzuf Scraper Error: {e}")
         
     return pd.DataFrame(jobs)

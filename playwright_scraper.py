@@ -95,11 +95,15 @@ def scrape_linkedin_posts_playwright(keyword):
             
             for el in post_elements:
                 text_content = el.inner_text()
+                urn = el.get_attribute("data-urn")
+                post_url = f"https://www.linkedin.com/feed/update/{urn}/" if urn else ""
+                
                 if text_content and len(text_content.strip()) > 20:
                     # Clean up the text a bit (LinkedIn often includes "Like", "Comment", "Share" text)
                     clean_text = text_content.strip()
                     found_posts.append({
-                        "text": clean_text
+                        "text": clean_text,
+                        "post_url": post_url
                     })
                     
         except Exception as e:
@@ -241,7 +245,7 @@ def get_posts_as_dataframe(term, loc):
                     'title': ai_data.get('title', 'Unknown'),
                     'company': ai_data.get('company', 'Unknown'),
                     'location': ai_data.get('location', loc),
-                    'job_url': ai_data.get('apply_method', 'No link provided'),
+                    'job_url': p.get('post_url') or 'No link provided',
                     'description': p['text'],
                     'is_remote': 'remote' in str(ai_data.get('location', '')).lower(),
                     'date_posted': date.today(),

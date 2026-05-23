@@ -22,7 +22,6 @@ class PostExtractionSchema(BaseModel):
     title: str = Field(default="Not specified")
     company: str = Field(default="Not specified")
     location: str = Field(default="Not specified")
-    apply_method: str = Field(default="Not specified")
 
 class JobPageExtractionSchema(BaseModel):
     title: str = Field(default="Unknown")

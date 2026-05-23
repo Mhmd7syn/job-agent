@@ -6,3 +6,4 @@ __pycache__/
 playwright_profile/
 *.csv
 sent_jobs.json
+*.log
