@@ -18,7 +18,7 @@ SEARCH_TERMS = [
     "Data Scientist", "Data Analyst", 
     
     # Instructing
-    "AI Instructor", "Python Instructor", "Data Science Instructor", "Programming Instructor",
+    "AI Instructor", "Python Instructor", "Data Science Instructor", "Programming Instructor", "Data Analyst Instructor",
     
     # Arabic
     "مهندس ذكاء اصطناعي", "عالم بيانات", "محلل بيانات", "محاضر بايثون", "مدرب برمجة"
@@ -87,7 +87,7 @@ FAVORITE_COMPANIES = [
     "iti", "information technology institute", "nti", "epsilon ai", "route", "amit", "ischool", "alx"
 ]
 
-LOCATION = ["Egypt", "Remote"]
+LOCATION = ["Egypt"]
 TARGET_LOCATIONS = [
     "cairo", "giza", "new capital", "administrative capital", 
     "maadi", "masr el gedida", "heliopolis", "nasr city", 
@@ -104,3 +104,10 @@ SCRAPE_LINKEDIN_POSTS = True
 RESULTS_PER_TERM = 15
 HOURS_OLD = 7 * 24
 MAX_JOBS_TO_SEND = 10
+
+USER_BRIEF = """
+I am a Junior/Entry-level professional in AI and Data Science located in Egypt.
+I am looking for roles related to Machine Learning, Data Science, AI Engineering, and instructing/training positions.
+My core skills include Python, SQL, Machine Learning, Deep Learning, and Computer Vision.
+I prefer Junior, Fresh Graduate, Intern, or Entry-level positions and want to avoid Senior, Lead, or Managerial roles.
+"""

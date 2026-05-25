@@ -378,3 +378,53 @@ if __name__ == "__main__":
         time_str += f"{int(seconds)}s"
         
         logging.info(f"Finished job agent run. Total time elapsed: {time_str} ({elapsed_time:.2f} seconds).")
+        
+        # --- AI Evaluation Step ---
+        logging.info("Starting AI evaluation of the run...")
+        
+        # 1. Get latest CSV
+        csv_files = glob.glob("found_jobs_*.csv")
+        latest_csv_content = "No jobs found this run."
+        if csv_files:
+            latest_csv = max(csv_files, key=os.path.getctime)
+            try:
+                # Read at most the first 50 lines to avoid massive context
+                with open(latest_csv, 'r', encoding='utf-8') as f:
+                    latest_csv_content = "".join([next(f) for _ in range(51)])
+            except StopIteration:
+                pass
+            except Exception as e:
+                latest_csv_content = f"Could not read CSV: {e}"
+
+        # 2. Get logs
+        logs_content = "No logs."
+        try:
+            # Force flush handlers before reading
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+                
+            with open("job_agent.log", "r", encoding="utf-8") as f:
+                logs_content = f.read()
+                # Limit logs size if too big
+                if len(logs_content) > 15000:
+                    logs_content = "...[TRUNCATED]...\n" + logs_content[-15000:]
+        except Exception as e:
+            logs_content = f"Could not read logs: {e}"
+            
+        try:
+            from llm_parser import evaluate_run_with_ai
+            from config import USER_BRIEF
+            eval_result = evaluate_run_with_ai(logs_content, latest_csv_content, USER_BRIEF)
+            
+            # 3. Add to brief text file
+            with open("evaluation_brief.txt", "a", encoding="utf-8") as f:
+                f.write(f"\n\n{'='*40}\n")
+                f.write(f"Run Evaluation - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Time Elapsed: {time_str}\n")
+                f.write(f"{'='*40}\n")
+                f.write(eval_result)
+                f.write("\n")
+                
+            logging.info("AI evaluation saved to evaluation_brief.txt successfully.")
+        except Exception as e:
+            logging.error(f"Failed to generate or save AI evaluation: {e}")

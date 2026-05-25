@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 import sys
-from llm_parser import extract_post_with_ai, extract_job_page_with_ai
+from llm_parser import extract_post_with_ai, extract_job_page_with_ai, extract_feed_posts_with_ai
 
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
@@ -89,32 +89,45 @@ def scrape_linkedin_posts_playwright(keyword):
 
                 time.sleep(4)
                 
-            # Extract post elements
-            # LinkedIn feed updates usually have this class name
-            post_elements = page.query_selector_all("div.feed-shared-update-v2")
-            
-            for el in post_elements:
-                text_content = el.inner_text()
-                urn = el.get_attribute("data-urn")
-                post_url = f"https://www.linkedin.com/feed/update/{urn}/" if urn else ""
-                
-                if text_content and len(text_content.strip()) > 20:
-                    # Clean up the text a bit (LinkedIn often includes "Like", "Comment", "Share" text)
-                    clean_text = text_content.strip()
-                    found_posts.append({
-                        "text": clean_text,
-                        "post_url": post_url
-                    })
+            # Extract all visible text from the page, separating posts and adding URLs
+            page_text = page.evaluate('''() => {
+                let result = "";
+                let posts = document.querySelectorAll('.feed-shared-update-v2, .search-result__occluded-item, div[data-urn], li.reusable-search__result-container');
+                if (posts.length === 0) {
+                    return document.body.innerText;
+                }
+                posts.forEach(post => {
+                    let url = "";
+                    let urn = post.getAttribute('data-urn');
+                    if (urn) {
+                        url = "https://www.linkedin.com/feed/update/" + urn + "/";
+                    } else {
+                        let links = post.querySelectorAll('a');
+                        for (let a of links) {
+                            if (a.href && (a.href.includes('/feed/update/urn:li:activity:') || a.href.includes('/posts/'))) {
+                                url = a.href.split('?')[0];
+                                break;
+                            }
+                        }
+                    }
+                    let text = post.innerText;
+                    if (text) {
+                        if (url) {
+                            result += "Post URL: " + url + "\\n";
+                        }
+                        result += "Post Text:\\n" + text + "\\n\\n---END OF POST---\\n\\n";
+                    }
+                });
+                return result || document.body.innerText;
+            }''')
+            return page_text
                     
         except Exception as e:
-
             print(f"⚠️ Error during Playwright execution: {e}")
             
         context.close()
-
         
-        
-    return found_posts
+    return ""
 
 def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=None):
     """Scrapes regular LinkedIn Jobs using the authenticated Playwright session."""
@@ -243,29 +256,33 @@ def get_posts_as_dataframe(term, loc):
     from datetime import date
     
     keyword = f"hiring {term} {loc}"
-    posts = scrape_linkedin_posts_playwright(keyword)
+    feed_text = scrape_linkedin_posts_playwright(keyword)
     
-    valid_jobs = []
-    for i, p in enumerate(posts):
-        ai_data = extract_post_with_ai(p['text'])
-
+    if not feed_text or len(feed_text) < 50:
+        return pd.DataFrame()
         
-        if ai_data and not ai_data.get("error"):
-            if ai_data.get("is_job"):
+    valid_jobs = []
+    
+    ai_data = extract_feed_posts_with_ai(feed_text[:15000]) # Pass up to 15k chars
+    
+    if ai_data and not ai_data.get("error"):
+        jobs_list = ai_data.get("jobs", [])
+        for job in jobs_list:
+            if job.get("is_job"):
                 valid_jobs.append({
-                    'title': ai_data.get('title', 'Unknown'),
-                    'company': ai_data.get('company', 'Unknown'),
-                    'location': ai_data.get('location', loc),
-                    'job_url': p.get('post_url') or 'No link provided',
-                    'description': p['text'],
-                    'is_remote': 'remote' in str(ai_data.get('location', '')).lower(),
+                    'title': job.get('title', 'Unknown'),
+                    'company': job.get('company', 'Unknown'),
+                    'location': job.get('location', loc),
+                    'job_url': job.get('job_url') or f"https://www.linkedin.com/search/results/content/?keywords={keyword}", 
+                    'description': job.get('description', ''),
+                    'is_remote': 'remote' in str(job.get('location', '')).lower(),
                     'date_posted': date.today(),
                     'job_type': 'Not specified',
                     'site': 'linkedin_posts'
                 })
-        else:
-            import logging
-            logging.warning(f"⚠️ Error from Gemini: {ai_data.get('error') if ai_data else 'Unknown'}")
+    else:
+        import logging
+        logging.warning(f"⚠️ Error from Gemini: {ai_data.get('error') if ai_data else 'Unknown'}")
             
     if valid_jobs:
         return pd.DataFrame(valid_jobs)
@@ -276,19 +293,15 @@ if __name__ == "__main__":
     if not GEMINI_API_KEY:
         print("⚠️ Warning: GEMINI_API_KEY not found in .env. AI Extraction will be disabled.\n")
         
-    posts = scrape_linkedin_posts_playwright("hiring data scientist egypt")
+    feed_text = scrape_linkedin_posts_playwright("hiring data scientist egypt")
     
-    if posts:
-        print(f"\n--- Processing {len(posts)} Posts with Gemini AI ---")
-        for i, p in enumerate(posts[:3]):
-            print(f"\n📝 Post #{i+1} Original Text:")
-            preview = p['text'][:200].replace('\n', ' ') + "..." if len(p['text']) > 200 else p['text'].replace('\n', ' ')
-            print(f"[{preview}]")
-            
-            if True: # Always attempt AI extraction now (via LLM parser)
-                print("🧠 AI Extraction:")
-                ai_data = extract_post_with_ai(p['text'])
-                print(json.dumps(ai_data, indent=2, ensure_ascii=False))
-            print("-" * 50)
+    if feed_text:
+        print(f"\n--- Processing Feed with Gemini AI ---")
+        print(f"Extracted {len(feed_text)} characters of feed text.")
+        
+        print("🧠 AI Extraction:")
+        ai_data = extract_feed_posts_with_ai(feed_text[:15000])
+        print(json.dumps(ai_data, indent=2, ensure_ascii=False))
+        print("-" * 50)
     else:
         print("\nNo posts were found. Check your cookie or search terms.")
