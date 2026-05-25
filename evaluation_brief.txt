@@ -1,7 +1,40 @@
-
-
 ========================================
-Run Evaluation - 2026-05-24 00:50:31
-Time Elapsed: 33m 20s
+Run Evaluation - 2026-05-25 17:22:54
+Time Elapsed: 1h 13m 4s
 ========================================
-Error: Exceeded retries for AI evaluation.
+Here's an evaluation of your job scraping script run:
+
+### Evaluation Summary
+
+**1. Errors in Logs:**
+The run experienced significant failures:
+*   **Page Load Timeouts (WARNING):** Frequent timeouts (`Page.goto: Timeout 25000ms exceeded`) indicate network issues or slow website responsiveness, leading to delays and potential missed data.
+*   **Scraping Failures (WARNING):** The script failed to scrape `indeed.com` due to connection timeouts (`Max retries exceeded with url: /graphql`). This suggests a major source of job postings was likely missed.
+*   **Critical Notification Failure (ERROR):** The job agent ultimately failed to send the results via Telegram due to a connection timeout (`Max retries exceeded with url: /sendMessage`). This means you likely did not receive any notification about the jobs found.
+*   **Excessive Run Time:** The script ran for a very long time (1h 13m 4s), largely due to the repeated timeouts and failures, without successfully completing its primary objective of notifying the user.
+
+**2. Quality & Quantity of Jobs Found:**
+*   **Quantity:** 50 jobs were found, which is a decent number, but potentially much lower than it could have been given the Indeed scraping failure.
+*   **Relevance to Profile:**
+    *   **Roles & Skills:** Many highly relevant roles were found (AI Engineer, Data Scientist, ML Intern, AI Instructor, Computer Vision Expert, Python Developer), aligning well with your preferences.
+    *   **Level:** A good number of "Intern", "Academy", "Trainee" positions were identified, fitting your Junior/Entry-level preference.
+    *   **Location:** While many jobs in "Cairo, Egypt" and "Remote" were found, there were also several irrelevant jobs in other countries (UAE, KSA, EU/US) and some generic internships not related to AI/Data Science.
+    *   **Irrelevant Jobs:** There were several jobs that are clearly outside your stated preferences (e.g., "Graphic Designer", "Project Management Working Student", "Full Stack Developer" without AI/ML context, "Finance Internship", "Voice Actor").
+
+**Conclusion:** The script's performance was poor due to critical failures preventing successful notification and likely missing a significant portion of jobs. The job relevance filtering needs refinement, although a good core set of relevant jobs was identified.
+
+### Potential Enhancements
+
+1.  **Robust Error Handling & Retries:**
+    *   **Network Stability:** Implement more aggressive retry strategies with exponential backoff for all external API calls (scraping and notification). Consider increasing global network timeouts if your connection is consistently slow.
+    *   **Fallback Notifications:** If Telegram fails, implement a fallback notification method (e.g., email, saving to a local CSV file) so results are never lost.
+2.  **Optimize Scraping:**
+    *   **Indeed Failure Analysis:** Investigate why `indeed.com` scraping failed. It might be due to changes in their API, IP blocking, or overly aggressive scraping. Consider using a different scraping approach or API if direct access is blocked.
+    *   **Performance:** Explore parallelizing scraping tasks across different job boards to reduce the overall run time.
+3.  **Refine Job Filtering & Relevance Scoring:**
+    *   **Location Filtering:** Implement stricter filtering to prioritize "Egypt" and "Remote" locations. Jobs outside these regions should either be excluded or given a very low relevance score by default.
+    *   **Job Level Filtering:** Enhance keyword exclusion for "Senior", "Lead", "Manager" roles. Also, refine the definition of "Entry-level" to accurately capture relevant positions.
+    *   **Skill-Based Keyword Matching:** Improve the relevance scoring by performing more comprehensive keyword searches within job descriptions for your core skills (Python, SQL, Machine Learning, Deep Learning, Computer Vision), not just titles.
+    *   **Exclusion Keywords:** Expand your list of keywords to explicitly exclude highly irrelevant roles (e.g., "Graphic Designer", "Finance", "HR", "Sales").
+    *   **Job Type Parsing:** Improve the extraction and utilization of the `job_type` field, as most jobs are currently "Not specified", which can help filter for "Intern" or "Full Time" roles.
+4.  **Monitoring & Logging:** Enhance logging to pinpoint the exact step where delays occur. Consider external monitoring to alert you immediately if the script fails.

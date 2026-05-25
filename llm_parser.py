@@ -24,7 +24,7 @@ class PostExtractionSchema(BaseModel):
     company: str = Field(default="Not specified")
     location: str = Field(default="Not specified")
     description: str = Field(default="")
-    job_url: str = Field(default="")
+    job_url: str = Field(default="", description="The Post URL provided at the top of the post. Do NOT use application links found inside the post.")
 
 class MultiplePostsExtractionSchema(BaseModel):
     jobs: list[PostExtractionSchema]
@@ -40,7 +40,7 @@ def extract_post_with_ai(post_text):
     prompt = f"""
     You are an expert HR assistant. Read the following LinkedIn post and extract the job details.
     If the post is NOT a job listing (e.g. just a generic post, an article, or someone looking for a job), set "is_job" to false.
-    If it IS a job listing, extract the job details, including the Post URL if it is provided.
+    If it IS a job listing, extract the job details, including the Post URL if it is provided. Do NOT extract application links from inside the post text for the job_url.
     
     Post:
     {post_text}
@@ -74,6 +74,7 @@ def extract_feed_posts_with_ai(feed_text):
     prompt = f"""
     You are an expert HR assistant. Read the following text from a LinkedIn search feed and extract all the job listings you can find in it.
     For each job, extract the title, company, location, the post description text, and the job_url (Post URL).
+    CRITICAL: For job_url, you MUST extract the 'Post URL' provided at the beginning of each post block. Do NOT extract links from within the post text (like application links).
     Ignore generic posts, articles, and people looking for jobs.
     
     Feed Text:
@@ -160,7 +161,7 @@ def evaluate_run_with_ai(logs_text, csv_text, user_brief=""):
     for attempt in range(5):
         try:
             response = client.models.generate_content(
-                model='gemini-2.5-pro',
+                model='gemini-2.5-flash',
                 contents=prompt,
             )
             return response.text

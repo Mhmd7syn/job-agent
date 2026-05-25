@@ -30,11 +30,20 @@ def send_telegram_message(text):
             "disable_web_page_preview": True
         }
         
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            print("✅ Message chunk successfully sent to Telegram.")
-        else:
-            print(f"❌ Failed to send message chunk. Error: {response.text}")
+        for attempt in range(3):
+            try:
+                response = requests.post(url, json=payload, timeout=15)
+                if response.status_code == 200:
+                    print("✅ Message chunk successfully sent to Telegram.")
+                    break
+                else:
+                    print(f"❌ Failed to send message chunk. Status: {response.status_code}, Error: {response.text}")
+                    break
+            except requests.exceptions.RequestException as e:
+                print(f"⚠️ Network error sending to Telegram (attempt {attempt+1}/3): {e}")
+                import time
+                if attempt < 2:
+                    time.sleep(3)
         
         # Small delay to avoid Telegram rate limits
         import time

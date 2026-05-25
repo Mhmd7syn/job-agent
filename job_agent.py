@@ -1,5 +1,4 @@
 import pandas as pd
-from jobspy import scrape_jobs
 import sys
 import time
 import random
@@ -23,7 +22,7 @@ console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(logging.Formatter('%(message)s'))
 console_handler.addFilter(RootFilter())
 
-logging.basicConfig(
+logging.basicConfig(    
     level=logging.INFO,
     handlers=[file_handler, console_handler]
 )
@@ -32,6 +31,9 @@ logging.basicConfig(
 from config import *
 
 from wuzzuf_scraper import scrape_wuzzuf
+from tanqeeb_scraper import scrape_tanqeeb
+from bayt_scraper import scrape_bayt
+from glassdoor_scraper import scrape_glassdoor
 from telegram_notifier import send_telegram_message
 try:
     from playwright_scraper import get_posts_as_dataframe, scrape_linkedin_jobs_playwright
@@ -39,19 +41,6 @@ except ImportError:
     get_posts_as_dataframe = None
     scrape_linkedin_jobs_playwright = None
 
-# Monkey-patch jobspy's Country.from_string to avoid crashing on unknown countries (e.g. Albania)
-from jobspy.model import Country
-
-original_from_string = Country.from_string
-
-@classmethod
-def patched_from_string(cls, country_str: str):
-    try:
-        return original_from_string(country_str)
-    except ValueError:
-        return country_str
-
-Country.from_string = patched_from_string
 
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
@@ -71,28 +60,7 @@ def main():
                     search_loc = "worldwide"
                     is_remote_flag = True
                     
-                jobs = None
-                if SITES:
-                    jobspy_sites = [s for s in SITES if s.lower() != 'linkedin']
-                    if jobspy_sites:
-                        for attempt in range(3): # Auto-Retries for Network Errors
-                            try:
-                                jobs = scrape_jobs(
-                                    site_name=jobspy_sites,
-                                    search_term=term,
-                                    location=search_loc,
-                                    results_wanted=RESULTS_PER_TERM,
-                                    hours_old=HOURS_OLD,
-                                    linkedin_fetch_description=False
-                                )
-                                break
-                            except Exception as e:
-                                logging.warning(f"⚠️ Retry {attempt+1}/3 for scrape_jobs failed: {e}")
-                                time.sleep(3)
-                        
-                if jobs is not None and not jobs.empty:
-                    jobs_list.append(jobs)
-                    
+                # Removed jobspy entirely
                 if 'linkedin' in [s.lower() for s in SITES] and scrape_linkedin_jobs_playwright:
                     try:
                         li_jobs = scrape_linkedin_jobs_playwright(term, search_loc, RESULTS_PER_TERM, HOURS_OLD)
@@ -101,12 +69,27 @@ def main():
                     except Exception as e:
                         logging.error(f"⚠️ Error scraping LinkedIn jobs via Playwright for '{term}': {e}")
                     
-                if USE_WUZZUF:
+                if 'wuzzuf' in [s.lower() for s in SITES]:
                     wuzzuf_jobs = scrape_wuzzuf(term, loc, RESULTS_PER_TERM, HOURS_OLD)
                     if wuzzuf_jobs is not None and not wuzzuf_jobs.empty:
                         jobs_list.append(wuzzuf_jobs)
                         
-                if SCRAPE_LINKEDIN_POSTS and get_posts_as_dataframe:
+                if 'tanqeeb' in [s.lower() for s in SITES]:
+                    tanqeeb_jobs = scrape_tanqeeb(term, loc, RESULTS_PER_TERM, HOURS_OLD)
+                    if tanqeeb_jobs is not None and not tanqeeb_jobs.empty:
+                        jobs_list.append(tanqeeb_jobs)
+                        
+                if 'bayt' in [s.lower() for s in SITES]:
+                    bayt_jobs = scrape_bayt(term, loc, RESULTS_PER_TERM, HOURS_OLD)
+                    if bayt_jobs is not None and not bayt_jobs.empty:
+                        jobs_list.append(bayt_jobs)
+                        
+                if 'glassdoor' in [s.lower() for s in SITES]:
+                    glassdoor_jobs = scrape_glassdoor(term, loc, RESULTS_PER_TERM, HOURS_OLD)
+                    if glassdoor_jobs is not None and not glassdoor_jobs.empty:
+                        jobs_list.append(glassdoor_jobs)
+                        
+                if 'linkedin' in [s.lower() for s in SITES] and get_posts_as_dataframe:
                     try:
                         post_jobs = get_posts_as_dataframe(term, loc)
                         if post_jobs is not None and not post_jobs.empty:
@@ -408,7 +391,7 @@ if __name__ == "__main__":
                 # Limit logs size if too big
                 if len(logs_content) > 15000:
                     logs_content = "...[TRUNCATED]...\n" + logs_content[-15000:]
-        except Exception as e:
+        except Exception as e:  
             logs_content = f"Could not read logs: {e}"
             
         try:
@@ -417,8 +400,8 @@ if __name__ == "__main__":
             eval_result = evaluate_run_with_ai(logs_content, latest_csv_content, USER_BRIEF)
             
             # 3. Add to brief text file
-            with open("evaluation_brief.txt", "a", encoding="utf-8") as f:
-                f.write(f"\n\n{'='*40}\n")
+            with open("evaluation_brief.txt", "w", encoding="utf-8") as f:
+                f.write(f"{'='*40}\n")
                 f.write(f"Run Evaluation - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write(f"Time Elapsed: {time_str}\n")
                 f.write(f"{'='*40}\n")

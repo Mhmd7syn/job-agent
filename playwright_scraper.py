@@ -53,79 +53,84 @@ def auto_login_if_needed(page):
 
 
 def scrape_linkedin_posts_playwright(keyword):
-    found_posts = []
-
     with sync_playwright() as p:
-
         context = p.chromium.launch_persistent_context(
             user_data_dir=USER_DATA_DIR,
             headless=True
         )
-
+        context.grant_permissions(['clipboard-read', 'clipboard-write'])
 
         page = context.pages[0] if context.pages else context.new_page()
         Stealth().apply_stealth_sync(page)
         
-        # Format the search URL for LinkedIn Posts (Sorted by latest)
-        encoded_keyword = urllib.parse.quote(keyword)
-        search_url = f"https://www.linkedin.com/search/results/content/?keywords={encoded_keyword}&origin=GLOBAL_SEARCH_HEADER&sortBy=%22date_posted%22"
-        
         try:
-            page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
-            time.sleep(random.uniform(2, 4))
-            
+            # First, check if we're logged in by visiting the feed
+            page.goto('https://www.linkedin.com/feed/', wait_until='domcontentloaded')
             auto_login_if_needed(page)
-            
-            if "login" in page.url or "authwall" in page.url:
-                page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
 
+            # Now perform the search
+            encoded_keyword = urllib.parse.quote(keyword)
+            # origin=GLOBAL_SEARCH_HEADER ensures we get normal content search results
+            search_url = f"https://www.linkedin.com/search/results/content/?keywords={encoded_keyword}&origin=GLOBAL_SEARCH_HEADER&sortBy=%22date_posted%22"
             
-            # Wait a few seconds for the feed to load fully
-            time.sleep(5)
+            page.goto(search_url, wait_until='domcontentloaded')
             
-            # Scroll down to load more posts (simulate human behavior)
+            # Scroll down to load more posts
             for i in range(3):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-
                 time.sleep(4)
                 
             # Extract all visible text from the page, separating posts and adding URLs
             page_text = page.evaluate('''() => {
                 let result = "";
-                let posts = document.querySelectorAll('.feed-shared-update-v2, .search-result__occluded-item, div[data-urn], li.reusable-search__result-container');
+                
+                let isAuthorLink = (href) => href && (href.includes('/in/') || href.includes('/company/'));
+                let allAnchors = Array.from(document.querySelectorAll('a'));
+
+                // Find posts by locating their Control Menu buttons, which are very reliable
+                let menuBtns = document.querySelectorAll('button[aria-label*="Control Menu"], button[aria-label*="control menu" i], .feed-shared-control-menu__trigger, .artdeco-dropdown__trigger');
+                
+                let posts = Array.from(menuBtns).map(btn => {
+                    return btn.closest('li.reusable-search__result-container') || btn.closest('.feed-shared-update-v2') || btn.closest('.search-entity') || btn.closest('li') || btn.parentElement?.parentElement?.parentElement;
+                }).filter(Boolean);
+                
+                posts = Array.from(new Set(posts)); // Remove duplicates
+
                 if (posts.length === 0) {
                     return document.body.innerText;
                 }
-                posts.forEach(post => {
+
+                for (let post of posts) {
                     let url = "";
-                    let urn = post.getAttribute('data-urn');
-                    if (urn) {
-                        url = "https://www.linkedin.com/feed/update/" + urn + "/";
-                    } else {
-                        let links = post.querySelectorAll('a');
-                        for (let a of links) {
-                            if (a.href && (a.href.includes('/feed/update/urn:li:activity:') || a.href.includes('/posts/'))) {
-                                url = a.href.split('?')[0];
-                                break;
-                            }
+                    
+                    // Since URNs are completely stripped from the new search DOM and clipboard is blocked in headless mode,
+                    // the most reliable fallback is to extract the Author's Profile URL so the user can find the post in their Recent Activity.
+                    let links = post.querySelectorAll('a');
+                    for (let a of links) {
+                        if (isAuthorLink(a.href)) {
+                            url = a.href.split('?')[0];
+                            break; // First profile link is usually the author
                         }
                     }
+                    
                     let text = post.innerText;
-                    if (text) {
+                    if (text && text.trim().length > 20) {
                         if (url) {
-                            result += "Post URL: " + url + "\\n";
+                            result += "Author/Company URL: " + url + "\\n";
+                            result += "(Note: Direct post link unavailable in headless mode. Visit author's Recent Activity to view post.)\\n";
                         }
                         result += "Post Text:\\n" + text + "\\n\\n---END OF POST---\\n\\n";
                     }
-                });
+                }
+                
                 return result || document.body.innerText;
             }''')
             return page_text
                     
         except Exception as e:
             print(f"⚠️ Error during Playwright execution: {e}")
-            
-        context.close()
+        finally:
+            context.close()
         
     return ""
 
@@ -290,7 +295,7 @@ def get_posts_as_dataframe(term, loc):
 
 if __name__ == "__main__":
     print("--- Playwright LinkedIn Post Scraper ---")
-    if not GEMINI_API_KEY:
+    if not os.getenv("GEMINI_API_KEY"):
         print("⚠️ Warning: GEMINI_API_KEY not found in .env. AI Extraction will be disabled.\n")
         
     feed_text = scrape_linkedin_posts_playwright("hiring data scientist egypt")

@@ -98,9 +98,7 @@ TARGET_LOCATIONS = [
 
 TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "graduate", "trainee", "entry-level", "undergrad"]
 
-SITES = ["linkedin", "indeed", "google"]
-USE_WUZZUF = True
-SCRAPE_LINKEDIN_POSTS = True
+SITES = ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb"]
 RESULTS_PER_TERM = 15
 HOURS_OLD = 7 * 24
 MAX_JOBS_TO_SEND = 10
