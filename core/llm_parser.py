@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 import datetime
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root
 env_path = os.path.join(BASE_DIR, '.env')
 load_dotenv(dotenv_path=env_path)
 
@@ -41,40 +41,6 @@ class JobPageExtractionSchema(BaseModel):
     description: str = Field(default="")
     date_posted: str = Field(default="", description="The date the job was posted in YYYY-MM-DD format. Calculate using today's date if relative.")
 
-def extract_post_with_ai(post_text):
-    prompt = f"""
-    You are an expert HR assistant. Read the following LinkedIn post and extract the job details.
-    If the post is NOT a job listing (e.g. just a generic post, an article, or someone looking for a job), set "is_job" to false.
-    If it IS a job listing, extract the job details, including the Post URL if it is provided. Do NOT extract application links from inside the post text for the job_url.
-    Today's date is {datetime.date.today().isoformat()}. If the post says '1 week ago', subtract 7 days from today.
-    
-    Post:
-    {post_text}
-    """
-    
-    if not client:
-        return {"error": "No Gemini API Key"}
-        
-    for attempt in range(3):
-        try:
-            response = client.models.generate_content(
-                model='gemini-flash-lite-latest',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=PostExtractionSchema,
-                )
-            )
-            return json.loads(response.text)
-        except Exception as e:
-            if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060"]):
-                wait_time = 10 * (attempt + 1)
-                logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting {wait_time}s before retry {attempt+1}/3...)")
-                time.sleep(wait_time)
-                continue
-            return {"error": str(e)}
-            
-    return {"error": "Exceeded retries for 429"}
 
 def extract_feed_posts_with_ai(feed_text):
     prompt = f"""

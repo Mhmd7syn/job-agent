@@ -5,12 +5,8 @@ import pandas as pd
 import time
 import datetime
 import logging
-import sys
-import os
 
-# Add the current directory to sys.path to allow importing from llm_parser
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from llm_parser import extract_feed_posts_with_ai
+from core.llm_parser import extract_feed_posts_with_ai
 
 def fetch_with_retries(url, retries=3, timeout=15):
     headers = {
@@ -41,26 +37,40 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
         
     try:
         soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # We will extract text and append links so Gemini can find the job URLs
+
         content_text = ""
-        for a in soup.find_all('a'):
-            href = a.get('href', '')
-            text = a.get_text(separator=' ', strip=True)
-            if text and href and ('job' in href.lower() or 'role' in href.lower() or len(text) > 5):
-                # Ensure it's a full URL
+        # Target job-card containers specifically to avoid nav/footer noise
+        job_cards = soup.find_all('div', class_=lambda c: c and any(
+            kw in c for kw in ['job-card', 'job_card', 'listing', 'vacancy', 'position']
+        ))
+        # Fallback: find anchor tags whose href clearly points to a job detail page
+        if not job_cards:
+            seen = set()
+            for a in soup.find_all('a', href=True):
+                href = a.get('href', '')
+                if not ('/job' in href or '/vacancy' in href or '/position' in href):
+                    continue
                 if href.startswith('/'):
                     href = "https://egypt.tanqeeb.com" + href
-                content_text += f"Job Link: {href}\nTitle/Text: {text}\n\n"
-        
-        # Also grab general text from paragraphs or divs to give Gemini context about companies and descriptions
-        for div in soup.find_all(['p', 'span', 'div']):
-            # Filter out tiny elements to reduce noise
-            text = div.get_text(separator=' ', strip=True)
-            if len(text) > 30 and len(text) < 500:
-                content_text += f"{text}\n"
+                if href in seen:
+                    continue
+                seen.add(href)
+                # Climb up to grab the card context (company, location, etc.)
+                card = a.find_parent(['li', 'article', 'div'])
+                card_text = card.get_text(separator=' ', strip=True) if card else a.get_text(strip=True)
+                if len(card_text) > 10:
+                    content_text += f"Job Link: {href}\nJob Info: {card_text}\n\n"
+        else:
+            for card in job_cards:
+                a = card.find('a', href=True)
+                if not a:
+                    continue
+                href = a['href']
+                if href.startswith('/'):
+                    href = "https://egypt.tanqeeb.com" + href
+                card_text = card.get_text(separator=' ', strip=True)
+                content_text += f"Job Link: {href}\nJob Info: {card_text}\n\n"
 
-        # Limit to 20k characters to avoid token limits
         content_text = content_text[:20000]
         
         if not content_text:

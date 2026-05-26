@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root
 env_path = os.path.join(BASE_DIR, '.env')
 load_dotenv(dotenv_path=env_path)
 
@@ -19,10 +19,14 @@ SEARCH_TERMS = [
     
     # Instructing
     "AI Instructor", "Python Instructor", "Data Science Instructor", "Programming Instructor", "Data Analyst Instructor",
-    
-    # Arabic
+]
+
+# Arabic terms only make sense on Arabic-first platforms (e.g. Wuzzuf).
+# Keeping them separate avoids wasting search iterations on English-only sites.
+ARABIC_SEARCH_TERMS = [
     "مهندس ذكاء اصطناعي", "عالم بيانات", "محلل بيانات", "محاضر بايثون", "مدرب برمجة"
 ]
+SITES_FOR_ARABIC = ["wuzzuf", "linkedin"]  # Sites where Arabic terms are submitted
 
 RESUME_KEYWORDS = [
     # Programming & Core

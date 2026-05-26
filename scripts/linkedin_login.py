@@ -2,7 +2,7 @@ import os
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root
 USER_DATA_DIR = os.path.join(BASE_DIR, "playwright_profile")
 
 def manual_login():

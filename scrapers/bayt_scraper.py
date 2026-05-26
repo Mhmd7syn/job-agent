@@ -2,13 +2,9 @@ import urllib.parse
 import pandas as pd
 import datetime
 import logging
-import sys
-import os
 from curl_cffi import requests
 
-# Add the current directory to sys.path to allow importing from llm_parser
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from llm_parser import extract_feed_posts_with_ai
+from core.llm_parser import extract_feed_posts_with_ai
 
 def scrape_bayt(search_term, location, results_wanted=15, hours_old=None):
     jobs = []
@@ -59,8 +55,20 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None):
         
         if ai_data and not ai_data.get("error"):
             jobs_list = ai_data.get("jobs", [])
+            # Apply hours_old cutoff that was previously ignored
+            cutoff = None
+            if hours_old:
+                cutoff = (datetime.datetime.now() - datetime.timedelta(hours=hours_old)).date()
             for job in jobs_list:
                 if job.get("is_job") and len(jobs) < results_wanted:
+                    raw_date = job.get('date_posted')
+                    if cutoff and raw_date:
+                        try:
+                            job_date = datetime.datetime.strptime(raw_date, "%Y-%m-%d").date()
+                            if job_date < cutoff:
+                                continue
+                        except Exception:
+                            pass
                     job_url = job.get('job_url', '')
                     if not job_url:
                         job_url = url

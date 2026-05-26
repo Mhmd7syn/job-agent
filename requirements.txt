@@ -1,7 +1,10 @@
 pandas
 requests
-python-jobspy
 beautifulsoup4
 python-dotenv
 playwright
 google-genai
+pydantic
+tqdm
+curl_cffi
+playwright-stealth

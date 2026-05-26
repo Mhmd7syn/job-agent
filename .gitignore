@@ -2,9 +2,8 @@
 __pycache__/
 *.pyc
 
-# Local Data and Profiles
+# Browser session data
 playwright_profile/
-*.csv
-sent_jobs.json
-*.log
-evaluation_brief.txt
+
+# All runtime-generated output (logs, CSVs, state, evaluations)
+output/
