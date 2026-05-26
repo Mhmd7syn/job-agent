@@ -27,7 +27,7 @@ class PostExtractionSchema(BaseModel):
     job_type: str = Field(default="Not specified", description="The job type (e.g., Full-time, Part-time, Internship).")
     description: str = Field(default="")
     job_url: str = Field(default="", description="The Post URL provided at the top of the post. Do NOT use application links found inside the post.")
-    date_posted: str = Field(default="", description="The date the job was posted in YYYY-MM-DD format. Calculate using today's date if relative.")
+    date_posted: str = Field(default="", description="The date the job was posted in YYYY-MM-DD format. Calculate using today's date if relative (e.g., '3 weeks ago' or 'منذ 3 أسابيع' -> subtract 21 days from today; '2 days ago' or 'منذ يومين' -> subtract 2 days; 'yesterday' or 'أمس' -> subtract 1 day).")
 
 class MultiplePostsExtractionSchema(BaseModel):
     jobs: list[PostExtractionSchema]
@@ -39,16 +39,16 @@ class JobPageExtractionSchema(BaseModel):
     location: str = Field(default="Unknown")
     job_type: str = Field(default="Not specified", description="The job type (e.g., Full-time, Part-time, Internship).")
     description: str = Field(default="")
-    date_posted: str = Field(default="", description="The date the job was posted in YYYY-MM-DD format. Calculate using today's date if relative.")
+    date_posted: str = Field(default="", description="The date the job was posted in YYYY-MM-DD format. Calculate using today's date if relative (e.g., '3 weeks ago' or 'منذ 3 أسابيع' -> subtract 21 days from today; '2 days ago' or 'منذ يومين' -> subtract 2 days; 'yesterday' or 'أمس' -> subtract 1 day).")
 
 
 def extract_feed_posts_with_ai(feed_text):
     prompt = f"""
-    You are an expert HR assistant. Read the following text from a LinkedIn search feed and extract all the job listings you can find in it.
+    You are an expert HR assistant. Read the following text from a LinkedIn search feed or job card and extract all the job listings you can find in it.
     For each job, extract the title, company, location, the post description text, and the job_url (Post URL).
-    CRITICAL: For job_url, you MUST extract the 'Post URL' provided at the beginning of each post block. Do NOT extract links from within the post text (like application links).
+    CRITICAL: For job_url, you MUST extract the 'Post URL' or Job Link provided at the beginning of each block. Do NOT extract links from within the post text (like application links).
     Ignore generic posts, articles, and people looking for jobs.
-    Today's date is {datetime.date.today().isoformat()}. Use it to calculate YYYY-MM-DD from relative times like '1w', '2d', '1 week ago'.
+    Today's date is {datetime.date.today().isoformat()}. Use it to calculate YYYY-MM-DD from English or Arabic relative times (e.g. '1w', '2d', '1 week ago', 'منذ 3 أسابيع', 'قبل يومين', 'أمس').
     
     Feed Text:
     {feed_text}
@@ -82,7 +82,7 @@ def extract_job_page_with_ai(page_text):
     prompt = f"""
     You are an expert HR assistant. Read the following raw text extracted from a job board webpage and extract the structured job details.
     Ignore navigation menus, footers, and generic UI text. Focus on the actual job posting.
-    Today's date is {datetime.date.today().isoformat()}. Use it to calculate YYYY-MM-DD from relative times like '1w', '2d', '1 week ago'.
+    Today's date is {datetime.date.today().isoformat()}. Use it to calculate YYYY-MM-DD from English or Arabic relative times (e.g. '1w', '2d', '1 week ago', 'منذ 3 أسابيع', 'قبل يومين', 'أمس').
     
     Webpage Text:
     {page_text}
@@ -134,10 +134,10 @@ def evaluate_run_with_ai(logs_text, csv_text, user_brief=""):
         
     for attempt in range(5):
         try:
-            response = _gemini_call(lambda: client.models.generate_content(
+            response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=prompt,
-            ))
+            )
             return response.text
         except Exception as e:
             if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060"]):

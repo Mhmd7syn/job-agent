@@ -45,7 +45,15 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None):
     if location.lower() == "worldwide" or location.lower() == "remote":
         query += " remote"
         
-    url = f"https://wuzzuf.net/search/jobs/?q={urllib.parse.quote(query)}"
+    url = f"https://wuzzuf.net/search/jobs/?q={urllib.parse.quote(query)}&o=t"
+    if hours_old:
+        days = hours_old / 24
+        if days <= 1:
+            url += "&filters[post_date][0]=within_24_hours"
+        elif days <= 7:
+            url += "&filters[post_date][0]=within_1_week"
+        else:
+            url += "&filters[post_date][0]=within_1_month"
     
     response = fetch_with_retries(url)
     if not response:

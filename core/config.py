@@ -75,9 +75,10 @@ NICE_TO_HAVE_SKILLS = [
 ]
 
 EXCLUDE_KEYWORDS = ["senior", "lead", "manager", "principal", "staff", "head", "director", "vp",
- "architect", "supervisor", "executive", "founding", "finance", "project management", "product", "marketing", "sales", "ms", "phd"]
+ "architect", "supervisor", "executive", "founding", "finance", "project management", "product", "marketing", "sales", "ms", "phd",
+ "master", "graduate", "postgraduate"]
 
-EXCLUDED_COMPANIES = []
+EXCLUDED_COMPANIES = ["consulting firm"]
 FAVORITE_COMPANIES = [
     # Multinationals & Big Tech
     "microsoft", "valeo", "ibm", "vodafone", "orange", "amazon", "dell", "siemens", "teradata",
@@ -101,7 +102,7 @@ TARGET_LOCATIONS = [
     "smart village"
 ]
 
-TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "graduate", "trainee", "entry-level", "undergrad"]
+TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "trainee", "entry-level", "undergrad"]
 
 SITES = ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb", "indeed"]
 RESULTS_PER_TERM = 15

@@ -11,7 +11,16 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None):
     query = search_term
     
     loc_path = "egypt" if "egypt" in location.lower() else "international"
-    url = f"https://www.bayt.com/en/{loc_path}/jobs/?q={urllib.parse.quote(query)}"
+    url = f"https://www.bayt.com/en/{loc_path}/jobs/?q={urllib.parse.quote(query)}&options[sort][]=d"
+    if hours_old:
+        days = hours_old / 24
+        if days <= 1:
+            interval = 3
+        elif days <= 7:
+            interval = 2
+        else:
+            interval = 1
+        url += f"&filters[jb_last_modification_date_interval][]={interval}"
     
     try:
         # Use impersonate to mimic a Safari browser and bypass Cloudflare TLS fingerprints

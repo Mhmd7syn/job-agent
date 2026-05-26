@@ -11,7 +11,11 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None):
     jobs = []
     
     # Simple URL encoding for glassdoor (this will redirect to the right search)
-    url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={urllib.parse.quote(search_term)}&locT=N&locId={GLASSDOOR_LOC_ID}&locKeyword={urllib.parse.quote(location)}"
+    url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={urllib.parse.quote(search_term)}&locT=N&locId={GLASSDOOR_LOC_ID}&locKeyword={urllib.parse.quote(location)}&sortBy=date_desc"
+    if hours_old:
+        days = int(hours_old / 24)
+        if days > 0:
+            url += f"&fromAge={days}"
     
     try:
         # Try Safari impersonation to bypass Cloudflare

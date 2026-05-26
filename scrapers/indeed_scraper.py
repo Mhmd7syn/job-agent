@@ -9,7 +9,11 @@ from core.llm_parser import extract_feed_posts_with_ai
 def scrape_indeed(search_term, location, results_wanted=15, hours_old=None):
     jobs = []
     
-    url = f"https://www.indeed.com/jobs?q={urllib.parse.quote(search_term)}&l={urllib.parse.quote(location)}"
+    url = f"https://www.indeed.com/jobs?q={urllib.parse.quote(search_term)}&l={urllib.parse.quote(location)}&sort=date"
+    if hours_old:
+        days = int(hours_old / 24)
+        if days > 0:
+            url += f"&fromage={days}"
     
     try:
         import time

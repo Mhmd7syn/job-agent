@@ -130,7 +130,7 @@ class LinkedInSession:
 # Core scraping logic — operates on an existing page object
 # ---------------------------------------------------------------------------
 
-_POST_EXTRACTOR_JS = '''() => {
+_POST_EXTRACTOR_JS = r'''() => {
     let result = "";
     let isAuthorLink = (href) => href && (href.includes('/in/') || href.includes('/company/'));
     let menuBtns = document.querySelectorAll(
@@ -149,16 +149,39 @@ _POST_EXTRACTOR_JS = '''() => {
     if (posts.length === 0) { return document.body.innerText; }
 
     for (let post of posts) {
-        let url = "";
-        let links = post.querySelectorAll('a');
-        for (let a of links) {
-            if (isAuthorLink(a.href)) { url = a.href.split('?')[0]; break; }
+        let postUrl = "";
+        for (let a of post.querySelectorAll('a')) {
+            if (a.href) {
+                if (a.href.includes('/feed/update/urn:li:') || a.href.includes('/posts/')) {
+                    postUrl = a.href.split('?')[0];
+                    break;
+                }
+            }
         }
+        if (!postUrl) {
+            let dataUrn = post.getAttribute('data-urn') || post.querySelector('[data-urn]')?.getAttribute('data-urn');
+            if (dataUrn) {
+                let match = dataUrn.match(/activity:(\d+)/) || dataUrn.match(/ugcPost:(\d+)/);
+                if (match) {
+                    postUrl = "https://www.linkedin.com/feed/update/urn:li:activity:" + match[1];
+                }
+            }
+        }
+        
+        let authorUrl = "";
+        for (let a of post.querySelectorAll('a')) {
+            if (isAuthorLink(a.href)) {
+                authorUrl = a.href.split('?')[0];
+                break;
+            }
+        }
+        
         let text = post.innerText;
         if (text && text.trim().length > 20) {
-            if (url) {
-                result += "Author/Company URL: " + url + "\\n";
-                result += "(Note: Direct post link unavailable in headless mode.)\\n";
+            if (postUrl) {
+                result += "Post URL: " + postUrl + "\\n";
+            } else if (authorUrl) {
+                result += "Author/Company URL: " + authorUrl + "\\n";
             }
             result += "Post Text:\\n" + text + "\\n\\n---END OF POST---\\n\\n";
         }
@@ -215,7 +238,7 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
 
     encoded_term = urllib.parse.quote(term)
     encoded_loc = urllib.parse.quote(location)
-    url = f"https://www.linkedin.com/jobs/search/?keywords={encoded_term}&location={encoded_loc}"
+    url = f"https://www.linkedin.com/jobs/search/?keywords={encoded_term}&location={encoded_loc}&sortBy=DD"
     if hours_old:
         url += f"&f_TPR=r{hours_old * 3600}"
 
