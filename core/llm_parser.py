@@ -57,7 +57,7 @@ def extract_feed_posts_with_ai(feed_text):
     if not client:
         return {"error": "No Gemini API Key"}
         
-    for attempt in range(3):
+    for attempt in range(2):  # 1 retry — fail fast if quota exhausted
         try:
             response = client.models.generate_content(
                 model='gemini-flash-lite-latest',
@@ -70,12 +70,12 @@ def extract_feed_posts_with_ai(feed_text):
             return json.loads(response.text)
         except Exception as e:
             if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060"]):
-                wait_time = 10 * (attempt + 1)
-                logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting {wait_time}s before retry {attempt+1}/3...)")
-                time.sleep(wait_time)
-                continue
+                if attempt == 0:
+                    logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting 5s before retry...)")
+                    time.sleep(5)
+                    continue
             return {"error": str(e)}
-            
+
     return {"error": "Exceeded retries for 429"}
 
 def extract_job_page_with_ai(page_text):
@@ -91,7 +91,7 @@ def extract_job_page_with_ai(page_text):
     if not client:
         return {"error": "No Gemini API Key"}
         
-    for attempt in range(3):
+    for attempt in range(2):  # 1 retry — fail fast if quota exhausted
         try:
             response = client.models.generate_content(
                 model='gemini-flash-lite-latest',
@@ -104,12 +104,12 @@ def extract_job_page_with_ai(page_text):
             return json.loads(response.text)
         except Exception as e:
             if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060"]):
-                wait_time = 10 * (attempt + 1)
-                logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting {wait_time}s before retry {attempt+1}/3...)")
-                time.sleep(wait_time)
-                continue
+                if attempt == 0:
+                    logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting 5s before retry...)")
+                    time.sleep(5)
+                    continue
             return {"error": str(e)}
-            
+
     return {"error": "Exceeded retries for 429"}
 
 def evaluate_run_with_ai(logs_text, csv_text, user_brief=""):
@@ -134,10 +134,10 @@ def evaluate_run_with_ai(logs_text, csv_text, user_brief=""):
         
     for attempt in range(5):
         try:
-            response = client.models.generate_content(
+            response = _gemini_call(lambda: client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=prompt,
-            )
+            ))
             return response.text
         except Exception as e:
             if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060"]):

@@ -17,8 +17,8 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None):
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                # Use impersonate to mimic a Chrome browser and bypass Cloudflare
-                response = requests.get(url, impersonate="chrome120", timeout=30)
+                # Use impersonate to mimic a Safari browser and bypass Cloudflare
+                response = requests.get(url, impersonate="safari15_5", timeout=30)
                 if response.status_code == 200:
                     break
             except Exception as e:

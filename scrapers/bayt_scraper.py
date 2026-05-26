@@ -14,8 +14,8 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None):
     url = f"https://www.bayt.com/en/{loc_path}/jobs/?q={urllib.parse.quote(query)}"
     
     try:
-        # Use impersonate to mimic a Chrome browser and bypass Cloudflare TLS fingerprints
-        response = requests.get(url, impersonate="chrome120", timeout=20)
+        # Use impersonate to mimic a Safari browser and bypass Cloudflare TLS fingerprints
+        response = requests.get(url, impersonate="safari15_5", timeout=20)
         
         if response.status_code != 200:
             logging.error(f"⚠️ Bayt Scraper returned status {response.status_code}")

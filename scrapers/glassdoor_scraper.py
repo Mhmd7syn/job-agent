@@ -14,10 +14,7 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None):
     url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={urllib.parse.quote(search_term)}&locT=N&locId={GLASSDOOR_LOC_ID}&locKeyword={urllib.parse.quote(location)}"
     
     try:
-        import random
-        # Try different modern browsers to bypass Cloudflare
-        browsers = ["chrome124", "safari17_0", "chrome116", "edge101"]
-        random.shuffle(browsers)
+        # Try Safari impersonation to bypass Cloudflare
         
         headers = {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -36,14 +33,12 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None):
         response = None
         max_retries = 3
         for attempt in range(max_retries):
-            for browser in browsers:
-                try:
-                    response = requests.get(url, impersonate=browser, headers=headers, timeout=30)
-                    if response.status_code == 200:
-                        break
-                except Exception as req_e:
-                    logging.debug(f"Glassdoor request failed with {browser}: {req_e}")
-                    continue
+            try:
+                response = requests.get(url, impersonate="safari15_5", headers=headers, timeout=30)
+                if response.status_code == 200:
+                    break
+            except Exception as req_e:
+                logging.debug(f"Glassdoor request failed: {req_e}")
             
             if response and response.status_code == 200:
                 break
