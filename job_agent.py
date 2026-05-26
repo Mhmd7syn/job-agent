@@ -1,7 +1,18 @@
+from core.telegram_notifier import send_telegram_message
+from scrapers.glassdoor_scraper import scrape_glassdoor
+from scrapers.bayt_scraper import scrape_bayt
+from scrapers.tanqeeb_scraper import scrape_tanqeeb
+from scrapers.wuzzuf_scraper import scrape_wuzzuf
+from core.config import (
+    SITES, RESULTS_PER_TERM, HOURS_OLD, SEARCH_TERMS, LOCATION,
+    EXCLUDE_KEYWORDS, EXCLUDED_COMPANIES, FAVORITE_COMPANIES,
+    RESUME_KEYWORDS, NICE_TO_HAVE_SKILLS, GLOBAL_REMOTE_KEYWORDS,
+    RESTRICTED_REMOTE_KEYWORDS, TARGET_LOCATIONS, TARGET_LEVELS,
+    MAX_JOBS_TO_SEND, ARABIC_SEARCH_TERMS, SITES_FOR_ARABIC
+)
 import pandas as pd
 import sys
 import time
-import random
 import html
 import glob
 import os
@@ -10,11 +21,13 @@ import datetime
 import logging
 import ctypes
 
+
 def prevent_sleep():
     """Prevent the Windows OS from going to sleep while the script runs."""
     if os.name == 'nt':
         # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
         ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
+
 
 def allow_sleep():
     """Allow the Windows OS to go to sleep again."""
@@ -22,9 +35,11 @@ def allow_sleep():
         # ES_CONTINUOUS
         ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
 
+
 class RootFilter(logging.Filter):
     def filter(self, record):
         return record.name == 'root'
+
 
 # Configure logging to save to file with timestamps, but print to terminal cleanly
 # Ensure output directory exists before creating the log file handler
@@ -35,24 +50,16 @@ file_handler = logging.FileHandler(os.path.join(_OUTPUT_DIR, "job_agent.log"), m
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 file_handler.addFilter(RootFilter())
 
-console_handler = logging.StreamHandler(sys.stdout) 
+console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(logging.Formatter('%(message)s'))
 console_handler.addFilter(RootFilter())
 
-logging.basicConfig(    
+logging.basicConfig(
     level=logging.WARNING,
     handlers=[file_handler, console_handler]
 )
 
 
-from core.config import *
-from core.config import ARABIC_SEARCH_TERMS, SITES_FOR_ARABIC
-
-from scrapers.wuzzuf_scraper import scrape_wuzzuf
-from scrapers.tanqeeb_scraper import scrape_tanqeeb
-from scrapers.bayt_scraper import scrape_bayt
-from scrapers.glassdoor_scraper import scrape_glassdoor
-from core.telegram_notifier import send_telegram_message
 try:
     from scrapers.playwright_scraper import get_posts_as_dataframe, scrape_linkedin_jobs_playwright, LinkedInSession
 except ImportError:
@@ -64,14 +71,14 @@ except ImportError:
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
+
 def main():
 
-    
     import concurrent.futures
     from tqdm import tqdm
     jobs_list = []
     sites_lower = {s.lower() for s in SITES}  # Pre-computed set for O(1) lookups
-    
+
     def retry_scraper(scraper_func, *args, max_retries=2):
         for attempt in range(max_retries + 1):
             try:
@@ -105,7 +112,8 @@ def main():
             if 'indeed' in sites_lower:
                 try:
                     from scrapers.indeed_scraper import scrape_indeed
-                    futures.append(executor.submit(retry_scraper, scrape_indeed, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+                    futures.append(executor.submit(retry_scraper, scrape_indeed,
+                                   term, loc, RESULTS_PER_TERM, HOURS_OLD))
                 except ImportError:
                     pass
 
@@ -113,7 +121,8 @@ def main():
             if 'linkedin' in sites_lower:
                 if scrape_linkedin_jobs_playwright:
                     try:
-                        res = retry_scraper(scrape_linkedin_jobs_playwright, term, search_loc, RESULTS_PER_TERM, HOURS_OLD, li_page)
+                        res = retry_scraper(scrape_linkedin_jobs_playwright, term,
+                                            search_loc, RESULTS_PER_TERM, HOURS_OLD, li_page)
                         if res is not None and not res.empty:
                             local_jobs_list.append(res)
                     except Exception as e:
@@ -168,7 +177,8 @@ def main():
                             logging.error(f"⚠️ Arabic/Wuzzuf error '{term}': {e}")
                     if 'linkedin' in arabic_sites_active and scrape_linkedin_jobs_playwright and li_page is not None:
                         try:
-                            res = retry_scraper(scrape_linkedin_jobs_playwright, term, loc, RESULTS_PER_TERM, HOURS_OLD, li_page)
+                            res = retry_scraper(scrape_linkedin_jobs_playwright, term,
+                                                loc, RESULTS_PER_TERM, HOURS_OLD, li_page)
                             if res is not None and not res.empty:
                                 jobs_list.append(res)
                         except Exception as e:
@@ -184,7 +194,6 @@ def main():
         _scrape_all()
         _arabic_pass()
 
-            
     if not jobs_list:
         logging.info("No jobs found across any platform.")
         return
@@ -193,25 +202,25 @@ def main():
     if not cleaned_jobs_list:
         logging.info("No jobs found across any platform.")
         return
-        
+
     all_jobs = pd.concat(cleaned_jobs_list, ignore_index=True)
 
     all_jobs = all_jobs.drop_duplicates(subset=["job_url"])
-    
+
     all_jobs['description'] = all_jobs['description'].fillna("")
     all_jobs['title'] = all_jobs['title'].fillna("")
     all_jobs['company'] = all_jobs['company'].fillna("")
-    
+
     if not all_jobs.empty:
         all_jobs['title_company_lower'] = all_jobs['title'].str.lower() + " " + all_jobs['company'].str.lower()
         all_jobs = all_jobs.drop_duplicates(subset=["title_company_lower"])
         all_jobs = all_jobs.drop(columns=["title_company_lower"])
-        
+
         # LinkedIn descriptions are now accurately fetched directly during the Playwright search phase.
-        
+
         # Ensure is_remote is correctly flagged
         def fix_is_remote(row):
-            if row.get('is_remote') == True:
+            if row.get('is_remote') is True:
                 return True
             if any('remote' in str(row.get(col, '')).lower() for col in ['location', 'title', 'job_type']):
                 return True
@@ -230,19 +239,19 @@ def main():
                     return 'Full-time'
                 return 'Not specified'
             return str(row.get('job_type', 'Not specified')).title()
-            
+
         all_jobs['job_type'] = all_jobs.apply(fix_job_type, axis=1)
 
-    
     import re
 
     from datetime import date
+
     def get_relevance_score(row):
         title = str(row.get('title', '')).lower()
         desc = str(row.get('description', '')).lower()
         company = str(row.get('company', '')).lower()
         score = 0
-        
+
         # 1. Negative Filtering: Penalize for unwanted keywords (word-boundary safe)
         # Check title (heavy), job_type / career_level (medium), description (light)
         job_type_lower = str(row.get('job_type', '')).lower()
@@ -255,15 +264,14 @@ def main():
                 score -= 40  # career-level tag match — strong signal but not in title
             elif re.search(pattern, desc):
                 score -= 10  # description mention is weak signal only
-                
+
         # Instant drop for spammy companies
         if any(comp in company for comp in EXCLUDED_COMPANIES):
             return -100
-            
+
         # 2. Company Whitelist Boost
         if any(comp in company for comp in FAVORITE_COMPANIES):
             score += 15
-            
 
         for term in SEARCH_TERMS:
             term_lower = term.lower()
@@ -271,49 +279,57 @@ def main():
                 score += 10
             elif term_lower in desc:
                 score += 3
-                
+
+        # Arabic terms: match against raw strings (Arabic has no case)
+        raw_title = str(row.get('title', ''))
+        raw_desc = str(row.get('description', ''))
+        for term in ARABIC_SEARCH_TERMS:
+            if term in raw_title:
+                score += 10
+            elif term in raw_desc:
+                score += 3
+
         # 3. Resume Match Scoring (High priority)
         for kw in RESUME_KEYWORDS:
             pattern = r'\b' + re.escape(kw) + r'\b'
             if re.search(pattern, title):
                 score += 5  # Higher bonus for hitting a resume skill in the title
-                
+
             matches = len(re.findall(pattern, desc))
             if matches > 0:
                 score += min(matches * 2, 8)  # Max +8 per skill in description
-                
+
         # 4. Nice-to-Have Skills (Medium priority)
         for kw in NICE_TO_HAVE_SKILLS:
             pattern = r'\b' + re.escape(kw) + r'\b'
             if re.search(pattern, title):
                 score += 3
-                
+
             matches = len(re.findall(pattern, desc))
             if matches > 0:
                 score += min(matches * 1, 3)  # Max +3 per skill in description
-                
+
         # Score locations
         loc_val = str(row.get('location', '')).lower()
         is_remote_col = row.get('is_remote', False)
-        
 
-        allow_remote = any('remote' in l.lower() for l in LOCATION)
-        if allow_remote and ((is_remote_col == True) or ('remote' in loc_val) or ('remote' in title)):
+        allow_remote = any('remote' in loc_item.lower() for loc_item in LOCATION)
+        if allow_remote and ((is_remote_col is True) or ('remote' in loc_val) or ('remote' in title)):
             score += 5
             title_desc = title + " " + desc
             if any(r in title_desc for r in GLOBAL_REMOTE_KEYWORDS):
                 score += 5
             if any(r in title_desc for r in RESTRICTED_REMOTE_KEYWORDS):
                 score -= 30
-            
+
         if any(target in loc_val for target in TARGET_LOCATIONS):
             score += 5
-            
+
         # Score levels
         job_type_val = str(row.get('job_type', '')).lower()
         if any(level in title or level in job_type_val or level in desc for level in TARGET_LEVELS):
             score += 15
-            
+
         # 4. Recency Boost
         post_date = row.get('date_posted')
         if pd.notna(post_date):
@@ -322,7 +338,7 @@ def main():
                     p_date = post_date.date()
                 else:
                     p_date = pd.to_datetime(post_date).date()
-                
+
                 days_old = (date.today() - p_date).days
 
                 if HOURS_OLD > 0:
@@ -331,7 +347,7 @@ def main():
                     score += int(15 * freshness_ratio)
             except Exception:
                 pass
-                
+
         return score
 
     if not all_jobs.empty:
@@ -355,7 +371,7 @@ def main():
         'data', 'ai', 'machine learning', 'python', 'analyst', 'engineer',
         'instructor', 'trainer', 'computer vision', 'nlp', 'scientist', 'ml',
         'deep learning', 'analytics', 'intelligence', 'developer'
-    }
+    } | {t for t in ARABIC_SEARCH_TERMS}  # Include Arabic terms so Arabic-titled jobs aren't dropped
     if not all_jobs.empty:
         all_jobs = all_jobs[
             all_jobs['title'].apply(lambda t: any(kw in str(t).lower() for kw in _TITLE_KEYWORDS))
@@ -363,26 +379,21 @@ def main():
 
     filtered_jobs = all_jobs
 
-    
     if not filtered_jobs.empty:
         sort_cols = ['relevance_score']
         ascending_flags = [False]
         if 'date_posted' in filtered_jobs.columns:
             sort_cols.append('date_posted')
             ascending_flags.append(False)
-            
+
         filtered_jobs = filtered_jobs.sort_values(by=sort_cols, ascending=ascending_flags)
-        
-
-
-
 
     # Save the best 100 found jobs after reranking
     if not filtered_jobs.empty:
         best_100 = filtered_jobs.head(100).copy()
         if 'description' in best_100.columns:
             best_100 = best_100.drop(columns=['description'])
-            
+
         current_date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = os.path.join(_OUTPUT_DIR, f"found_jobs_{current_date_str}.csv")
         best_100.to_csv(filename, index=False)
@@ -399,10 +410,10 @@ def main():
                 logging.warning(f"⚠️ Failed to delete old job file {f}: {e}")
 
     # --- STATE MANAGEMENT (Prevent Duplicate Alerts) ---
-    
+
     STATE_FILE = os.path.join(_OUTPUT_DIR, "sent_jobs.json")
     sent_jobs = {}
-    
+
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
@@ -414,7 +425,7 @@ def main():
                     sent_jobs = data
         except Exception:
             pass
-            
+
     # Remove jobs older than 45 days so they can be re-applied if reopened
     current_time = datetime.datetime.now()
     jobs_to_keep = {}
@@ -423,10 +434,10 @@ def main():
             job_date = datetime.datetime.fromisoformat(date_str)
             if (current_time - job_date).days <= 45:
                 jobs_to_keep[job_id] = date_str
-        except:
+        except Exception:
             pass
     sent_jobs = jobs_to_keep
-            
+
     # Filter out already sent jobs using title and company
     if not filtered_jobs.empty:
         # Normalize key: collapse whitespace/punctuation so minor variations don't cause re-alerts
@@ -445,9 +456,9 @@ def main():
         return
 
     top_jobs = filtered_jobs.head(MAX_JOBS_TO_SEND)
-    
+
     message = f"🚀 <b>Weekly Job Agent Report</b>\n<i>Found {len(filtered_jobs)} matches. Here are the top picks:</i>\n\n"
-    
+
     for index, row in top_jobs.iterrows():
         title = html.escape(str(row['title']))
         company = html.escape(str(row['company']))
@@ -478,19 +489,20 @@ def main():
             message += f"🔗 <a href='{link}'>View Job</a>\n"
 
         message += "━━━━━━━━━━━━━━━━━━━━\n"
-        
+
     send_telegram_message(message)
-    
+
     # Save the new jobs back to the state file (use same normalized key)
     for index, row in top_jobs.iterrows():
         job_id = _make_job_id(row['title'], row['company'])
         sent_jobs[job_id] = current_time.isoformat()
-        
+
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(sent_jobs, f, indent=4)
     except Exception as e:
         logging.error(f"⚠️ Failed to save state file: {e}")
+
 
 if __name__ == "__main__":
     prevent_sleep()
@@ -503,23 +515,23 @@ if __name__ == "__main__":
     finally:
         end_time = time.time()
         elapsed_time = end_time - start_time
-        
+
         # Convert seconds to hours, minutes, seconds for better readability
         hours, rem = divmod(elapsed_time, 3600)
         minutes, seconds = divmod(rem, 60)
-        
+
         time_str = ""
         if hours > 0:
             time_str += f"{int(hours)}h "
         if minutes > 0 or hours > 0:
             time_str += f"{int(minutes)}m "
         time_str += f"{int(seconds)}s"
-        
+
         logging.info(f"Finished job agent run. Total time elapsed: {time_str} ({elapsed_time:.2f} seconds).")
-        
+
         # --- AI Evaluation Step ---
         logging.info("Starting AI evaluation of the run...")
-        
+
         # 1. Get latest CSV
         csv_files = glob.glob(os.path.join(_OUTPUT_DIR, "found_jobs_*.csv"))
         latest_csv_content = "No jobs found this run."
@@ -540,20 +552,20 @@ if __name__ == "__main__":
             # Force flush handlers before reading
             for handler in logging.getLogger().handlers:
                 handler.flush()
-                
+
             with open(os.path.join(_OUTPUT_DIR, "job_agent.log"), "r", encoding="utf-8") as f:
                 logs_content = f.read()
                 # Limit logs size if too big
                 if len(logs_content) > 15000:
                     logs_content = "...[TRUNCATED]...\n" + logs_content[-15000:]
-        except Exception as e:  
+        except Exception as e:
             logs_content = f"Could not read logs: {e}"
-            
+
         try:
             from core.llm_parser import evaluate_run_with_ai
             from core.config import USER_BRIEF
             eval_result = evaluate_run_with_ai(logs_content, latest_csv_content, USER_BRIEF)
-            
+
             # 3. Add to brief text file
             with open(os.path.join(_OUTPUT_DIR, "evaluation_brief.txt"), "w", encoding="utf-8") as f:
                 f.write(f"{'='*40}\n")
@@ -562,9 +574,9 @@ if __name__ == "__main__":
                 f.write(f"{'='*40}\n")
                 f.write(eval_result)
                 f.write("\n")
-                
+
             logging.info("AI evaluation saved to evaluation_brief.txt successfully.")
         except Exception as e:
             logging.error(f"Failed to generate or save AI evaluation: {e}")
-            
+
         allow_sleep()
