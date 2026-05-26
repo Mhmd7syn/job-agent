@@ -8,6 +8,19 @@ import os
 import json
 import datetime
 import logging
+import ctypes
+
+def prevent_sleep():
+    """Prevent the Windows OS from going to sleep while the script runs."""
+    if os.name == 'nt':
+        # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
+
+def allow_sleep():
+    """Allow the Windows OS to go to sleep again."""
+    if os.name == 'nt':
+        # ES_CONTINUOUS
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
 
 class RootFilter(logging.Filter):
     def filter(self, record):
@@ -18,12 +31,12 @@ file_handler = logging.FileHandler("job_agent.log", mode="w", encoding="utf-8")
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 file_handler.addFilter(RootFilter())
 
-console_handler = logging.StreamHandler(sys.stdout)
+console_handler = logging.StreamHandler(sys.stdout) 
 console_handler.setFormatter(logging.Formatter('%(message)s'))
 console_handler.addFilter(RootFilter())
 
 logging.basicConfig(    
-    level=logging.INFO,
+    level=logging.WARNING,
     handlers=[file_handler, console_handler]
 )
 
@@ -48,60 +61,90 @@ if sys.stdout.encoding.lower() != 'utf-8':
 def main():
 
     
+    import concurrent.futures
+    from tqdm import tqdm
     jobs_list = []
     
-    for term in SEARCH_TERMS:
-        for loc in LOCATION:
-
+    def retry_scraper(scraper_func, *args, max_retries=2):
+        for attempt in range(max_retries + 1):
             try:
-                is_remote_flag = False
-                search_loc = loc
-                if loc.lower() == "remote":
-                    search_loc = "worldwide"
-                    is_remote_flag = True
-                    
-                # Removed jobspy entirely
-                if 'linkedin' in [s.lower() for s in SITES] and scrape_linkedin_jobs_playwright:
-                    try:
-                        li_jobs = scrape_linkedin_jobs_playwright(term, search_loc, RESULTS_PER_TERM, HOURS_OLD)
-                        if li_jobs is not None and not li_jobs.empty:
-                            jobs_list.append(li_jobs)
-                    except Exception as e:
-                        logging.error(f"⚠️ Error scraping LinkedIn jobs via Playwright for '{term}': {e}")
-                    
-                if 'wuzzuf' in [s.lower() for s in SITES]:
-                    wuzzuf_jobs = scrape_wuzzuf(term, loc, RESULTS_PER_TERM, HOURS_OLD)
-                    if wuzzuf_jobs is not None and not wuzzuf_jobs.empty:
-                        jobs_list.append(wuzzuf_jobs)
-                        
-                if 'tanqeeb' in [s.lower() for s in SITES]:
-                    tanqeeb_jobs = scrape_tanqeeb(term, loc, RESULTS_PER_TERM, HOURS_OLD)
-                    if tanqeeb_jobs is not None and not tanqeeb_jobs.empty:
-                        jobs_list.append(tanqeeb_jobs)
-                        
-                if 'bayt' in [s.lower() for s in SITES]:
-                    bayt_jobs = scrape_bayt(term, loc, RESULTS_PER_TERM, HOURS_OLD)
-                    if bayt_jobs is not None and not bayt_jobs.empty:
-                        jobs_list.append(bayt_jobs)
-                        
-                if 'glassdoor' in [s.lower() for s in SITES]:
-                    glassdoor_jobs = scrape_glassdoor(term, loc, RESULTS_PER_TERM, HOURS_OLD)
-                    if glassdoor_jobs is not None and not glassdoor_jobs.empty:
-                        jobs_list.append(glassdoor_jobs)
-                        
-                if 'linkedin' in [s.lower() for s in SITES] and get_posts_as_dataframe:
-                    try:
-                        post_jobs = get_posts_as_dataframe(term, loc)
-                        if post_jobs is not None and not post_jobs.empty:
-                            jobs_list.append(post_jobs)
-                    except Exception as e:
-                        logging.error(f"⚠️ Error scraping posts for '{term}' in {loc}: {e}")
-                    
+                return scraper_func(*args)
             except Exception as e:
-                logging.error(f"⚠️ Error scraping '{term}' in {loc}: {e}")
-            
-            delay = random.uniform(3, 7)
-            time.sleep(delay)
+                if attempt < max_retries:
+                    wait_time = 2 ** attempt
+                    logging.warning(f"⚠️ Retrying {scraper_func.__name__} after error: {e}. Waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logging.error(f"❌ Final failure for {scraper_func.__name__}: {e}")
+                    return None
+
+    def run_scrapers_for_term_loc(term, loc):
+        local_jobs_list = []
+        is_remote_flag = False
+        search_loc = loc
+        if loc.lower() == "remote":
+            search_loc = "worldwide"
+            is_remote_flag = True
+
+        futures = []
+        # Use ThreadPoolExecutor to run non-Playwright scrapers in the background
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            if 'wuzzuf' in [s.lower() for s in SITES]:
+                futures.append(executor.submit(retry_scraper, scrape_wuzzuf, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+            if 'tanqeeb' in [s.lower() for s in SITES]:
+                futures.append(executor.submit(retry_scraper, scrape_tanqeeb, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+            if 'bayt' in [s.lower() for s in SITES]:
+                futures.append(executor.submit(retry_scraper, scrape_bayt, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+            if 'glassdoor' in [s.lower() for s in SITES]:
+                futures.append(executor.submit(retry_scraper, scrape_glassdoor, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+            if 'indeed' in [s.lower() for s in SITES]:
+                try:
+                    from indeed_scraper import scrape_indeed
+                    futures.append(executor.submit(retry_scraper, scrape_indeed, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+                except ImportError:
+                    pass
+
+            # Run Playwright tasks sequentially in the main thread while background threads run the rest!
+            if 'linkedin' in [s.lower() for s in SITES]:
+                if scrape_linkedin_jobs_playwright:
+                    try:
+                        res = retry_scraper(scrape_linkedin_jobs_playwright, term, search_loc, RESULTS_PER_TERM, HOURS_OLD)
+                        if res is not None and not res.empty:
+                            local_jobs_list.append(res)
+                    except Exception as e:
+                        logging.error(f"⚠️ Playwright jobs failure: {e}")
+                if get_posts_as_dataframe:
+                    try:
+                        res = retry_scraper(get_posts_as_dataframe, term, loc)
+                        if res is not None and not res.empty:
+                            local_jobs_list.append(res)
+                    except Exception as e:
+                        logging.error(f"⚠️ Playwright posts failure: {e}")
+
+            # Collect results from the background threads
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+                    if result is not None and not result.empty:
+                        local_jobs_list.append(result)
+                except Exception as e:
+                    logging.error(f"⚠️ Thread failure: {e}")
+                    
+        return local_jobs_list
+
+    total_iterations = len(SEARCH_TERMS) * len(LOCATION)
+    with tqdm(total=total_iterations, desc="Scraping Jobs", unit="search") as pbar:
+        for term in SEARCH_TERMS:
+            for loc in LOCATION:
+                try:
+                    local_results = run_scrapers_for_term_loc(term, loc)
+                    jobs_list.extend(local_results)
+                except Exception as e:
+                    logging.error(f"⚠️ Error in term/loc loop '{term}' in {loc}: {e}")
+                
+                delay = random.uniform(3, 7)
+                time.sleep(delay)
+                pbar.update(1)
 
             
     if not jobs_list:
@@ -137,6 +180,21 @@ def main():
             return False
         all_jobs['is_remote'] = all_jobs.apply(fix_is_remote, axis=1)
 
+        def fix_job_type(row):
+            job_type = str(row.get('job_type', '')).lower()
+            title_desc = str(row.get('title', '')).lower() + ' ' + str(row.get('description', '')).lower()
+            if job_type in ['nan', 'not specified', '']:
+                if any(kw in title_desc for kw in ['intern', 'internship', 'trainee', 'working student']):
+                    return 'Internship'
+                elif any(kw in title_desc for kw in ['part time', 'part-time']):
+                    return 'Part-time'
+                elif any(kw in title_desc for kw in ['full time', 'full-time']):
+                    return 'Full-time'
+                return 'Not specified'
+            return str(row.get('job_type', 'Not specified')).title()
+            
+        all_jobs['job_type'] = all_jobs.apply(fix_job_type, axis=1)
+
     
     import re
 
@@ -147,10 +205,12 @@ def main():
         company = str(row.get('company', '')).lower()
         score = 0
         
-        # 1. Negative Filtering: Instant drop for unwanted keywords or spammy companies
-        if any(kw in title for kw in EXCLUDE_KEYWORDS) or any(kw in title.split() for kw in EXCLUDE_KEYWORDS):
-            return -100
-            
+        # 1. Negative Filtering: Penalize for unwanted keywords
+        for kw in EXCLUDE_KEYWORDS:
+            if kw in title or kw in title.split():
+                score -= 50
+                
+        # Instant drop for spammy companies
         if any(comp in company for comp in EXCLUDED_COMPANIES):
             return -100
             
@@ -158,6 +218,7 @@ def main():
         if any(comp in company for comp in FAVORITE_COMPANIES):
             score += 15
             
+
         for term in SEARCH_TERMS:
             term_lower = term.lower()
             if term_lower in title:
@@ -170,32 +231,42 @@ def main():
             pattern = r'\b' + re.escape(kw) + r'\b'
             if re.search(pattern, title):
                 score += 5  # Higher bonus for hitting a resume skill in the title
-            elif re.search(pattern, desc):
-                score += 2  # Standard bonus for being in the description
+                
+            matches = len(re.findall(pattern, desc))
+            if matches > 0:
+                score += min(matches * 2, 8)  # Max +8 per skill in description
                 
         # 4. Nice-to-Have Skills (Medium priority)
         for kw in NICE_TO_HAVE_SKILLS:
             pattern = r'\b' + re.escape(kw) + r'\b'
             if re.search(pattern, title):
                 score += 3
-            elif re.search(pattern, desc):
-                score += 1
+                
+            matches = len(re.findall(pattern, desc))
+            if matches > 0:
+                score += min(matches * 1, 3)  # Max +3 per skill in description
                 
         # Score locations
         loc_val = str(row.get('location', '')).lower()
         is_remote_col = row.get('is_remote', False)
         
+
         allow_remote = any('remote' in l.lower() for l in LOCATION)
         if allow_remote and ((is_remote_col == True) or ('remote' in loc_val) or ('remote' in title)):
             score += 5
+            title_desc = title + " " + desc
+            if any(r in title_desc for r in GLOBAL_REMOTE_KEYWORDS):
+                score += 5
+            if any(r in title_desc for r in RESTRICTED_REMOTE_KEYWORDS):
+                score -= 30
             
         if any(target in loc_val for target in TARGET_LOCATIONS):
             score += 5
             
         # Score levels
         job_type_val = str(row.get('job_type', '')).lower()
-        if any(level in title or level in job_type_val for level in TARGET_LEVELS):
-            score += 5
+        if any(level in title or level in job_type_val or level in desc for level in TARGET_LEVELS):
+            score += 15
             
         # 4. Recency Boost
         post_date = row.get('date_posted')
@@ -207,12 +278,11 @@ def main():
                     p_date = pd.to_datetime(post_date).date()
                 
                 days_old = (date.today() - p_date).days
-                if days_old == 0:
-                    score += 15
-                elif days_old == 1:
-                    score += 7
-                elif days_old > 5:
-                    score -= 5
+
+                if HOURS_OLD > 0:
+                    hours_old_calc = days_old * 24
+                    freshness_ratio = 1.0 - (hours_old_calc / HOURS_OLD)
+                    score += int(15 * freshness_ratio)
             except Exception:
                 pass
                 
@@ -339,6 +409,7 @@ def main():
         logging.error(f"⚠️ Failed to save state file: {e}")
 
 if __name__ == "__main__":
+    prevent_sleep()
     start_time = time.time()
     logging.info("Starting job agent run...")
     try:
@@ -411,3 +482,5 @@ if __name__ == "__main__":
             logging.info("AI evaluation saved to evaluation_brief.txt successfully.")
         except Exception as e:
             logging.error(f"Failed to generate or save AI evaluation: {e}")
+            
+        allow_sleep()

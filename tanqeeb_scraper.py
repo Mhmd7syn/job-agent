@@ -81,11 +81,11 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                         'company': job.get('company', 'Unknown'),
                         'location': job.get('location', location),
                         'job_url': job_url,
-                        'job_type': 'Not specified',
+                        'job_type': job.get('job_type', 'Not specified'),
                         'description': job.get('description', ''),
-                        'is_remote': 'remote' in query.lower() or 'remote' in str(job.get('location', '')).lower(),
+                        'is_remote': 'remote' in search_term.lower() or 'remote' in str(job.get('location', '')).lower(),
                         'site': 'tanqeeb',
-                        'date_posted': datetime.datetime.now().date()
+                        'date_posted': job.get('date_posted') or datetime.datetime.now().date()
                     })
         else:
             logging.warning(f"⚠️ Tanqeeb AI Parsing Error: {ai_data.get('error') if ai_data else 'Unknown'}")

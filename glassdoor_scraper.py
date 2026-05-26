@@ -1,89 +1,117 @@
 import urllib.parse
 import pandas as pd
-import time
 import datetime
 import logging
 import sys
 import os
+from curl_cffi import requests
 
 # Add the current directory to sys.path to allow importing from llm_parser
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm_parser import extract_feed_posts_with_ai
-from playwright.sync_api import sync_playwright
-from playwright_stealth import Stealth
+from config import GLASSDOOR_LOC_ID
 
 def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None):
     jobs = []
-    query = search_term
-    if location.lower() == "worldwide" or location.lower() == "remote":
-        query += " remote"
-        
-    url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={urllib.parse.quote(query)}"
     
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        Stealth().apply_stealth_sync(page)
+    # Simple URL encoding for glassdoor (this will redirect to the right search)
+    url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={urllib.parse.quote(search_term)}&locT=N&locId={GLASSDOOR_LOC_ID}&locKeyword={urllib.parse.quote(location)}"
+    
+    try:
+        import random
+        # Try different modern browsers to bypass Cloudflare
+        browsers = ["chrome124", "safari17_0", "chrome116", "edge101"]
+        random.shuffle(browsers)
         
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=40000)
-            time.sleep(4)
+        headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "max-age=0",
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": "\"Windows\"",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1"
+        }
+        
+        import time
+        response = None
+        max_retries = 3
+        for attempt in range(max_retries):
+            for browser in browsers:
+                try:
+                    response = requests.get(url, impersonate=browser, headers=headers, timeout=30)
+                    if response.status_code == 200:
+                        break
+                except Exception as req_e:
+                    logging.debug(f"Glassdoor request failed with {browser}: {req_e}")
+                    continue
             
-            page.mouse.wheel(0, 1000)
-            time.sleep(2)
-            
-            page_text = page.evaluate('''() => {
-                let text = "";
-                let links = document.querySelectorAll('a');
-                for (let a of links) {
-                    let href = a.href;
-                    let inner = a.innerText.trim();
-                    if (href && inner && (href.includes('/job-listing/') || href.includes('jobListingId='))) {
-                        text += `Job Link: ${href}\\nTitle: ${inner}\\n`;
-                    }
-                }
-                text += "\\n" + document.body.innerText;
-                return text;
-            }''')
-
-            page_text = page_text[:20000]
-
-            if not page_text.strip():
-                browser.close()
-                return pd.DataFrame()
-
-            ai_data = extract_feed_posts_with_ai(page_text)
-            
-            if ai_data and not ai_data.get("error"):
-                jobs_list = ai_data.get("jobs", [])
-                for job in jobs_list:
-                    if job.get("is_job") and len(jobs) < results_wanted:
-                        job_url = job.get('job_url', '')
-                        if not job_url:
-                            job_url = url
-                        
-                        jobs.append({
-                            'title': job.get('title', 'Unknown'),
-                            'company': job.get('company', 'Unknown'),
-                            'location': job.get('location', location),
-                            'job_url': job_url,
-                            'job_type': 'Not specified',
-                            'description': job.get('description', ''),
-                            'is_remote': 'remote' in query.lower() or 'remote' in str(job.get('location', '')).lower(),
-                            'site': 'glassdoor',
-                            'date_posted': datetime.datetime.now().date()
-                        })
-            else:
-                logging.warning(f"⚠️ Glassdoor AI Parsing Error: {ai_data.get('error') if ai_data else 'Unknown'}")
+            if response and response.status_code == 200:
+                break
                 
-        except Exception as e:
-            logging.error(f"⚠️ Glassdoor Scraper Error: {e}")
-        finally:
-            browser.close()
+            logging.warning(f"⚠️ Glassdoor Scraper attempt {attempt + 1} failed. Retrying in {2 ** attempt} seconds...")
+            time.sleep(2 ** attempt)
+                
+        if response is None or response.status_code != 200:
+            logging.error(f"⚠️ Glassdoor Scraper returned status {response.status_code if response else 'Unknown'} after {max_retries} attempts.")
+            return pd.DataFrame()
+
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        content_text = ""
+        # Extract job cards (Glassdoor usually uses li tags for jobs)
+        job_cards = soup.find_all('li')
+        for card in job_cards:
+            a_tag = card.find('a', href=True)
+            if a_tag:
+                href = a_tag['href']
+                if 'job-listing' in href or '/partner/' in href:
+                    if href.startswith('/'):
+                        href = "https://www.glassdoor.com" + href
+                    
+                    text = card.get_text(separator=" ", strip=True)
+                    if len(text) > 10:
+                        content_text += f"Job Link: {href}\nJob Info: {text}\n\n"
+
+        if not content_text.strip():
+            return pd.DataFrame()
+
+        ai_data = extract_feed_posts_with_ai(content_text[:20000])
+        
+        if ai_data and not ai_data.get("error"):
+            jobs_list = ai_data.get("jobs", [])
+            for job in jobs_list:
+                if job.get("is_job") and len(jobs) < results_wanted:
+                    job_url = job.get('job_url', '')
+                    if not job_url:
+                        job_url = url
+                    
+                    jobs.append({
+                        'title': job.get('title', 'Unknown'),
+                        'company': job.get('company', 'Unknown'),
+                        'location': job.get('location', location),
+                        'job_url': job_url,
+                        'job_type': job.get('job_type', 'Not specified'),
+                        'description': job.get('description', ''),
+                        'is_remote': 'remote' in search_term.lower() or 'remote' in str(job.get('location', '')).lower(),
+                        'site': 'glassdoor',
+                        'date_posted': job.get('date_posted') or datetime.datetime.now().date()
+                    })
+        else:
+            logging.warning(f"⚠️ Glassdoor AI Parsing Error: {ai_data.get('error') if ai_data else 'Unknown'}")
+            
+    except Exception as e:
+        logging.error(f"⚠️ Glassdoor Scraper Error: {e}")
             
     return pd.DataFrame(jobs)
 
 if __name__ == "__main__":
+    if sys.stdout.encoding.lower() != 'utf-8':
+        sys.stdout.reconfigure(encoding='utf-8')
     print("Testing Glassdoor Scraper...")
     df = scrape_glassdoor("data scientist", "egypt", 5)
     print(df.head())

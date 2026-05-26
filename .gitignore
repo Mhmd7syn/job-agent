@@ -7,3 +7,4 @@ playwright_profile/
 *.csv
 sent_jobs.json
 *.log
+evaluation_brief.txt

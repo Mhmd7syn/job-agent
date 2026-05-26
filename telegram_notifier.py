@@ -1,4 +1,5 @@
 import requests
+import logging
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 def send_telegram_message(text):
@@ -34,13 +35,13 @@ def send_telegram_message(text):
             try:
                 response = requests.post(url, json=payload, timeout=15)
                 if response.status_code == 200:
-                    print("✅ Message chunk successfully sent to Telegram.")
+                    logging.info("✅ Message chunk successfully sent to Telegram.")
                     break
                 else:
-                    print(f"❌ Failed to send message chunk. Status: {response.status_code}, Error: {response.text}")
+                    logging.error(f"❌ Failed to send message chunk. Status: {response.status_code}, Error: {response.text}")
                     break
             except requests.exceptions.RequestException as e:
-                print(f"⚠️ Network error sending to Telegram (attempt {attempt+1}/3): {e}")
+                logging.warning(f"⚠️ Network error sending to Telegram (attempt {attempt+1}/3): {e}")
                 import time
                 if attempt < 2:
                     time.sleep(3)

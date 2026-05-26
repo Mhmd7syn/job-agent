@@ -70,7 +70,8 @@ NICE_TO_HAVE_SKILLS = [
     'programming', 'coding', 'instructor', 'trainer', 'teacher', 'mentor'
 ]
 
-EXCLUDE_KEYWORDS = ["senior", "lead", "manager", "principal", "staff", "head", "director", "vp", "architect", "supervisor", "executive"]
+EXCLUDE_KEYWORDS = ["senior", "lead", "manager", "principal", "staff", "head", "director", "vp",
+ "architect", "supervisor", "executive", "founding", "finance", "project management", "product", "marketing", "sales", "ms", "phd"]
 
 EXCLUDED_COMPANIES = []
 FAVORITE_COMPANIES = [
@@ -98,7 +99,7 @@ TARGET_LOCATIONS = [
 
 TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "graduate", "trainee", "entry-level", "undergrad"]
 
-SITES = ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb"]
+SITES = ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb", "indeed"]
 RESULTS_PER_TERM = 15
 HOURS_OLD = 7 * 24
 MAX_JOBS_TO_SEND = 10
@@ -109,3 +110,11 @@ I am looking for roles related to Machine Learning, Data Science, AI Engineering
 My core skills include Python, SQL, Machine Learning, Deep Learning, and Computer Vision.
 I prefer Junior, Fresh Graduate, Intern, or Entry-level positions and want to avoid Senior, Lead, or Managerial roles.
 """
+
+
+# Remote Location Boost Keywords
+GLOBAL_REMOTE_KEYWORDS = ['africa', 'middle east', 'mena', 'worldwide', 'global']
+RESTRICTED_REMOTE_KEYWORDS = ['us only', 'uk only', 'eu only']
+
+# Scraper Specific Configurations
+GLASSDOOR_LOC_ID = 69 # 69 is Egypt. Change this ID if you are targeting other countries.

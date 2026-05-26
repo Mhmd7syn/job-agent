@@ -1,40 +1,32 @@
 ========================================
-Run Evaluation - 2026-05-25 17:22:54
-Time Elapsed: 1h 13m 4s
+Run Evaluation - 2026-05-26 13:22:23
+Time Elapsed: 22m 42s
 ========================================
 Here's an evaluation of your job scraping script run:
 
-### Evaluation Summary
-
 **1. Errors in Logs:**
-The run experienced significant failures:
-*   **Page Load Timeouts (WARNING):** Frequent timeouts (`Page.goto: Timeout 25000ms exceeded`) indicate network issues or slow website responsiveness, leading to delays and potential missed data.
-*   **Scraping Failures (WARNING):** The script failed to scrape `indeed.com` due to connection timeouts (`Max retries exceeded with url: /graphql`). This suggests a major source of job postings was likely missed.
-*   **Critical Notification Failure (ERROR):** The job agent ultimately failed to send the results via Telegram due to a connection timeout (`Max retries exceeded with url: /sendMessage`). This means you likely did not receive any notification about the jobs found.
-*   **Excessive Run Time:** The script ran for a very long time (1h 13m 4s), largely due to the repeated timeouts and failures, without successfully completing its primary objective of notifying the user.
+*   **Glassdoor Scraper Error:** The primary error is a `curl: (28) Connection timed out` specifically affecting Glassdoor. This means the scraper failed to connect to or retrieve data from Glassdoor within the allotted time, likely due to network issues, Glassdoor's anti-scraping measures, or a slow server response. This has prevented a full scrape from Glassdoor.
 
-**2. Quality & Quantity of Jobs Found:**
-*   **Quantity:** 50 jobs were found, which is a decent number, but potentially much lower than it could have been given the Indeed scraping failure.
-*   **Relevance to Profile:**
-    *   **Roles & Skills:** Many highly relevant roles were found (AI Engineer, Data Scientist, ML Intern, AI Instructor, Computer Vision Expert, Python Developer), aligning well with your preferences.
-    *   **Level:** A good number of "Intern", "Academy", "Trainee" positions were identified, fitting your Junior/Entry-level preference.
-    *   **Location:** While many jobs in "Cairo, Egypt" and "Remote" were found, there were also several irrelevant jobs in other countries (UAE, KSA, EU/US) and some generic internships not related to AI/Data Science.
-    *   **Irrelevant Jobs:** There were several jobs that are clearly outside your stated preferences (e.g., "Graphic Designer", "Project Management Working Student", "Full Stack Developer" without AI/ML context, "Finance Internship", "Voice Actor").
+**2. Job Quantity & Quality (based on User Profile):**
+*   **Quantity:** You found approximately 50 job listings, which is a good initial volume.
+*   **Location Relevance:** Most jobs are located in Cairo/Egypt or explicitly listed as remote. This aligns well with your preference. A few remote jobs outside Egypt are also present, which is acceptable.
+*   **Role Type Relevance:** The script did a good job prioritizing relevant experience levels. Many "Intern," "Junior," "Graduate In Training," and general "Engineer" roles (often entry-level by context) are present. Roles clearly marked as "Sr." (e.g., "Sr. Data Engineer") have lower relevance scores, indicating the scoring system is working to an extent to deprioritize them.
+*   **Skill/Keyword Relevance:** The titles frequently contain desired keywords like "AI Engineer," "Machine Learning Engineer," "Data Scientist," "Computer Vision," "Applied Scientist," and "Instructor." "Python" is also explicitly mentioned in some titles. This shows good keyword matching.
+*   **Relevance Score Effectiveness:** The `relevance_score` appears to be generally effective, with highly relevant roles scoring higher and less relevant ones (e.g., "Graphic Designer," "Product Owner," or a "Sr." role) appearing with lower scores.
 
-**Conclusion:** The script's performance was poor due to critical failures preventing successful notification and likely missing a significant portion of jobs. The job relevance filtering needs refinement, although a good core set of relevant jobs was identified.
+**3. Potential Enhancements:**
 
-### Potential Enhancements
-
-1.  **Robust Error Handling & Retries:**
-    *   **Network Stability:** Implement more aggressive retry strategies with exponential backoff for all external API calls (scraping and notification). Consider increasing global network timeouts if your connection is consistently slow.
-    *   **Fallback Notifications:** If Telegram fails, implement a fallback notification method (e.g., email, saving to a local CSV file) so results are never lost.
-2.  **Optimize Scraping:**
-    *   **Indeed Failure Analysis:** Investigate why `indeed.com` scraping failed. It might be due to changes in their API, IP blocking, or overly aggressive scraping. Consider using a different scraping approach or API if direct access is blocked.
-    *   **Performance:** Explore parallelizing scraping tasks across different job boards to reduce the overall run time.
-3.  **Refine Job Filtering & Relevance Scoring:**
-    *   **Location Filtering:** Implement stricter filtering to prioritize "Egypt" and "Remote" locations. Jobs outside these regions should either be excluded or given a very low relevance score by default.
-    *   **Job Level Filtering:** Enhance keyword exclusion for "Senior", "Lead", "Manager" roles. Also, refine the definition of "Entry-level" to accurately capture relevant positions.
-    *   **Skill-Based Keyword Matching:** Improve the relevance scoring by performing more comprehensive keyword searches within job descriptions for your core skills (Python, SQL, Machine Learning, Deep Learning, Computer Vision), not just titles.
-    *   **Exclusion Keywords:** Expand your list of keywords to explicitly exclude highly irrelevant roles (e.g., "Graphic Designer", "Finance", "HR", "Sales").
-    *   **Job Type Parsing:** Improve the extraction and utilization of the `job_type` field, as most jobs are currently "Not specified", which can help filter for "Intern" or "Full Time" roles.
-4.  **Monitoring & Logging:** Enhance logging to pinpoint the exact step where delays occur. Consider external monitoring to alert you immediately if the script fails.
+1.  **Address Glassdoor Stability:**
+    *   **Retry Mechanism:** Implement a robust retry mechanism with exponential backoff for network-related errors (like the connection timeout).
+    *   **Proxy Rotation:** If timeouts persist, consider using a pool of proxies to bypass potential IP blocking or rate limiting from Glassdoor.
+    *   **Increase Timeout:** Experiment with a slightly longer timeout for Glassdoor requests if your internet connection is occasionally unstable.
+2.  **Refine "Not specified" Data:**
+    *   **Tanqeeb Parsing:** Several jobs from Tanqeeb have "Not specified" for company, location, or job type. Investigate if these fields can be extracted more reliably from the Tanqeeb job pages. The `Apply on the Job Website,N/A,N/A` entry also needs better handling.
+3.  **Enhance Relevance Filtering/Scoring:**
+    *   **Explicit Level Keywords:** Strengthen keyword matching for "Junior," "Entry-level," "Intern," "Fresh Graduate" within the job description if possible, and explicitly penalize "Senior," "Lead," "Manager."
+    *   **Skill Weighting:** Ensure your core skills (Python, SQL, Machine Learning, Deep Learning, Computer Vision) are heavily weighted in the relevance score. If not already, consider adding "SQL" as an explicit search term.
+    *   **LinkedIn Posts Specificity:** LinkedIn posts can be broad. Consider if jobs from `linkedin_posts` containing multiple different roles (e.g., "Software Full Stack Developers, AI Engineers & Data Engineers") could be parsed into individual listings or if their relevance score needs to be further adjusted to reflect potential ambiguity.
+    *   **Non-AI/ML Roles:** While low-scoring, some irrelevant roles like "Graphic Designer," "Product Owner," "Application Security Engineer," "Full Stack Developer" (without specific AI/ML context) still appear. Consider stricter filtering for job titles that don't contain any of your primary keywords.
+4.  **Geographic Filtering:**
+    *   For non-remote roles, strictly filter out any positions not located in Egypt to ensure maximum relevance for your local search. The "YPP, Artificial Intelligence and Operations Research Analysis" in Germany/US/Netherlands, for instance, has a low score but is entirely irrelevant geographically for a non-remote role.
+5.  **Date Posted Filtering:** Consider adding an option to filter jobs posted within a specific timeframe (e.g., last 7 or 14 days) to focus on fresh opportunities.

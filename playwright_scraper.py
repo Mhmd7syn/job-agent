@@ -8,7 +8,10 @@ from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 import sys
+import logging
 from llm_parser import extract_post_with_ai, extract_job_page_with_ai, extract_feed_posts_with_ai
+
+LOGIN_FAILED = False
 
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
@@ -19,13 +22,18 @@ USER_DATA_DIR = os.path.join(BASE_DIR, "playwright_profile")
 load_dotenv(dotenv_path=env_path)
 
 def auto_login_if_needed(page):
+    global LOGIN_FAILED
+    if LOGIN_FAILED:
+        logging.warning("⚠️ Skipping auto-login attempt because a previous attempt failed in this session.")
+        return
+
     email = os.getenv("LINKEDIN_EMAIL")
     password = os.getenv("LINKEDIN_PASSWORD")
     
     # Check if we are on a login page or authwall, or if login fields exist
     if "login" in page.url or "authwall" in page.url or page.query_selector('input[id="username"]') or page.query_selector('input[id="session_key"]'):
         if email and password:
-            print("🔐 Playwright is logged out. Attempting auto-login...")
+            logging.info("🔐 Playwright is logged out. Attempting auto-login...")
             try:
                 page.goto("https://www.linkedin.com/login")
                 page.wait_for_load_state("domcontentloaded")
@@ -38,17 +46,30 @@ def auto_login_if_needed(page):
                 elif page.query_selector('input[id="session_key"]'):
                     page.fill('input[id="session_key"]', email)
                     page.fill('input[id="session_password"]', password)
-                    page.click('button[data-id="sign-in-form__submit-btn"]') or page.click('button[type="submit"]')
+                    try:
+                        page.click('button[data-id="sign-in-form__submit-btn"]', timeout=3000)
+                    except:
+                        page.click('button[type="submit"]', timeout=3000)
                     
+                try:
+                    page.wait_for_url(lambda url: "login" not in url and "checkpoint" not in url and "challenge" not in url, timeout=10000)
+                except:
+                    pass
                 time.sleep(random.uniform(3, 5))
-                if "challenge" in page.url:
-                    print("⚠️ LinkedIn is asking for a security check. Please run linkedin_login.py manually.")
+                
+                if "challenge" in page.url or "checkpoint" in page.url:
+                    logging.warning("⚠️ LinkedIn is asking for a security check. Please run linkedin_login.py manually.")
+                    LOGIN_FAILED = True
+                elif "login" in page.url or "authwall" in page.url:
+                    logging.error("❌ Auto-login failed (possibly due to headless mode). Please run linkedin_login.py manually.")
+                    LOGIN_FAILED = True
                 else:
-                    print("✅ Auto-login submitted!")
+                    logging.info("✅ Auto-login submitted and seems successful!")
             except Exception as e:
-                print(f"⚠️ Auto-login error: {e}")
+                logging.error(f"⚠️ Auto-login error: {e}")
+                LOGIN_FAILED = True
         else:
-            print("❌ Playwright is logged out but LINKEDIN_EMAIL/LINKEDIN_PASSWORD not in .env")
+            logging.error("❌ Playwright is logged out but LINKEDIN_EMAIL/LINKEDIN_PASSWORD not in .env")
 
 
 
@@ -128,7 +149,7 @@ def scrape_linkedin_posts_playwright(keyword):
             return page_text
                     
         except Exception as e:
-            print(f"⚠️ Error during Playwright execution: {e}")
+            logging.error(f"⚠️ Error during Playwright execution: {e}")
         finally:
             context.close()
         
@@ -160,7 +181,7 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
             seconds_old = hours_old * 3600
             url += f"&f_TPR=r{seconds_old}"
             
-        print(f"🔍 Searching LinkedIn Jobs (Playwright): {term} in {location}")
+        logging.info(f"🔍 Searching LinkedIn Jobs (Playwright): {term} in {location}")
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=40000)
             time.sleep(random.uniform(3, 5))
@@ -201,7 +222,6 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
             for job_url in links:
                 try:
                     # Retry loop to handle LinkedIn connection drops or timeouts
-                    import logging
                     for attempt in range(2):
                         try:
                             page.goto(job_url, wait_until="domcontentloaded", timeout=25000)
@@ -239,7 +259,7 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
                                 'description': ai_data.get('description', ''),
                                 'site': 'linkedin',
                                 'is_remote': 'remote' in str(ai_data.get('location', '')).lower() or 'remote' in location.lower(),
-                                'date_posted': datetime.date.today(),
+                                'date_posted': ai_data.get('date_posted') or datetime.date.today(),
                                 'job_type': 'Not specified'
                             })
                     else:
@@ -281,12 +301,11 @@ def get_posts_as_dataframe(term, loc):
                     'job_url': job.get('job_url') or f"https://www.linkedin.com/search/results/content/?keywords={keyword}", 
                     'description': job.get('description', ''),
                     'is_remote': 'remote' in str(job.get('location', '')).lower(),
-                    'date_posted': date.today(),
+                    'date_posted': job.get('date_posted') or date.today(),
                     'job_type': 'Not specified',
                     'site': 'linkedin_posts'
                 })
     else:
-        import logging
         logging.warning(f"⚠️ Error from Gemini: {ai_data.get('error') if ai_data else 'Unknown'}")
             
     if valid_jobs:

@@ -4,6 +4,7 @@ import time
 import logging
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(BASE_DIR, '.env')
@@ -23,8 +24,10 @@ class PostExtractionSchema(BaseModel):
     title: str = Field(default="Not specified")
     company: str = Field(default="Not specified")
     location: str = Field(default="Not specified")
+    job_type: str = Field(default="Not specified", description="The job type (e.g., Full-time, Part-time, Internship).")
     description: str = Field(default="")
     job_url: str = Field(default="", description="The Post URL provided at the top of the post. Do NOT use application links found inside the post.")
+    date_posted: str = Field(default="", description="The date the job was posted in YYYY-MM-DD format. Calculate using today's date if relative.")
 
 class MultiplePostsExtractionSchema(BaseModel):
     jobs: list[PostExtractionSchema]
@@ -34,13 +37,16 @@ class JobPageExtractionSchema(BaseModel):
     title: str = Field(default="Unknown")
     company: str = Field(default="Unknown")
     location: str = Field(default="Unknown")
+    job_type: str = Field(default="Not specified", description="The job type (e.g., Full-time, Part-time, Internship).")
     description: str = Field(default="")
+    date_posted: str = Field(default="", description="The date the job was posted in YYYY-MM-DD format. Calculate using today's date if relative.")
 
 def extract_post_with_ai(post_text):
     prompt = f"""
     You are an expert HR assistant. Read the following LinkedIn post and extract the job details.
     If the post is NOT a job listing (e.g. just a generic post, an article, or someone looking for a job), set "is_job" to false.
     If it IS a job listing, extract the job details, including the Post URL if it is provided. Do NOT extract application links from inside the post text for the job_url.
+    Today's date is {datetime.date.today().isoformat()}. If the post says '1 week ago', subtract 7 days from today.
     
     Post:
     {post_text}
@@ -76,6 +82,7 @@ def extract_feed_posts_with_ai(feed_text):
     For each job, extract the title, company, location, the post description text, and the job_url (Post URL).
     CRITICAL: For job_url, you MUST extract the 'Post URL' provided at the beginning of each post block. Do NOT extract links from within the post text (like application links).
     Ignore generic posts, articles, and people looking for jobs.
+    Today's date is {datetime.date.today().isoformat()}. Use it to calculate YYYY-MM-DD from relative times like '1w', '2d', '1 week ago'.
     
     Feed Text:
     {feed_text}
@@ -109,6 +116,7 @@ def extract_job_page_with_ai(page_text):
     prompt = f"""
     You are an expert HR assistant. Read the following raw text extracted from a job board webpage and extract the structured job details.
     Ignore navigation menus, footers, and generic UI text. Focus on the actual job posting.
+    Today's date is {datetime.date.today().isoformat()}. Use it to calculate YYYY-MM-DD from relative times like '1w', '2d', '1 week ago'.
     
     Webpage Text:
     {page_text}
