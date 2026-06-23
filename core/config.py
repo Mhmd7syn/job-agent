@@ -78,7 +78,7 @@ EXCLUDE_KEYWORDS = ["senior", "lead", "manager", "principal", "staff", "head", "
  "architect", "supervisor", "executive", "founding", "finance", "project management", "product", "marketing", "sales", "ms", "phd",
  "master", "graduate", "postgraduate"]
 
-EXCLUDED_COMPANIES = ["consulting firm"]
+EXCLUDED_COMPANIES = []
 FAVORITE_COMPANIES = [
     # Multinationals & Big Tech
     "microsoft", "valeo", "ibm", "vodafone", "orange", "amazon", "dell", "siemens", "teradata",
