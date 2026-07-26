@@ -8,3 +8,7 @@ pydantic
 tqdm
 curl_cffi
 playwright-stealth
+pywebview
+fastapi
+uvicorn
+cryptography

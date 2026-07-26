@@ -310,7 +310,11 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                 logging.error(f"⚠️ Failed to parse job {job_url}: {e}")
 
     except Exception as e:
-        logging.error(f"⚠️ LinkedIn Search failed for {term}: {e}")
+        err_msg = str(e)
+        if "ERR_CONNECTION_ABORTED" in err_msg or "ERR_CONNECTION_CLOSED" in err_msg:
+            logging.error(f"⚠️ LinkedIn Search failed for '{term}' - Connection aborted. This usually means LinkedIn blocked the headless browser. Try updating login session/cookies. Error: {e}")
+        else:
+            logging.error(f"⚠️ LinkedIn Search failed for {term}: {e}")
 
     return pd.DataFrame(jobs)
 

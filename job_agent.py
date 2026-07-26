@@ -1,4 +1,4 @@
-from core.telegram_notifier import send_telegram_message
+from core.database import save_job, get_jobs_by_status, get_liked_jobs, cleanup_old_jobs
 from scrapers.glassdoor_scraper import scrape_glassdoor
 from scrapers.bayt_scraper import scrape_bayt
 from scrapers.tanqeeb_scraper import scrape_tanqeeb
@@ -8,7 +8,8 @@ from core.config import (
     EXCLUDE_KEYWORDS, EXCLUDED_COMPANIES, FAVORITE_COMPANIES,
     RESUME_KEYWORDS, NICE_TO_HAVE_SKILLS, GLOBAL_REMOTE_KEYWORDS,
     RESTRICTED_REMOTE_KEYWORDS, TARGET_LOCATIONS, TARGET_LEVELS,
-    MAX_JOBS_TO_SEND, ARABIC_SEARCH_TERMS, SITES_FOR_ARABIC
+    MAX_JOBS_TO_SEND, ARABIC_SEARCH_TERMS, SITES_FOR_ARABIC,
+    ROLES
 )
 import pandas as pd
 import sys
@@ -126,14 +127,14 @@ def main():
                         if res is not None and not res.empty:
                             local_jobs_list.append(res)
                     except Exception as e:
-                        logging.error(f"⚠️ Playwright jobs failure: {e}")
+                        logging.error(f"⚠️ Playwright jobs scraper failed for '{term}' in '{loc}': {e}")
                 if get_posts_as_dataframe:
                     try:
                         res = retry_scraper(get_posts_as_dataframe, term, loc, li_page)
                         if res is not None and not res.empty:
                             local_jobs_list.append(res)
                     except Exception as e:
-                        logging.error(f"⚠️ Playwright posts failure: {e}")
+                        logging.error(f"⚠️ Playwright posts scraper failed for '{term}' in '{loc}': {e}")
 
             for future in concurrent.futures.as_completed(futures):
                 try:
@@ -246,11 +247,28 @@ def main():
 
     from datetime import date
 
+    liked_jobs = get_liked_jobs()
+    liked_companies = {str(j['company']).lower() for j in liked_jobs if j.get('company')}
+    liked_titles_words = set()
+    for j in liked_jobs:
+        if j.get('title'):
+            for word in re.findall(r'\b\w+\b', str(j['title']).lower()):
+                if len(word) > 3:
+                    liked_titles_words.add(word)
+
     def get_relevance_score(row):
         title = str(row.get('title', '')).lower()
         desc = str(row.get('description', '')).lower()
         company = str(row.get('company', '')).lower()
         score = 0
+        
+        # 0. Smart Feedback Loop (Boost from previously Liked Jobs)
+        if company and company in liked_companies:
+            score += 20
+        title_words = set(re.findall(r'\b\w+\b', title))
+        shared_words = title_words.intersection(liked_titles_words)
+        if shared_words:
+            score += len(shared_words) * 3
 
         # 1. Negative Filtering: Penalize for unwanted keywords (word-boundary safe)
         # Check title (heavy), job_type / career_level (medium), description (light)
@@ -288,6 +306,27 @@ def main():
                 score += 10
             elif term in raw_desc:
                 score += 3
+
+        # Match Role-specific Rules
+        max_exp_allowed = 3 # default fallback
+        
+        for role in ROLES:
+            role_terms = [t.lower() for t in role.get('english_terms', [])] + [t.lower() for t in role.get('arabic_terms', [])]
+            if any(term in title for term in role_terms):
+                max_exp_allowed = role.get('max_years_experience', 3)
+                break
+        
+        # Years of experience check
+        exp_match = re.search(r'(\d+)(?:\+|-)?\s*years?(?:\s+of)?\s+experience', desc)
+        if not exp_match:
+            exp_match = re.search(r'experience.*?:.*?(?<!\w)(\d+)\+?', desc)
+        if exp_match:
+            try:
+                years = int(exp_match.group(1))
+                if years > max_exp_allowed:
+                    score -= 50
+            except:
+                pass
 
         # 3. Resume Match Scoring (High priority)
         for kw in RESUME_KEYWORDS:
@@ -409,99 +448,45 @@ def main():
 
                 logging.warning(f"⚠️ Failed to delete old job file {f}: {e}")
 
-    # --- STATE MANAGEMENT (Prevent Duplicate Alerts) ---
-
-    STATE_FILE = os.path.join(_OUTPUT_DIR, "sent_jobs.json")
-    sent_jobs = {}
-
-    if os.path.exists(STATE_FILE):
+        # Clean up old jobs from SQLite database based on job_retention_days
         try:
-            with open(STATE_FILE, "r") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    # Migration from old format to new format
-                    sent_jobs = {}
-                else:
-                    sent_jobs = data
-        except Exception:
-            pass
+            with open(os.path.join(os.path.dirname(__file__), 'core', 'config.json'), 'r', encoding='utf-8') as f:
+                c_data = json.load(f)
+                retention_days = c_data.get('job_retention_days', 90)
+            deleted = cleanup_old_jobs(days=retention_days)
+            logging.info(f"🧹 Cleaned up {deleted} jobs older than {retention_days} days from the database.")
+        except Exception as e:
+            logging.error(f"⚠️ Failed to clean up old jobs from database: {e}")
 
-    # Remove jobs older than 45 days so they can be re-applied if reopened
-    current_time = datetime.datetime.now()
-    jobs_to_keep = {}
-    for job_id, date_str in sent_jobs.items():
-        try:
-            job_date = datetime.datetime.fromisoformat(date_str)
-            if (current_time - job_date).days <= 45:
-                jobs_to_keep[job_id] = date_str
-        except Exception:
-            pass
-    sent_jobs = jobs_to_keep
+    # --- STATE MANAGEMENT (SQLite Database) ---
 
-    # Filter out already sent jobs using title and company
     if not filtered_jobs.empty:
-        # Normalize key: collapse whitespace/punctuation so minor variations don't cause re-alerts
         def _make_job_id(title, company):
             t = re.sub(r'[^\w\s]', ' ', str(title).lower())
             c = re.sub(r'[^\w\s]', ' ', str(company).lower())
             return re.sub(r'\s+', ' ', t).strip() + '|' + re.sub(r'\s+', ' ', c).strip()
+            
         filtered_jobs['job_id'] = filtered_jobs.apply(
             lambda r: _make_job_id(r['title'], r['company']), axis=1
         )
-        filtered_jobs = filtered_jobs[~filtered_jobs['job_id'].isin(sent_jobs.keys())]
-
+        
+        # Filter out already applied or not related jobs
+        applied_or_rejected = get_jobs_by_status(['applied', 'not_related'])
+        exclude_ids = {j['job_id'] for j in applied_or_rejected}
+        filtered_jobs = filtered_jobs[~filtered_jobs['job_id'].isin(exclude_ids)]
+        
     if filtered_jobs.empty:
-
-        send_telegram_message("📉 <b>Job Agent Report</b>\nNo new jobs matched your specific keywords this week.")
+        logging.info("No new jobs matched after database filtering.")
         return
 
-    top_jobs = filtered_jobs.head(MAX_JOBS_TO_SEND)
+    # Save to database
+    for index, row in filtered_jobs.iterrows():
+        job_dict = row.to_dict()
+        if 'date_posted' in job_dict and pd.notna(job_dict['date_posted']):
+            job_dict['date_posted'] = str(job_dict['date_posted'])
+        save_job(job_dict)
 
-    message = f"🚀 <b>Weekly Job Agent Report</b>\n<i>Found {len(filtered_jobs)} matches. Here are the top picks:</i>\n\n"
-
-    for index, row in top_jobs.iterrows():
-        title = html.escape(str(row['title']))
-        company = html.escape(str(row['company']))
-        location = html.escape(str(row.get('location', 'Location N/A')))
-
-        job_type = str(row.get('job_type', 'Not specified')).title()
-        if job_type.lower() == 'nan' or not job_type.strip():
-            job_type = 'Not specified'
-
-        # Date posted — format nicely if available
-        raw_date = row.get('date_posted')
-        if raw_date and str(raw_date) not in ('nan', 'None', ''):
-            try:
-                date_str = pd.to_datetime(raw_date).strftime('%d %b %Y')
-            except Exception:
-                date_str = str(raw_date)
-        else:
-            date_str = 'Date N/A'
-
-        site = html.escape(str(row.get('site', '')).replace('_', ' ').title())
-        link = str(row.get('job_url', '')).strip()
-
-        message += f"💼 <b>{title}</b>\n"
-        message += f"🏢 {company} | 📍 {location}\n"
-        message += f"⏱️ {html.escape(job_type)} | 📅 {date_str} | 🌐 {site}\n"
-
-        if link.startswith('http://') or link.startswith('https://'):
-            message += f"🔗 <a href='{link}'>View Job</a>\n"
-
-        message += "━━━━━━━━━━━━━━━━━━━━\n"
-
-    send_telegram_message(message)
-
-    # Save the new jobs back to the state file (use same normalized key)
-    for index, row in top_jobs.iterrows():
-        job_id = _make_job_id(row['title'], row['company'])
-        sent_jobs[job_id] = current_time.isoformat()
-
-    try:
-        with open(STATE_FILE, "w") as f:
-            json.dump(sent_jobs, f, indent=4)
-    except Exception as e:
-        logging.error(f"⚠️ Failed to save state file: {e}")
+    logging.info(f"Saved {len(filtered_jobs)} jobs to the database.")
 
 
 if __name__ == "__main__":
@@ -576,6 +561,11 @@ if __name__ == "__main__":
                 f.write("\n")
 
             logging.info("AI evaluation saved to evaluation_brief.txt successfully.")
+            
+            # 4. Auto-tune config based on run evaluation
+            from core.config_tuner import analyze_run_and_tune_config
+            analyze_run_and_tune_config(logs_content, eval_result)
+            
         except Exception as e:
             logging.error(f"Failed to generate or save AI evaluation: {e}")
 

@@ -21,8 +21,8 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None):
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                # Use impersonate to mimic a Safari browser and bypass Cloudflare
-                response = requests.get(url, impersonate="safari15_5", timeout=30)
+                # Use impersonate to mimic a modern Chrome browser to bypass Cloudflare
+                response = requests.get(url, impersonate="chrome110", timeout=30)
                 if response.status_code == 200:
                     break
             except Exception as e:
@@ -32,7 +32,11 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None):
             time.sleep(2 ** attempt)
         
         if not response or response.status_code != 200:
-            logging.error(f"⚠️ Indeed Scraper returned status {response.status_code if response else 'Unknown'} after {max_retries} attempts.")
+            status = response.status_code if response else 'Unknown'
+            if status == 403:
+                logging.error(f"⚠️ Indeed Scraper blocked by Cloudflare (Status 403) after {max_retries} attempts.")
+            else:
+                logging.error(f"⚠️ Indeed Scraper returned status {status} after {max_retries} attempts.")
             return pd.DataFrame()
 
         from bs4 import BeautifulSoup

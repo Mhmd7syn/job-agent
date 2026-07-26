@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="/static/marked.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="header-content" style="display: flex; align-items: center; gap: 1rem;">
+                <img src="/static/logo.png" alt="Job Agent Logo" style="height: 3.5rem; width: 3.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                <div>
+                    <h1 style="margin-bottom: 0.25rem;">Job Agent <span class="highlight">Dashboard</span></h1>
+                    <p style="margin-top: 0;">AI-powered matching to find your perfect role.</p>
+                </div>
+            </div>
+            <div class="stats" style="flex-wrap: wrap; justify-content: flex-end;">
+        <div style="display: flex; flex-direction: column; align-items: stretch; gap: 0.25rem;">
+            <button class="btn btn-primary" id="run-scraper-btn" onclick="runScraper()" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; height: 100%;">
+                <i class="fa-solid fa-play" id="scraper-icon"></i><i class="fa-solid fa-spinner fa-spin hidden" id="scraper-spinner"></i><span id="scraper-text">Search for New Jobs</span>
+            </button>
+            <span id="last-run-text" style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">Last Run: Checking...</span>
+        </div>
+        <button class="btn btn-secondary" onclick="showSettings()"><i class="fa-solid fa-gear"></i>Settings</button>
+        <button class="btn btn-secondary" onclick="showSystemStatus()"><i class="fa-solid fa-server"></i>System Status</button>
+        <div class="stat-box" style="white-space: nowrap;">
+            <i class="fa-solid fa-briefcase"></i>
+            <span id="job-count">0</span> Pending Jobs
+        </div>
+    </div>
+        </header>
+
+        <!-- System Status Modal -->
+        <div id="status-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fa-solid fa-robot"></i> System & AI Status</h2>
+                    <button class="close-btn" onclick="hideSystemStatus()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="modal-body">
+                    <h3>Latest AI Evaluation</h3>
+                    <div id="eval-text" class="markdown-content" style="background: rgba(0,0,0,0.3); padding: 1.5rem; border-radius: 0.75rem; color: var(--text-main); font-size: 0.95rem; line-height: 1.6; border: 1px solid var(--card-border);">Loading...</div>
+                    <h3>Recent Logs</h3>
+                    <pre id="log-text" style="max-height: 300px; overflow-y: auto;">Loading...</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content settings-content">
+                <div class="modal-header">
+                    <h2><i class="fa-solid fa-gear"></i> AI Matching Settings</h2>
+                    <button class="close-btn" onclick="hideSettings()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="modal-body">
+                    
+                    <h3 style="margin-bottom: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">Target Roles</h3>
+                    <div id="roles-container" style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem;">
+                        <!-- Dynamic roles will be injected here -->
+                    </div>
+                    <button class="btn btn-secondary" onclick="addRoleUI()" style="margin-bottom: 2rem;"><i class="fa-solid fa-plus"></i>Add Another Role</button>
+                    
+                    <h3 style="margin-bottom: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">Resume & Skills</h3>
+                    <label>Resume Keywords (Core Skills)</label>
+                    <div id="config-resume-keywords"></div>
+                    
+                    <label>Nice to Have Skills</label>
+                    <div id="config-nice-skills"></div>
+                    
+                    <label>Exclude Keywords (Negative Skills/Titles)</label>
+                    <div id="config-exclude-keywords"></div>
+                    
+                    <label>Favorite Companies</label>
+                    <div id="config-favorite-companies"></div>
+                    
+                    <label>Excluded Companies</label>
+                    <div id="config-excluded-companies"></div>
+
+                    <label>Job Retention Days (Auto-delete old jobs)</label>
+                    <input type="number" id="config-retention-days" min="1" max="365" class="input-field">
+                </div>
+                <div class="modal-footer" style="padding: 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.2);">
+                    <span id="last-reviewed-text" style="color: var(--text-muted); font-size: 0.85rem;"></span>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-secondary" onclick="hideSettings()"><i class="fa-solid fa-xmark"></i>Cancel</button>
+                        <button class="btn btn-primary" onclick="saveSettings()"><i class="fa-solid fa-floppy-disk"></i>Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="settings-warning" class="warning-banner hidden">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            It has been over 90 days since you reviewed your AI matching preferences. <a href="#" onclick="showSettings()">Please review them to ensure the best results.</a>
+        </div>
+
+        <main>
+            <div class="controls-bar">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="search-input" placeholder="Search jobs or companies...">
+                </div>
+                <div class="filters">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-main); font-size: 0.9rem; cursor: pointer; background: rgba(0, 0, 0, 0.3); padding: 0.6rem 1rem; border-radius: 0.5rem; border: 1px solid var(--card-border);">
+                        <input type="checkbox" id="show-not-related" style="cursor: pointer; width: 1rem; height: 1rem;">
+                        Show Not Related
+                    </label>
+                    <select id="applied-filter">
+                        <option value="all">Any Application Status</option>
+                        <option value="applied">Already Applied</option>
+                        <option value="not_applied" selected>Not Yet Applied</option>
+                    </select>
+                    <select id="role-filter">
+                        <option value="all" selected>All Roles</option>
+                    </select>
+                    <select id="type-filter">
+                        <option value="all" selected>All Types</option>
+                        <option value="Full-time">Full-time</option>
+                        <option value="Part-time">Part-time</option>
+                        <option value="Contract">Contract / Freelance</option>
+                        <option value="Internship">Internship</option>
+                    </select>
+                    <select id="setup-filter">
+                        <option value="all" selected>All Setups</option>
+                        <option value="remote">Remote</option>
+                        <option value="hybrid">Hybrid</option>
+                        <option value="onsite">On-site</option>
+                    </select>
+                    <select id="site-filter">
+                        <option value="all">All Sites</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="wuzzuf">Wuzzuf</option>
+                        <option value="glassdoor">Glassdoor</option>
+                        <option value="bayt">Bayt</option>
+                        <option value="tanqeeb">Tanqeeb</option>
+                    </select>
+                    <select id="sort-filter">
+                        <option value="score">Sort: Top Match</option>
+                        <option value="date_new">Sort: Newest First</option>
+                        <option value="date_old">Sort: Oldest First</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="loader" class="loader-container">
+                <div class="spinner"></div>
+                <p>Loading your jobs...</p>
+            </div>
+
+            <div id="empty-state" class="empty-state hidden">
+                <i class="fa-solid fa-check-circle"></i>
+                <h2>All caught up!</h2>
+                <p>You've reviewed all pending jobs. Check back after the next scrape.</p>
+            </div>
+
+            <div id="jobs-grid" class="jobs-grid hidden">
+                <!-- Job cards will be injected here by JS -->
+            </div>
+            
+            <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
+                <button id="show-more-btn" class="btn btn-secondary hidden" onclick="loadMoreJobs()" style="margin: 0 auto; padding: 1rem 3rem; font-size: 1rem; border-radius: 9999px;">
+                    <i class="fa-solid fa-chevron-down"></i>Load More Jobs
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

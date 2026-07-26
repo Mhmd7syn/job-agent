@@ -1,97 +1,58 @@
 import os
+import json
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root
 env_path = os.path.join(BASE_DIR, '.env')
 load_dotenv(dotenv_path=env_path)
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-LINKEDIN_EMAIL = os.getenv("LINKEDIN_EMAIL")
-LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD")
+def decrypt_value(encrypted_val):
+    if not encrypted_val:
+        return None
+    try:
+        from cryptography.fernet import Fernet
+        appdata = os.getenv('APPDATA') or os.path.expanduser('~')
+        key_path = os.path.join(appdata, 'JobAgent', 'secret.key')
+        if not os.path.exists(key_path):
+            return encrypted_val # fallback if not encrypted or key missing
+            
+        with open(key_path, 'rb') as kf:
+            key = kf.read()
+            
+        fernet = Fernet(key)
+        return fernet.decrypt(encrypted_val.encode()).decode()
+    except Exception:
+        return encrypted_val # fallback if it wasn't encrypted to begin with
 
-SEARCH_TERMS = [
-    # Core AI/ML
-    "AI Engineer", "Machine Learning Engineer", "Computer Vision", "NLP",
-    
-    # Core Data
-    "Data Scientist", "Data Analyst", 
-    
-    # Instructing
-    "AI Instructor", "Python Instructor", "Data Science Instructor", "Programming Instructor", "Data Analyst Instructor",
-]
+LINKEDIN_EMAIL = decrypt_value(os.getenv("LINKEDIN_EMAIL"))
+LINKEDIN_PASSWORD = decrypt_value(os.getenv("LINKEDIN_PASSWORD"))
+# If GEMINI_API_KEY is needed later in config, add it here. Otherwise, update it in os.environ for other modules.
+if os.getenv("GEMINI_API_KEY"):
+    os.environ["GEMINI_API_KEY"] = decrypt_value(os.getenv("GEMINI_API_KEY"))
 
-# Arabic terms only make sense on Arabic-first platforms (e.g. Wuzzuf).
-# Keeping them separate avoids wasting search iterations on English-only sites.
-ARABIC_SEARCH_TERMS = [
-    "مهندس ذكاء اصطناعي", "عالم بيانات", "محلل بيانات", "محاضر بايثون", "مدرب برمجة"
-]
+
+with open(os.path.join(os.path.dirname(__file__), 'config.json'), 'r', encoding='utf-8') as f:
+    _config_data = json.load(f)
+
+ROLES = _config_data.get("ROLES", [])
+SEARCH_TERMS = []
+ARABIC_SEARCH_TERMS = []
+
+for role in ROLES:
+    SEARCH_TERMS.extend(role.get("english_terms", []))
+    ARABIC_SEARCH_TERMS.extend(role.get("arabic_terms", []))
+
+if not SEARCH_TERMS:
+    SEARCH_TERMS = _config_data.get("SEARCH_TERMS", [])
+if not ARABIC_SEARCH_TERMS:
+    ARABIC_SEARCH_TERMS = _config_data.get("ARABIC_SEARCH_TERMS", [])
 SITES_FOR_ARABIC = ["wuzzuf", "linkedin"]  # Sites where Arabic terms are submitted
 
-RESUME_KEYWORDS = [
-    # Programming & Core
-    "python", "sql", "java", "c++", "oop", "data structures",
-    
-    # ML & Deep Learning
-    "artificial intelligence", "ai", "machine learning", "ml", "deep learning", "tensorflow", "keras", 
-    "pytorch", "scikit-learn", "random forest", "smote", "shap",
-    
-    # Data Science & Analytics
-    "pandas", "numpy", "matplotlib", "seaborn", "feature engineering", 
-    "exploratory data analysis", "eda", "minmaxscaler", "multicollinearity", "vif",
-    
-    # Computer Vision
-    "computer vision", "opencv", "cnn", "yolo", "semantic segmentation", 
-    "deeplabv3", "resnet", "clip", "vit", "efficientnet", "inception", "albumentations",
-    
-    # NLP & GenAI
-    "nlp", "nltk", "tf-idf", "tokenizer", "llm", "transformers", "huggingface",
-    
-    # Deployment & Tools
-    "flask", "fastapi", "restful api", "api", "git", "github", "jupyter", "linux"
-]
-
-NICE_TO_HAVE_SKILLS = [
-    # General & Concepts
-    'software', 'backend', 'data engineering',
-    
-    # LLMs & Generative AI
-    'genai', 'prompt engineering', 'langchain', 'llamaindex', 'rag', 'openai',
-    
-    # ML & NLP Ecosystem
-    'xgboost', 'lightgbm', 'spacy', 'scipy', 'statistics', 'a/b testing',
-    
-    # Business Intelligence & Analytics
-    'power bi', 'tableau', 'excel', 'looker', 'qlik', 'dax',
-    
-    # Cloud, MLOps & Deployment
-    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'mlops', 'ci/cd',
-    
-    # Big Data & Databases
-    'spark', 'airflow', 'snowflake', 'bigquery', 'nosql', 'mongodb', 'postgresql', 'etl',
-    
-    # Mentorship & Training
-    'programming', 'coding', 'instructor', 'trainer', 'teacher', 'mentor'
-]
-
-EXCLUDE_KEYWORDS = ["senior", "lead", "manager", "principal", "staff", "head", "director", "vp",
- "architect", "supervisor", "executive", "founding", "finance", "project management", "product", "marketing", "sales", "ms", "phd",
- "master", "graduate", "postgraduate"]
-
-EXCLUDED_COMPANIES = []
-FAVORITE_COMPANIES = [
-    # Multinationals & Big Tech
-    "microsoft", "valeo", "ibm", "vodafone", "orange", "amazon", "dell", "siemens", "teradata",
-    
-    # Top Egyptian Tech & Data Teams
-    "instabug", "swvl", "fawry", "talabat", "mnt-halan", "robusta", "e-finance", "cib",
-    
-    # Top AI & Data Science Specific Companies in Egypt
-    "synapse analytics", "dxwand", "avidbeam", "affectiva", "optomatica", "tensor",
-    
-    # Instructing & Training Academies
-    "iti", "information technology institute", "nti", "epsilon ai", "route", "amit", "ischool", "alx"
-]
+RESUME_KEYWORDS = _config_data.get("RESUME_KEYWORDS", [])
+NICE_TO_HAVE_SKILLS = _config_data.get("NICE_TO_HAVE_SKILLS", [])
+EXCLUDE_KEYWORDS = _config_data.get("EXCLUDE_KEYWORDS", [])
+EXCLUDED_COMPANIES = _config_data.get("EXCLUDED_COMPANIES", [])
+FAVORITE_COMPANIES = _config_data.get("FAVORITE_COMPANIES", [])
 
 LOCATION = ["Egypt"]
 TARGET_LOCATIONS = [
