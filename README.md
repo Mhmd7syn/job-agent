@@ -1,119 +1,122 @@
 # Job Agent
 
 > [!WARNING]
-> This project is currently under editing and active development; it may have some problems. If anyone has recommendations or can help in the developing, please send them to me.
+> This project is actively under development and may have occasional issues. Recommendations and contributions are always welcome.
 
-An intelligent, fully automated job scraping and filtering agent designed to find, score, and evaluate the most relevant job postings across multiple platforms based on your personal profile.
+An intelligent, fully automated job scraping and filtering agent that finds, scores, and evaluates the most relevant job postings across multiple platforms — tailored to your personal profile.
 
 ## Overview
 
-Job Agent runs silently in the background (or on demand) to continuously search for jobs across platforms like LinkedIn, Glassdoor, Wuzzuf, Bayt, Tanqeeb, and Indeed. It applies advanced logic and AI evaluation (via Gemini API) to filter out irrelevant posts and present you with high-quality job matches tailored to your specific preferences, resume keywords, and career level.
+Job Agent runs silently in the background (or on demand) to search for jobs across LinkedIn, Glassdoor, Wuzzuf, Bayt, Tanqeeb, and Indeed. It applies a smart scoring engine and AI evaluation (via Gemini API) to surface only the most relevant opportunities — filtered by your resume keywords, preferred locations, seniority level, and career goals.
 
 ## Key Features
 
 - **Multi-Platform Scraping**: Automatically gathers jobs from LinkedIn, Wuzzuf, Glassdoor, Bayt, Tanqeeb, and Indeed.
 - **Smart Filtering & Scoring Engine**: Calculates a `relevance_score` for each job based on your resume keywords, target locations, excluded keywords, and preferred companies.
-- **AI-Powered Evaluation**: Uses Google's Gemini API to evaluate run results, provide a summary brief, and auto-tune your configuration for better future results.
-- **Desktop Dashboard**: Includes a user-friendly desktop application (built with PyWebview and FastAPI) to review top-matching jobs comfortably.
-- **Background Automation**: Sets up a Windows Scheduled Task to run silently in the background (e.g., twice a week).
-- **Auto-Updates**: Automatically pulls the latest code from GitHub to ensure you have the latest features and bug fixes.
-- **Smart Feedback Loop**: Learns from the jobs you "like" to boost similar roles in the future.
+- **AI-Powered Evaluation**: Uses Google's Gemini API to evaluate each run, generate a summary brief, and auto-tune your configuration for better future results.
+- **Desktop Dashboard**: A clean desktop application (built with PyWebview and FastAPI) to browse and act on your top job matches.
+- **Background Automation**: Configures a Windows Scheduled Task to run silently on a schedule (e.g., twice a week).
+- **Auto-Updates**: Automatically pulls the latest code from GitHub on each launch.
+- **Smart Feedback Loop**: Learns from the jobs you "like" to boost similar roles in future runs.
 
 ## UI Preview
 
-### 📽️ Interactive Video Demo
-Watch how to filter curated jobs, switch between platforms, and customize your AI matching settings directly in the dashboard:
+### 📽️ Demo Video
+See how to browse curated jobs, switch platforms, and customize your AI matching settings in the dashboard:
 
 <video src="./Job_agent_Demo.mp4" controls="controls" muted="muted" width="100%">
-  Your browser does not support the video tag. <a href="./Job_agent_Demo.mp4">Click here to view the Job Agent Demo Video</a>.
+  Your browser does not support the video tag. <a href="./Job_agent_Demo.mp4">Click here to watch the Job Agent Demo</a>.
 </video>
 
-*[Click here to watch or download the video demo](./Job_agent_Demo.mp4)*
+*[Watch or download the demo video](./Job_agent_Demo.mp4)*
 
 ### 📸 Dashboard Preview
 ![Dashboard Photo](./Dashboard_Photo.png)
 
 ## Prerequisites
 
-- **Python 3.9+** must be installed and added to your system `PATH`.
-- **Windows OS** (due to batch scripts, desktop app bindings, and scheduled tasks).
+- **Python 3.9+** installed and added to your system `PATH`.
+- **Windows OS** (required for the desktop app, scheduled tasks, and automation scripts).
 
-## How to Setup (Graphical 1-Click Installation)
+## Setup — Graphical Installation
 
-### Zero-Configuration Standalone Setup
-You do **not** need to manually clone or download the GitHub repository! 
-1. Download simply ONE file: **[Setup_Job_Agent.bat](https://raw.githubusercontent.com/Mhmd7syn/job-agent/main/Setup_Job_Agent.bat)** (or `setup_ui.pyw`) to your computer.
-2. Double-click the downloaded setup file.
-3. A sleek, dark-mode **GUI Installation Wizard** will launch and allow you to:
-   - **📁 Choose Installation Directory**: Pick exactly where on your machine you want Job Agent installed via a simple "Browse..." selector. The wizard automatically downloads and sets up all repository files directly in your chosen folder!
-   - **Lightweight Auto-Updates**: Initializes shallow Git auto-updates (`--depth=1`) to keep your agent upgraded effortlessly.
-   - **Python Environment**: Automatically sets up an isolated Python virtual environment (`venv`) and cleanly installs dependencies.
-   - **📄 AI Smart CV Ingestion**: Click **"Auto-Tune from My CV / Resume (AI)"** to upload your resume (PDF, DOCX, or TXT). Powered by Gemini AI, the wizard will analyze your career history and automatically populate your target job titles, experience level, primary keywords, and draft your AI matching profile brief in seconds!
-   - **Personalize Job Search & Location**: Review and customize the sample default preferences (AI/Data Science in Egypt) to match your desired geographic locations, cities, seniority levels, and target roles—without modifying the original repository defaults!
-   - **Secure Vault (.env)**: Encrypts and stores optional credentials (LinkedIn & Gemini AI Key) locally using military-grade Fernet encryption.
-   - **Automation**: Configures a Windows Scheduled Task for silent background job scraping and adds a convenient Desktop shortcut.
+### One-File Installation
+No need to clone or download the full repository manually.
 
-### Zero Hardcoded Settings & Dashboard Customization
-Job Agent operates with **100% dynamic, user-configurable settings**. There are **no hardcoded parameters** in the scraping code or backend! All locations, target job sites, seniority levels, remote keywords, scraping intervals, and retention days reside cleanly in `core/config.json`.
-- Open the desktop dashboard at any time and click **Settings** (<i class="fa-solid fa-gear"></i>) to view and modify EVERY scraping parameter live!
-- Inside the dashboard settings, you can also click **"Import Skills & Preferences from CV"** at any time to re-analyze your updated resume and retune your AI matching criteria on the fly!
+1. Download a single file: **[setup_ui.pyw](https://raw.githubusercontent.com/Mhmd7syn/job-agent/main/setup_ui.pyw)**
+2. Double-click it — a sleek, dark-mode **GUI Installation Wizard** will launch.
+3. The wizard handles everything:
+   - **📁 Installation Directory**: Browse and choose where to install. The wizard downloads and sets up all files directly into your chosen folder.
+   - **Python Environment**: Creates an isolated virtual environment (`venv`) and installs all dependencies automatically.
+   - **Lightweight Auto-Updates**: Sets up shallow Git updates (`--depth=1`) so you always stay current effortlessly.
+   - **📄 AI CV Import**: Click **"Auto-Tune from My CV / Resume (AI)"** to upload your resume (PDF, DOCX, or TXT). Gemini AI will analyze it and auto-fill your target roles, experience level, keywords, and profile brief — in seconds.
+   - **Personalize Your Search**: Customize locations, cities, seniority levels, and target roles to match your preferences — without touching any code or repository defaults.
+   - **Secure Credentials**: Stores your LinkedIn and Gemini API key locally using Fernet encryption.
+   - **Automation**: Registers a Windows Scheduled Task for background scraping and creates a Desktop shortcut for easy access.
 
-### How to Uninstall
-To cleanly remove all scheduled tasks, desktop shortcuts, local encryption keys, virtual environments, and scraped databases from your computer, simply double-click **`Uninstall_Job_Agent.bat`** (or `uninstall_ui.pyw`) to launch the automated GUI Uninstaller.
+### Live Settings & Dashboard Customization
+Job Agent has **no hardcoded parameters** — everything is configurable from the dashboard. All locations, job sites, seniority levels, scraping intervals, and retention periods are stored in `core/config.json`.
 
+- Open the dashboard, click **Settings** (⚙) to view and edit every parameter live.
+- Click **"Import Skills & Preferences from CV"** at any time to re-analyze an updated resume and retune your AI matching profile on the fly.
+
+### Uninstallation
+To cleanly remove all scheduled tasks, shortcuts, encryption keys, virtual environments, and scraped data, double-click **`uninstall_ui.pyw`** to launch the GUI Uninstaller.
 
 ## How to Use
 
-### 1. Desktop Application (Dashboard)
-You can launch the dashboard at any time using the **Job Agent** shortcut on your desktop, or by running `Job_Agent.bat`. This will:
-1. Check for any available updates from GitHub.
-2. Start the local server (FastAPI).
-3. Open a desktop window where you can view your curated list of jobs.
-4. **Smart Feedback**: You can interact with the jobs in the dashboard. Marking jobs as "Liked" will feed into the Smart Feedback Loop, boosting the relevance score of similar companies and job titles in future runs.
+### 1. Desktop Dashboard
+Launch the dashboard anytime from the **Job Agent** shortcut on your Desktop. On startup it will:
+1. Check for the latest updates from GitHub.
+2. Start the local FastAPI server.
+3. Open the dashboard window with your curated list of job matches.
+4. **Smart Feedback**: Mark any job as "Liked" to feed the feedback loop — future runs will boost similar roles and companies automatically.
 
-### 2. Background Job Agent (Automated)
-By default, the setup creates a Windows Scheduled Task (named "Weekly Job Agent"). 
-- **What it does**: It wakes up on your chosen days/times, scrapes all configured platforms, filters and scores the jobs, and evaluates the run using AI (if a Gemini key is provided).
-- **Where to find results**: 
-  - **SQLite Database**: `output/jobs_state.db` (used by the dashboard).
-  - **Raw Data**: Top 100 jobs are saved to CSV files in the `output/` folder.
-  - **AI Summary**: Check `output/evaluation_brief.txt` for the Gemini model's evaluation of the latest run.
-- **Changing the Schedule**: Open the Windows "Task Scheduler" app, locate "Weekly Job Agent" in the active tasks list, and modify its triggers.
+### 2. Automated Background Agent
+The setup creates a Windows Scheduled Task called **"Weekly Job Agent"** that runs on your chosen schedule.
+- **What it does**: Scrapes all configured platforms, scores and filters results, then runs an AI evaluation of the run (if a Gemini key is configured).
+- **Where to find results**:
+  - **Dashboard**: The primary way to browse results — always up to date.
+  - **SQLite Database**: `output/jobs_state.db`
+  - **CSV Export**: Top 100 jobs saved to the `output/` folder after each run.
+  - **AI Summary**: `output/evaluation_brief.txt` — Gemini's written evaluation of the latest run.
+- **Changing the Schedule**: Open Windows **Task Scheduler**, find "Weekly Job Agent", and edit its triggers.
 
-### 3. Manual Run (On-Demand)
-If you want to force the agent to search for new jobs immediately without waiting for the background schedule, you do **not** need to use terminal commands!
-Simply open the **Job Agent Dashboard** using your desktop shortcut and click the run button directly within the dashboard user interface to initiate an immediate scan.
+### 3. Manual On-Demand Run
+No need to open a terminal. Simply open the **Job Agent Dashboard** from your Desktop shortcut and click the **Run** button to trigger an immediate job scan.
 
 ## Configuration
 
-The agent is highly customizable. You can adjust your job search preferences across two main files:
+All preferences can be set from the dashboard. For advanced manual tuning, two files are available:
 
-**1. `core/config.json` (Keywords and Roles)**
-Modify this JSON file to adjust:
-- `ROLES`: Your target job roles, including English and Arabic search terms, and max years of experience.
-- `RESUME_KEYWORDS` & `NICE_TO_HAVE_SKILLS`: Skills to boost a job's relevance score.
-- `EXCLUDE_KEYWORDS` & `EXCLUDED_COMPANIES`: Terms and companies to filter out completely.
-- `FAVORITE_COMPANIES`: Companies to boost the relevance score of.
+**`core/config.json` — Keywords & Roles**
+- `ROLES`: Target job titles with English/Arabic search terms and max years of experience.
+- `RESUME_KEYWORDS` & `NICE_TO_HAVE_SKILLS`: Skills that boost a job's relevance score.
+- `EXCLUDE_KEYWORDS` & `EXCLUDED_COMPANIES`: Terms and companies to completely filter out.
+- `FAVORITE_COMPANIES`: Companies whose jobs receive a relevance boost.
 
-**2. `core/config.py` (Locations and Settings)**
-Edit this Python file to configure:
-- `LOCATION` & `TARGET_LOCATIONS`: Your geographic preferences (e.g., specific cities in Egypt).
-- `TARGET_LEVELS`: Seniority levels to look for (e.g., junior, intern).
-- `USER_BRIEF`: A short text description of your profile used by the AI evaluator.
-- Remote work preferences and other scraper settings.
+**`core/config.py` — Locations & General Settings**
+- `LOCATION` & `TARGET_LOCATIONS`: Geographic preferences (e.g., specific cities).
+- `TARGET_LEVELS`: Seniority levels to search for (e.g., junior, intern).
+- `USER_BRIEF`: A short profile description used by the AI evaluator.
+- Remote work preferences and other scraper behavior settings.
 
-## Important Safety Warnings
+## Important Safety Notes
 
-- **LinkedIn Scraping**: Do not run the agent constantly. The default schedule is designed to be safe. Running it too frequently (e.g., every hour) may trigger security blocks or captchas on your LinkedIn account.
-- **Burner Account**: If you are concerned about your primary LinkedIn account, you can create a secondary, empty account just for the script to use. Connections are not required to search for jobs.
+> [!CAUTION]
+> **LinkedIn Scraping**: Do not run the agent too frequently. The default schedule is designed to be safe. Running it excessively (e.g., every hour) may trigger captchas or temporary blocks on your LinkedIn account.
+
+- **Using a secondary account**: If you're concerned about your main LinkedIn profile, consider creating a separate, empty account for the agent to use. No connections are required to search for jobs.
 
 ## Architecture
 
-- **`job_agent.py`**: The core script that orchestrates scrapers, applies the scoring engine, saves results, and triggers the AI evaluation.
-- **`scrapers/`**: Contains the individual modules for each supported job board (Playwright is heavily used for dynamic content).
-- **`core/`**: Contains configuration, database operations (SQLite), and the LLM parsing logic.
-- **`web/`**: Contains the FastAPI server for the desktop application backend.
-- **`desktop_app.pyw`**: Boots the Pywebview window connecting to the FastAPI server.
+| File / Folder | Role |
+|---|---|
+| `job_agent.py` | Core orchestrator — runs scrapers, applies scoring, saves results, triggers AI evaluation |
+| `scrapers/` | Individual scraper modules per job board (heavily uses Playwright for dynamic content) |
+| `core/` | Configuration, SQLite database operations, and LLM parsing logic |
+| `web/` | FastAPI server that powers the desktop dashboard backend |
+| `desktop_app.pyw` | Launches the PyWebview window connected to the FastAPI server |
 
 ## License
 
