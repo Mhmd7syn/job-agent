@@ -61,14 +61,45 @@
                     <button class="close-btn" onclick="hideSettings()"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div class="modal-body">
+                    <div style="background: rgba(59, 130, 246, 0.15); border: 1px dashed var(--accent); padding: 1.2rem; border-radius: 0.75rem; text-align: center; margin-bottom: 1.8rem; display: flex; flex-direction: column; align-items: center; gap: 0.6rem;">
+                        <span style="font-size: 1rem; font-weight: 600; color: var(--text-main);"><i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent); margin-right: 0.5rem;"></i>AI Smart CV Ingestion</span>
+                        <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">Upload your CV or Resume (PDF, DOCX, TXT) and let Gemini AI automatically configure your career experience, target roles, technical skills, seniority level, and profile brief!</p>
+                        <input type="file" id="cv-upload-input" accept=".pdf,.docx,.txt,.md" style="display: none;" onchange="handleCVUpload(this.files)">
+                        <button class="btn btn-primary" onclick="document.getElementById('cv-upload-input').click()" id="upload-cv-btn" style="padding: 0.6rem 1.5rem; margin-top: 0.3rem;">
+                            <i class="fa-solid fa-file-arrow-up" id="cv-btn-icon"></i><i class="fa-solid fa-spinner fa-spin hidden" id="cv-btn-spinner"></i> <span id="cv-btn-text">Import Skills & Preferences from CV</span>
+                        </button>
+                    </div>
+
+                    <h3 style="margin-bottom: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">🌍 Location & Geographic Targeting</h3>
+                    <label>Country / Primary Location (e.g., Egypt, USA, Worldwide)</label>
+                    <div id="config-location"></div>
                     
-                    <h3 style="margin-bottom: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">Target Roles</h3>
+                    <label>Target Cities / Districts / Regions</label>
+                    <div id="config-target-locations"></div>
+
+                    <label>Glassdoor Country Location ID (e.g., 69 for Egypt, 1 for US)</label>
+                    <input type="number" id="config-glassdoor-id" class="input-field" style="width: 100%; padding: 0.6rem; margin-bottom: 1.2rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
+
+                    <label>Global Remote Keywords</label>
+                    <div id="config-global-remote"></div>
+
+                    <label>Restricted Remote Keywords (To Avoid)</label>
+                    <div id="config-restricted-remote"></div>
+
+                    <h3 style="margin: 1.5rem 0 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">🎯 Seniority Levels & AI Profile</h3>
+                    <label>Target Seniority Levels (e.g., junior, fresh, intern, entry)</label>
+                    <div id="config-target-levels"></div>
+
+                    <label>AI User Profile Brief (Used by Gemini AI to evaluate matching score)</label>
+                    <textarea id="config-user-brief" rows="5" class="input-field" style="width: 100%; padding: 0.7rem; margin-bottom: 1.2rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-family: inherit; line-height: 1.5;"></textarea>
+
+                    <h3 style="margin: 0.5rem 0 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">💼 Target Roles & Keywords</h3>
                     <div id="roles-container" style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem;">
                         <!-- Dynamic roles will be injected here -->
                     </div>
                     <button class="btn btn-secondary" onclick="addRoleUI()" style="margin-bottom: 2rem;"><i class="fa-solid fa-plus"></i>Add Another Role</button>
                     
-                    <h3 style="margin-bottom: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">Resume & Skills</h3>
+                    <h3 style="margin-bottom: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">📜 Resume & Skills</h3>
                     <label>Resume Keywords (Core Skills)</label>
                     <div id="config-resume-keywords"></div>
                     
@@ -84,8 +115,31 @@
                     <label>Excluded Companies</label>
                     <div id="config-excluded-companies"></div>
 
-                    <label>Job Retention Days (Auto-delete old jobs)</label>
-                    <input type="number" id="config-retention-days" min="1" max="365" class="input-field">
+                    <h3 style="margin: 1.5rem 0 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">⚙️ Platforms & Scraping Rules</h3>
+                    <label>Active Job Sites (e.g., linkedin, wuzzuf, bayt, glassdoor, tanqeeb, indeed)</label>
+                    <div id="config-sites"></div>
+
+                    <label>Sites for Arabic Search Keywords</label>
+                    <div id="config-arabic-sites"></div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
+                        <div>
+                            <label>Results Per Search Term</label>
+                            <input type="number" id="config-results-per-term" min="1" max="100" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
+                        </div>
+                        <div>
+                            <label>Max Job Age (Hours, e.g. 168 = 7 days)</label>
+                            <input type="number" id="config-hours-old" min="1" max="8760" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
+                        </div>
+                        <div>
+                            <label>Max Top Jobs to Report</label>
+                            <input type="number" id="config-max-jobs-send" min="1" max="100" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
+                        </div>
+                        <div>
+                            <label>Job Retention Days (Auto-delete old jobs)</label>
+                            <input type="number" id="config-retention-days" min="1" max="365" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer" style="padding: 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.2);">
                     <span id="last-reviewed-text" style="color: var(--text-muted); font-size: 0.85rem;"></span>

@@ -1,16 +1,19 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import sys
 import os
 import json
+import tempfile
+import shutil
 
 # Add the parent directory to sys.path so we can import core modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.database import get_jobs_by_status, update_job_status, get_job_by_id, toggle_job_applied
 from core.config_tuner import analyze_job_and_tune_config
+from core.cv_parser import parse_cv_with_ai
 
 app = FastAPI(title="Job Dashboard")
 
@@ -49,6 +52,25 @@ async def update_config(request: Request):
         return {"status": "success", "last_reviewed_date": new_config["last_reviewed_date"]}
     except Exception as e:
         return {"error": str(e)}
+
+@app.post("/api/parse-cv")
+async def parse_cv_endpoint(file: UploadFile = File(...)):
+    """Uploads a CV file (PDF/DOCX/TXT) and parses skills, roles, and preferences via AI."""
+    try:
+        suffix = os.path.splitext(file.filename)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+            
+        result = parse_cv_with_ai(tmp_path)
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+        return result
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
 
 @app.get("/api/status")
 def get_status():

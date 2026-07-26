@@ -38,28 +38,29 @@ Watch how to filter curated jobs, switch between platforms, and customize your A
 - **Python 3.9+** must be installed and added to your system `PATH`.
 - **Windows OS** (due to batch scripts, desktop app bindings, and scheduled tasks).
 
-## How to Setup
+## How to Setup (Graphical 1-Click Installation)
 
-### Initial Installation (Lightweight Setup)
-1. Clone or download the repository to your local machine.
-2. Run `setup.bat` by double-clicking it.
-3. The setup script will automatically perform a **lightweight installation**:
-   - Check for Python and Git (installing Git if necessary).
-   - Initialize the Git repository for auto-updates using **shallow history cloning** (`--depth=1`), cutting Git download size by over 95%.
-   - Create a Python virtual environment and cleanly install all dependencies using locally cached and pre-built binaries (`--prefer-binary`).
-   - **Smart Browser Configuration**: Instead of downloading Playwright's 184 MB standalone Chromium browser, Job Agent automatically utilizes your installed **Google Chrome** or **Microsoft Edge** browser. This eliminates heavy downloads, saves disk space, and significantly improves anti-bot resistance and captcha avoidance!
-   - Prompt you to configure your `.env` file for **LinkedIn credentials** (optional) and **Gemini API Key** (optional). *Note: These credentials are encrypted and stored locally.*
-   - Create a Windows Scheduled Task to run the agent silently in the background on your preferred days and time.
-   - Create a Desktop Shortcut for easy access.
+### Zero-Configuration Standalone Setup
+You do **not** need to manually clone or download the GitHub repository! 
+1. Download simply ONE file: **[Setup_Job_Agent.bat](https://raw.githubusercontent.com/Mhmd7syn/job-agent/main/Setup_Job_Agent.bat)** (or `setup_ui.pyw`) to your computer.
+2. Double-click the downloaded setup file.
+3. A sleek, dark-mode **GUI Installation Wizard** will launch and allow you to:
+   - **📁 Choose Installation Directory**: Pick exactly where on your machine you want Job Agent installed via a simple "Browse..." selector. The wizard automatically downloads and sets up all repository files directly in your chosen folder!
+   - **Lightweight Auto-Updates**: Initializes shallow Git auto-updates (`--depth=1`) to keep your agent upgraded effortlessly.
+   - **Python Environment**: Automatically sets up an isolated Python virtual environment (`venv`) and cleanly installs dependencies.
+   - **📄 AI Smart CV Ingestion**: Click **"Auto-Tune from My CV / Resume (AI)"** to upload your resume (PDF, DOCX, or TXT). Powered by Gemini AI, the wizard will analyze your career history and automatically populate your target job titles, experience level, primary keywords, and draft your AI matching profile brief in seconds!
+   - **Personalize Job Search & Location**: Review and customize the sample default preferences (AI/Data Science in Egypt) to match your desired geographic locations, cities, seniority levels, and target roles—without modifying the original repository defaults!
+   - **Secure Vault (.env)**: Encrypts and stores optional credentials (LinkedIn & Gemini AI Key) locally using military-grade Fernet encryption.
+   - **Automation**: Configures a Windows Scheduled Task for silent background job scraping and adds a convenient Desktop shortcut.
 
-### Modifying Credentials Later
-If you skipped entering your LinkedIn credentials or Gemini API key during the initial setup, or need to update them:
-1. Delete the `.env` file in the project root if it exists.
-2. Open a terminal in the project folder and run:
-   ```cmd
-   call venv\Scripts\activate.bat
-   python scripts\setup_env.py
-   ```
+### Zero Hardcoded Settings & Dashboard Customization
+Job Agent operates with **100% dynamic, user-configurable settings**. There are **no hardcoded parameters** in the scraping code or backend! All locations, target job sites, seniority levels, remote keywords, scraping intervals, and retention days reside cleanly in `core/config.json`.
+- Open the desktop dashboard at any time and click **Settings** (<i class="fa-solid fa-gear"></i>) to view and modify EVERY scraping parameter live!
+- Inside the dashboard settings, you can also click **"Import Skills & Preferences from CV"** at any time to re-analyze your updated resume and retune your AI matching criteria on the fly!
+
+### How to Uninstall
+To cleanly remove all scheduled tasks, desktop shortcuts, local encryption keys, virtual environments, and scraped databases from your computer, simply double-click **`Uninstall_Job_Agent.bat`** (or `uninstall_ui.pyw`) to launch the automated GUI Uninstaller.
+
 
 ## How to Use
 

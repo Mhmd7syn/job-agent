@@ -46,7 +46,7 @@ if not SEARCH_TERMS:
     SEARCH_TERMS = _config_data.get("SEARCH_TERMS", [])
 if not ARABIC_SEARCH_TERMS:
     ARABIC_SEARCH_TERMS = _config_data.get("ARABIC_SEARCH_TERMS", [])
-SITES_FOR_ARABIC = ["wuzzuf", "linkedin"]  # Sites where Arabic terms are submitted
+SITES_FOR_ARABIC = _config_data.get("SITES_FOR_ARABIC", ["wuzzuf", "linkedin"])
 
 RESUME_KEYWORDS = _config_data.get("RESUME_KEYWORDS", [])
 NICE_TO_HAVE_SKILLS = _config_data.get("NICE_TO_HAVE_SKILLS", [])
@@ -54,33 +54,31 @@ EXCLUDE_KEYWORDS = _config_data.get("EXCLUDE_KEYWORDS", [])
 EXCLUDED_COMPANIES = _config_data.get("EXCLUDED_COMPANIES", [])
 FAVORITE_COMPANIES = _config_data.get("FAVORITE_COMPANIES", [])
 
-LOCATION = ["Egypt"]
-TARGET_LOCATIONS = [
+LOCATION = _config_data.get("LOCATION", ["Egypt"])
+TARGET_LOCATIONS = _config_data.get("TARGET_LOCATIONS", [
     "cairo", "giza", "new capital", "administrative capital", 
     "maadi", "masr el gedida", "heliopolis", "nasr city", 
     "new cairo", "tagamoa", "6th of october", "october", 
     "sheikh zayed", "zayed", "shorouk", "obour", "badr", "10th of ramadan",
     "smart village"
-]
+])
 
-TARGET_LEVELS = ["junior", "fresh", "student", "intern", "entry", "trainee", "entry-level", "undergrad"]
+TARGET_LEVELS = _config_data.get("TARGET_LEVELS", ["junior", "fresh", "student", "intern", "entry", "trainee", "entry-level", "undergrad"])
 
-SITES = ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb", "indeed"]
-RESULTS_PER_TERM = 15
-HOURS_OLD = 7 * 24
-MAX_JOBS_TO_SEND = 10
+SITES = _config_data.get("SITES", ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb", "indeed"])
+RESULTS_PER_TERM = _config_data.get("RESULTS_PER_TERM", 15)
+HOURS_OLD = _config_data.get("HOURS_OLD", 168)
+MAX_JOBS_TO_SEND = _config_data.get("MAX_JOBS_TO_SEND", 10)
 
-USER_BRIEF = """
-I am a Junior/Entry-level professional in AI and Data Science located in Egypt.
-I am looking for roles related to Machine Learning, Data Science, AI Engineering, and instructing/training positions.
-My core skills include Python, SQL, Machine Learning, Deep Learning, and Computer Vision.
-I prefer Junior, Fresh Graduate, Intern, or Entry-level positions and want to avoid Senior, Lead, or Managerial roles.
-"""
+USER_BRIEF = _config_data.get("USER_BRIEF", """
+I am a Junior/Entry-level professional located in my target region.
+I am looking for suitable roles matching my skills and experience.
+""")
 
 
 # Remote Location Boost Keywords
-GLOBAL_REMOTE_KEYWORDS = ['africa', 'middle east', 'mena', 'worldwide', 'global']
-RESTRICTED_REMOTE_KEYWORDS = ['us only', 'uk only', 'eu only']
+GLOBAL_REMOTE_KEYWORDS = _config_data.get("GLOBAL_REMOTE_KEYWORDS", ['africa', 'middle east', 'mena', 'worldwide', 'global'])
+RESTRICTED_REMOTE_KEYWORDS = _config_data.get("RESTRICTED_REMOTE_KEYWORDS", ['us only', 'uk only', 'eu only'])
 
 # Scraper Specific Configurations
-GLASSDOOR_LOC_ID = 69 # 69 is Egypt. Change this ID if you are targeting other countries.
+GLASSDOOR_LOC_ID = _config_data.get("GLASSDOOR_LOC_ID", 69)

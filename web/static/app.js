@@ -421,16 +421,88 @@ async function fetchConfig() {
     }
 }
 
+async function handleCVUpload(files) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const btnIcon = document.getElementById('cv-btn-icon');
+    const btnSpinner = document.getElementById('cv-btn-spinner');
+    const btnText = document.getElementById('cv-btn-text');
+
+    if (btnIcon) btnIcon.classList.add('hidden');
+    if (btnSpinner) btnSpinner.classList.remove('hidden');
+    if (btnText) btnText.textContent = "AI Analysing Resume...";
+
+    try {
+        const res = await fetch('/api/parse-cv', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        
+        if (data.status === 'success' || !data.error) {
+            showToast('CV Analyzed Successfully! Preferences auto-populated.', 'success', 'fa-check');
+            
+            if (data.resume_keywords) initTagInput('config-resume-keywords', data.resume_keywords);
+            if (data.nice_to_have_skills) initTagInput('config-nice-skills', data.nice_to_have_skills);
+            if (data.target_levels) initTagInput('config-target-levels', data.target_levels);
+            if (data.user_brief) {
+                const briefEl = document.getElementById('config-user-brief');
+                if (briefEl) briefEl.value = data.user_brief;
+            }
+            if (data.location) initTagInput('config-location', [data.location]);
+
+            if (data.target_roles && data.target_roles.length > 0) {
+                currentConfig.ROLES = data.target_roles;
+                renderRolesUI();
+            }
+        } else {
+            showToast('Error analyzing CV: ' + (data.error || 'Unknown error'), 'danger', 'fa-xmark');
+        }
+    } catch (e) {
+        showToast('Upload failed: ' + e.message, 'danger', 'fa-xmark');
+    } finally {
+        if (btnIcon) btnIcon.classList.remove('hidden');
+        if (btnSpinner) btnSpinner.classList.add('hidden');
+        if (btnText) btnText.textContent = "Import Skills & Preferences from CV";
+        const inputEl = document.getElementById('cv-upload-input');
+        if (inputEl) inputEl.value = "";
+    }
+}
+
 function showSettings() {
     renderRolesUI();
     
+    initTagInput('config-location', currentConfig.LOCATION || ['Egypt']);
+    initTagInput('config-target-locations', currentConfig.TARGET_LOCATIONS || ['cairo', 'giza', 'new capital']);
+    const gdEl = document.getElementById('config-glassdoor-id');
+    if (gdEl) gdEl.value = currentConfig.GLASSDOOR_LOC_ID || 69;
+    initTagInput('config-global-remote', currentConfig.GLOBAL_REMOTE_KEYWORDS || ['africa', 'middle east', 'mena', 'worldwide', 'global']);
+    initTagInput('config-restricted-remote', currentConfig.RESTRICTED_REMOTE_KEYWORDS || ['us only', 'uk only', 'eu only']);
+    
+    initTagInput('config-target-levels', currentConfig.TARGET_LEVELS || ['junior', 'fresh', 'student', 'intern', 'entry']);
+    const briefEl = document.getElementById('config-user-brief');
+    if (briefEl) briefEl.value = currentConfig.USER_BRIEF || '';
+
     initTagInput('config-resume-keywords', currentConfig.RESUME_KEYWORDS || []);
     initTagInput('config-nice-skills', currentConfig.NICE_TO_HAVE_SKILLS || []);
     initTagInput('config-exclude-keywords', currentConfig.EXCLUDE_KEYWORDS || []);
     initTagInput('config-favorite-companies', currentConfig.FAVORITE_COMPANIES || []);
     initTagInput('config-excluded-companies', currentConfig.EXCLUDED_COMPANIES || []);
     
-    document.getElementById('config-retention-days').value = currentConfig.job_retention_days || 90;
+    initTagInput('config-sites', currentConfig.SITES || ['linkedin', 'wuzzuf', 'bayt', 'glassdoor', 'tanqeeb', 'indeed']);
+    initTagInput('config-arabic-sites', currentConfig.SITES_FOR_ARABIC || ['wuzzuf', 'linkedin']);
+    
+    const rptEl = document.getElementById('config-results-per-term');
+    if (rptEl) rptEl.value = currentConfig.RESULTS_PER_TERM || 15;
+    const hoEl = document.getElementById('config-hours-old');
+    if (hoEl) hoEl.value = currentConfig.HOURS_OLD || 168;
+    const mjsEl = document.getElementById('config-max-jobs-send');
+    if (mjsEl) mjsEl.value = currentConfig.MAX_JOBS_TO_SEND || 10;
+    const retEl = document.getElementById('config-retention-days');
+    if (retEl) retEl.value = currentConfig.job_retention_days || 90;
     
     document.getElementById('settings-modal').classList.remove('hidden');
 }
@@ -461,11 +533,25 @@ async function saveSettings() {
     });
     newConfig.ROLES = newRoles;
     
+    newConfig.LOCATION = getTagInputValues('config-location');
+    newConfig.TARGET_LOCATIONS = getTagInputValues('config-target-locations');
+    newConfig.GLASSDOOR_LOC_ID = parseInt(document.getElementById('config-glassdoor-id').value) || 69;
+    newConfig.GLOBAL_REMOTE_KEYWORDS = getTagInputValues('config-global-remote');
+    newConfig.RESTRICTED_REMOTE_KEYWORDS = getTagInputValues('config-restricted-remote');
+    newConfig.TARGET_LEVELS = getTagInputValues('config-target-levels');
+    newConfig.USER_BRIEF = document.getElementById('config-user-brief').value;
+    
     newConfig.RESUME_KEYWORDS = getTagInputValues('config-resume-keywords');
     newConfig.NICE_TO_HAVE_SKILLS = getTagInputValues('config-nice-skills');
     newConfig.EXCLUDE_KEYWORDS = getTagInputValues('config-exclude-keywords');
     newConfig.FAVORITE_COMPANIES = getTagInputValues('config-favorite-companies');
     newConfig.EXCLUDED_COMPANIES = getTagInputValues('config-excluded-companies');
+    
+    newConfig.SITES = getTagInputValues('config-sites');
+    newConfig.SITES_FOR_ARABIC = getTagInputValues('config-arabic-sites');
+    newConfig.RESULTS_PER_TERM = parseInt(document.getElementById('config-results-per-term').value) || 15;
+    newConfig.HOURS_OLD = parseInt(document.getElementById('config-hours-old').value) || 168;
+    newConfig.MAX_JOBS_TO_SEND = parseInt(document.getElementById('config-max-jobs-send').value) || 10;
     newConfig.job_retention_days = parseInt(document.getElementById('config-retention-days').value) || 90;
 
     try {

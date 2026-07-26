@@ -12,3 +12,6 @@ pywebview
 fastapi
 uvicorn
 cryptography
+pypdf
+python-docx
+python-multipart
