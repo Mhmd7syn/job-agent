@@ -9,7 +9,7 @@ if exist ".git" (
     git --version >nul 2>&1
     if %errorlevel%==0 (
         echo [%DATE% %TIME%] Checking for updates from GitHub... >> output\cron.log
-        git fetch origin main >> output\cron.log 2>&1
+        git fetch --depth=1 origin main >> output\cron.log 2>&1
         git reset --hard origin/main >> output\cron.log 2>&1
     )
 )

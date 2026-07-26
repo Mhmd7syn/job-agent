@@ -25,11 +25,12 @@ IF %ERRORLEVEL% NEQ 0 (
 
 echo Configuring repository for auto-updates...
 if not exist ".git" (
-    echo Initializing Git repository from ZIP...
+    echo Initializing Git repository for auto-updates...
     "!GIT_CMD!" init
     "!GIT_CMD!" remote add origin https://github.com/Mhmd7syn/job-agent.git
-    "!GIT_CMD!" fetch origin
+    "!GIT_CMD!" fetch --depth=1 origin main
     "!GIT_CMD!" reset --mixed origin/main
+    "!GIT_CMD!" branch -M main
     "!GIT_CMD!" branch --set-upstream-to=origin/main main
 )
 
@@ -38,10 +39,10 @@ python -m venv venv
 call venv\Scripts\activate.bat
 
 echo Installing requirements...
-pip install -r requirements.txt
+pip install --prefer-binary -r requirements.txt
 
-echo Installing Playwright Browsers...
-playwright install chromium
+echo Configuring Playwright Browser Environment...
+echo Skipping standalone Chromium download (utilizing your installed Google Chrome or Microsoft Edge to save bandwidth and improve stealth)...
 
 echo =========================================
 echo Environment Configuration (.env)

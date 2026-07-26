@@ -5,12 +5,25 @@ from playwright_stealth import Stealth
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root
 USER_DATA_DIR = os.path.join(BASE_DIR, "playwright_profile")
 
+def launch_persistent_browser(playwright_instance, user_data_dir, headless=False, **kwargs):
+    channels = ["chrome", "msedge", None]
+    for channel in channels:
+        try:
+            launch_args = {"user_data_dir": user_data_dir, "headless": headless, **kwargs}
+            if channel:
+                launch_args["channel"] = channel
+            return playwright_instance.chromium.launch_persistent_context(**launch_args)
+        except Exception:
+            continue
+    raise RuntimeError("Could not launch Chrome, Edge, or Chromium.")
+
 def manual_login():
     print("Launching browser for manual login...")
     print("Please log in and solve any security checks.")
     
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
+        context = launch_persistent_browser(
+            p,
             user_data_dir=USER_DATA_DIR,
             headless=False,
             args=["--start-maximized"]

@@ -7,7 +7,7 @@ git --version >nul 2>&1
 if not %errorlevel%==0 goto LaunchApp
 
 echo Checking for updates from GitHub...
-git fetch >nul 2>&1
+git fetch --depth=1 origin main >nul 2>&1
 git status -uno | findstr /c:"Your branch is behind" >nul
 if not %errorlevel%==0 goto LaunchApp
 
@@ -19,7 +19,7 @@ set /p updateChoice="Do you want to download and apply the update? (Y/N) [Y]: "
 if /I "%updateChoice%"=="N" goto LaunchApp
 
 echo Downloading update...
-git fetch origin main >nul 2>&1
+git fetch --depth=1 origin main >nul 2>&1
 git reset --hard origin/main
 
 :LaunchApp

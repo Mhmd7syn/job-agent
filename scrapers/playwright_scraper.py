@@ -22,6 +22,25 @@ env_path = os.path.join(BASE_DIR, '.env')
 USER_DATA_DIR = os.path.join(BASE_DIR, "playwright_profile")
 load_dotenv(dotenv_path=env_path)
 
+
+def launch_persistent_browser(playwright_instance, user_data_dir, headless=True, **kwargs):
+    """Launch browser persistently using local Google Chrome or Microsoft Edge to save disk space and bypass anti-bot checks."""
+    channels = ["chrome", "msedge", None]
+    last_exception = None
+    for channel in channels:
+        try:
+            launch_args = {"user_data_dir": user_data_dir, "headless": headless, **kwargs}
+            if channel:
+                launch_args["channel"] = channel
+            return playwright_instance.chromium.launch_persistent_context(**launch_args)
+        except Exception as e:
+            last_exception = e
+            continue
+    logging.error(f"❌ Could not launch any browser (Chrome, Edge, or Chromium). Please ensure Google Chrome or Microsoft Edge is installed.")
+    if last_exception:
+        raise last_exception
+
+
 def auto_login_if_needed(page):
     global LOGIN_FAILED
     if LOGIN_FAILED:
@@ -92,7 +111,8 @@ class LinkedInSession:
     def __enter__(self):
         try:
             self._pw = sync_playwright().start()
-            self._context = self._pw.chromium.launch_persistent_context(
+            self._context = launch_persistent_browser(
+                self._pw,
                 user_data_dir=USER_DATA_DIR,
                 headless=True
             )
@@ -334,7 +354,7 @@ def scrape_linkedin_posts_playwright(keyword, page=None):
 
     # Standalone fallback
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(user_data_dir=USER_DATA_DIR, headless=True)
+        context = launch_persistent_browser(p, user_data_dir=USER_DATA_DIR, headless=True)
         context.grant_permissions(['clipboard-read', 'clipboard-write'])
         pg = context.pages[0] if context.pages else context.new_page()
         Stealth().apply_stealth_sync(pg)
@@ -357,7 +377,7 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
 
     # Standalone fallback
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(user_data_dir=USER_DATA_DIR, headless=True)
+        context = launch_persistent_browser(p, user_data_dir=USER_DATA_DIR, headless=True)
         pg = context.pages[0] if context.pages else context.new_page()
         Stealth().apply_stealth_sync(pg)
         try:

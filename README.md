@@ -40,13 +40,14 @@ Watch how to filter curated jobs, switch between platforms, and customize your A
 
 ## How to Setup
 
-### Initial Installation
+### Initial Installation (Lightweight Setup)
 1. Clone or download the repository to your local machine.
 2. Run `setup.bat` by double-clicking it.
-3. The setup script will automatically:
+3. The setup script will automatically perform a **lightweight installation**:
    - Check for Python and Git (installing Git if necessary).
-   - Initialize the Git repository for auto-updates.
-   - Create a Python virtual environment and install all dependencies (including Playwright browsers).
+   - Initialize the Git repository for auto-updates using **shallow history cloning** (`--depth=1`), cutting Git download size by over 95%.
+   - Create a Python virtual environment and cleanly install all dependencies using locally cached and pre-built binaries (`--prefer-binary`).
+   - **Smart Browser Configuration**: Instead of downloading Playwright's 184 MB standalone Chromium browser, Job Agent automatically utilizes your installed **Google Chrome** or **Microsoft Edge** browser. This eliminates heavy downloads, saves disk space, and significantly improves anti-bot resistance and captcha avoidance!
    - Prompt you to configure your `.env` file for **LinkedIn credentials** (optional) and **Gemini API Key** (optional). *Note: These credentials are encrypted and stored locally.*
    - Create a Windows Scheduled Task to run the agent silently in the background on your preferred days and time.
    - Create a Desktop Shortcut for easy access.
@@ -78,12 +79,9 @@ By default, the setup creates a Windows Scheduled Task (named "Weekly Job Agent"
   - **AI Summary**: Check `output/evaluation_brief.txt` for the Gemini model's evaluation of the latest run.
 - **Changing the Schedule**: Open the Windows "Task Scheduler" app, locate "Weekly Job Agent" in the active tasks list, and modify its triggers.
 
-### 3. Manual Run
-If you want to force the agent to search for jobs immediately without waiting for the schedule, you can run it manually:
-```cmd
-call venv\Scripts\activate.bat
-python job_agent.py
-```
+### 3. Manual Run (On-Demand)
+If you want to force the agent to search for new jobs immediately without waiting for the background schedule, you do **not** need to use terminal commands!
+Simply open the **Job Agent Dashboard** using your desktop shortcut and click the run button directly within the dashboard user interface to initiate an immediate scan.
 
 ## Configuration
 
