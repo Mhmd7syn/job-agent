@@ -60,14 +60,45 @@ class UninstallWizard(tk.Tk):
         
         self.log_queue = queue.Queue()
         self.current_screen = 0
+        self.uninstall_completed = False
+        self.protocol("WM_DELETE_WINDOW", self.exit_and_cleanup)
         
         # Checkbox selection variables
         self.remove_venv_var = tk.BooleanVar(value=True)
         self.remove_task_var = tk.BooleanVar(value=True)
         self.remove_shortcut_var = tk.BooleanVar(value=True)
         self.remove_keys_var = tk.BooleanVar(value=True)
-        self.remove_data_var = tk.BooleanVar(value=False) # Preserve jobs by default unless checked
-        self.remove_playwright_var = tk.BooleanVar(value=True)
+        self.remove_data_var = tk.BooleanVar(value=True)
+        self.remove_project_var = tk.BooleanVar(value=True) # Delete entire folder by default
+        
+        # Synchronization logic so folder deletion cannot be selected if any component is preserved
+        self._updating_vars = False
+        def on_component_change(*args):
+            if self._updating_vars: return
+            self._updating_vars = True
+            all_checked = all(v.get() for v in (
+                self.remove_venv_var, self.remove_task_var, self.remove_shortcut_var,
+                self.remove_keys_var, self.remove_data_var, self.remove_playwright_var
+            ))
+            if not all_checked and self.remove_project_var.get():
+                self.remove_project_var.set(False)
+            elif all_checked and not self.remove_project_var.get():
+                self.remove_project_var.set(True)
+            self._updating_vars = False
+
+        def on_project_change(*args):
+            if self._updating_vars: return
+            self._updating_vars = True
+            if self.remove_project_var.get():
+                for v in (self.remove_venv_var, self.remove_task_var, self.remove_shortcut_var,
+                          self.remove_keys_var, self.remove_data_var, self.remove_playwright_var):
+                    v.set(True)
+            self._updating_vars = False
+
+        for var in (self.remove_venv_var, self.remove_task_var, self.remove_shortcut_var,
+                    self.remove_keys_var, self.remove_data_var, self.remove_playwright_var):
+            var.trace_add("write", on_component_change)
+        self.remove_project_var.trace_add("write", on_project_change)
 
         self.container = tk.Frame(self, bg=BG_DARK, padx=25, pady=20)
         self.container.pack(fill=tk.BOTH, expand=True)
@@ -136,7 +167,7 @@ class UninstallWizard(tk.Tk):
 
         for label_text, var in options:
             row = tk.Frame(card, bg=BG_CARD)
-            row.pack(fill=tk.X, pady=6)
+            row.pack(fill=tk.X, pady=5)
             chk = tk.Checkbutton(
                 row, text=label_text, variable=var, bg=BG_CARD, fg=FG_TEXT,
                 selectcolor=BG_INPUT, activebackground=BG_CARD, activeforeground=FG_TEXT,
@@ -144,13 +175,27 @@ class UninstallWizard(tk.Tk):
             )
             chk.pack(anchor="w")
 
+        # Separator before full project directory deletion
+        sep = tk.Frame(card, bg=BORDER_COL, height=1)
+        sep.pack(fill=tk.X, pady=8)
+
+        row_proj = tk.Frame(card, bg=BG_CARD)
+        row_proj.pack(fill=tk.X, pady=(2, 5))
+        chk_proj = tk.Checkbutton(
+            row_proj, text="Delete Entire Job Agent Project Folder from Disk (Requires all options above)",
+            variable=self.remove_project_var, bg=BG_CARD, fg=DANGER,
+            selectcolor=BG_INPUT, activebackground=BG_CARD, activeforeground=DANGER,
+            font=("Segoe UI", 10, "bold"), relief="flat", highlightthickness=0
+        )
+        chk_proj.pack(anchor="w")
+
         # Note
         tk.Label(self.container, text="⚠️ This action cleanly removes background tasks and system footprints.", font=("Segoe UI", 10), fg=DANGER, bg=BG_DARK, anchor="w").pack(fill=tk.X, pady=(15, 0))
 
         bottom = tk.Frame(self.container, bg=BG_DARK)
         bottom.pack(fill=tk.X, side=tk.BOTTOM, pady=(15, 0))
         
-        self.create_button(bottom, "Cancel", self.destroy, bg="#33334b", hover_bg="#474766", fg=FG_TEXT).pack(side=tk.LEFT)
+        self.create_button(bottom, "Cancel", self.exit_and_cleanup, bg="#33334b", hover_bg="#474766", fg=FG_TEXT).pack(side=tk.LEFT)
         self.create_button(bottom, "🗑️ Uninstall Selected", lambda: self.show_screen(1), bg=DANGER, hover_bg=DANGER_HOV).pack(side=tk.RIGHT)
 
     def render_progress_screen(self):
@@ -177,6 +222,12 @@ class UninstallWizard(tk.Tk):
 
     def run_uninstall(self):
         try:
+            # Change CWD away from project root to prevent OS folder lock
+            try:
+                os.chdir(os.path.expanduser("~"))
+            except Exception:
+                pass
+
             # Task 1: Scheduled Task
             self.log_queue.put(("progress", 15, "Removing Windows Scheduled Task..."))
             if self.remove_task_var.get():
@@ -267,6 +318,14 @@ class UninstallWizard(tk.Tk):
             else:
                 self.log("Skipped venv folder deletion.")
 
+            # Task 7: Project Folder Deletion Preparation
+            self.log_queue.put(("progress", 95, "Preparing folder removal..."))
+            if self.remove_project_var.get():
+                self.log(f"Configuring complete removal of project directory:\n -> {PROJECT_ROOT}")
+                self.log("⚠️ Folder will be permanently deleted from disk upon closing this window.")
+            else:
+                self.log("Skipped entire folder removal (project files preserved).")
+
             self.log("=========================================")
             self.log("🎉 Uninstallation and cleanup completed successfully.")
             self.log_queue.put(("progress", 100, "Uninstallation Completed!"))
@@ -293,19 +352,55 @@ class UninstallWizard(tk.Tk):
                     self.progress_bar.set_progress(item[1])
                     self.status_label.config(text=item[2])
                 elif msg_type == "done":
+                    self.uninstall_completed = True
                     self.progress_bar.set_progress(100, color=SUCCESS)
                     self.prog_title.config(text="✅ Cleanup Completed")
-                    self.prog_sub.config(text="Selected Job Agent components have been removed from your system.")
+                    if self.remove_project_var.get():
+                        self.prog_sub.config(text="All components cleaned. Folder will be completely deleted upon closing.")
+                    else:
+                        self.prog_sub.config(text="Selected Job Agent components have been removed from your system.")
                     self.status_label.config(text="✓ Selected items cleanly removed!", fg=SUCCESS)
-                    self.create_button(self.bottom_prog, "Close Uninstaller", self.destroy, bg=SUCCESS, hover_bg="#059669").pack(side=tk.RIGHT)
+                    btn_text = "Close & Delete Folder" if self.remove_project_var.get() else "Close Uninstaller"
+                    self.create_button(self.bottom_prog, btn_text, self.exit_and_cleanup, bg=SUCCESS, hover_bg="#059669").pack(side=tk.RIGHT)
                 elif msg_type == "error":
                     self.progress_bar.set_progress(100, color=DANGER)
                     self.prog_title.config(text="⚠️ Error Encountered", fg=DANGER)
                     self.status_label.config(text="Check log above for error details.", fg=DANGER)
-                    self.create_button(self.bottom_prog, "Close", self.destroy, bg="#33334b", hover_bg="#474766", fg=FG_TEXT).pack(side=tk.RIGHT)
+                    self.create_button(self.bottom_prog, "Close", self.exit_and_cleanup, bg="#33334b", hover_bg="#474766", fg=FG_TEXT).pack(side=tk.RIGHT)
             except queue.Empty:
                 break
         self.after(100, self.process_queue)
+
+    def exit_and_cleanup(self):
+        if getattr(self, 'uninstall_completed', False) and self.remove_project_var.get():
+            try:
+                home_dir = os.path.expanduser("~")
+                try:
+                    os.chdir(home_dir)
+                except Exception:
+                    pass
+                
+                ps_script = (
+                    f"Start-Sleep -Seconds 2; "
+                    f"for ($i=0; $i -lt 5; $i++) {{ "
+                    f"    if (-not (Test-Path -LiteralPath '{PROJECT_ROOT}')) {{ break }}; "
+                    f"    Remove-Item -LiteralPath '{PROJECT_ROOT}' -Recurse -Force -ErrorAction SilentlyContinue; "
+                    f"    cmd.exe /c 'rmdir /s /q \"{PROJECT_ROOT}\" 2>nul'; "
+                    f"    Start-Sleep -Seconds 1; "
+                    f"}}"
+                )
+                subprocess.Popen(
+                    ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps_script],
+                    cwd=home_dir,
+                    creationflags=CREATE_NO_WINDOW | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+                )
+            except Exception as e:
+                print(f"Error launching folder deletion script: {e}")
+        try:
+            self.destroy()
+        except Exception:
+            pass
+        sys.exit(0)
 
 if __name__ == "__main__":
     app = UninstallWizard()

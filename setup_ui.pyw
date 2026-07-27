@@ -67,7 +67,8 @@ class SetupWizard(tk.Tk):
         self.log_queue = queue.Queue()
         self.current_screen = 0
         self.repo_was_downloaded = False
-        self.install_path_var = tk.StringVar(value=PROJECT_ROOT)
+        default_install = r"C:\Program Files\Job Agent" if sys.platform == "win32" else os.path.join(os.path.expanduser("~"), "Job Agent")
+        self.install_path_var = tk.StringVar(value=default_install)
         
         # Career & config customization state
         self.loc_var = tk.StringVar(value="United States, Remote")
@@ -224,6 +225,37 @@ class SetupWizard(tk.Tk):
         chosen_path = os.path.abspath(self.install_path_var.get().strip())
         try:
             os.makedirs(chosen_path, exist_ok=True)
+        except PermissionError:
+            if sys.platform == "win32":
+                resp = messagebox.askyesno(
+                    "Administrator Privileges Required",
+                    f"Creating or accessing '{chosen_path}' requires Administrator privileges.\n\nWould you like to automatically restart setup as Administrator?"
+                )
+                if resp:
+                    try:
+                        import ctypes
+                        script_path = os.path.abspath(__file__)
+                        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script_path}"', None, 1)
+                        self.destroy()
+                        sys.exit(0)
+                    except Exception as e:
+                        messagebox.showerror("Elevation Failed", f"Could not restart setup as Administrator: {e}")
+            else:
+                messagebox.showerror("Permission Denied", f"Permission denied creating target directory:\n{chosen_path}")
+            return
+        except Exception as e:
+            messagebox.showerror("Installation Error", f"Could not create target folder ({chosen_path}): {e}")
+            return
+
+        try:
+            # Grant full user access permissions on Windows so desktop app & scheduled tasks can create files without errors
+            if sys.platform == "win32":
+                try:
+                    username = os.getenv("USERNAME", "Users")
+                    subprocess.run(["icacls", chosen_path, "/grant", f"{username}:(OI)(CI)F", "/T"], capture_output=True, creationflags=CREATE_NO_WINDOW)
+                except Exception:
+                    pass
+
             if os.path.normcase(PROJECT_ROOT) != os.path.normcase(chosen_path):
                 for item in os.listdir(PROJECT_ROOT):
                     if item not in ["venv", ".git", "__pycache__", "output"]:
@@ -237,9 +269,13 @@ class SetupWizard(tk.Tk):
                         except Exception:
                             pass
                 PROJECT_ROOT = chosen_path
+                try:
+                    os.chdir(PROJECT_ROOT)
+                except Exception:
+                    pass
             self.show_screen(next_screen)
         except Exception as e:
-            messagebox.showerror("Installation Error", f"Could not set target folder ({chosen_path}): {e}")
+            messagebox.showerror("Installation Error", f"Could not initialize target folder ({chosen_path}): {e}")
 
     # ==========================
     # SCREEN 1: Progress (Download & Dependencies)
