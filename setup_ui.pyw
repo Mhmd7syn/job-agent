@@ -134,8 +134,9 @@ class SetupWizard(tk.Tk):
             btn.bind("<Leave>", lambda e: btn.config(bg=bg))
         return btn
 
-    def create_card(self, parent, title=None, padx=15, pady=12):
+    def create_card(self, parent, title=None, padx=15, pady=12, expand=False):
         card_border = tk.Frame(parent, bg=BORDER_COL, padx=1, pady=1)
+        card_border.pack(fill=tk.BOTH, expand=expand, pady=(0, 10))
         card = tk.Frame(card_border, bg=BG_CARD, padx=padx, pady=pady)
         card.pack(fill=tk.BOTH, expand=True)
         if title:
@@ -170,7 +171,7 @@ class SetupWizard(tk.Tk):
         sub = tk.Label(self.container, text="Your intelligent, fully automated job scraping and AI matching assistant.", font=("Segoe UI", 11), fg=FG_MUTED, bg=BG_DARK, anchor="w")
         sub.pack(fill=tk.X, pady=(0, 15))
 
-        _, card = self.create_card(self.container, title="✨ Graphical & Automated Installer", padx=20, pady=15)
+        _, card = self.create_card(self.container, title="✨ Graphical & Automated Installer", padx=20, pady=15, expand=True)
         
         # Detect if we need to auto-download repository
         repo_exists = os.path.exists(os.path.join(PROJECT_ROOT, "job_agent.py")) and os.path.exists(os.path.join(PROJECT_ROOT, "core", "config.json"))
@@ -253,7 +254,7 @@ class SetupWizard(tk.Tk):
         self.progress_bar = ModernProgressBar(self.container, width=700, height=22)
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
-        _, log_card = self.create_card(self.container, title="📋 Installation Activity Log:", padx=10, pady=10)
+        _, log_card = self.create_card(self.container, title="📋 Installation Activity Log:", padx=10, pady=10, expand=True)
         self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 10), relief="flat", height=13, state="disabled", borderwidth=0)
         self.log_area.pack(fill=tk.BOTH, expand=True)
 
@@ -387,7 +388,7 @@ class SetupWizard(tk.Tk):
         tk.Label(alert_card, text=notice_txt, font=("Segoe UI", 10), fg=ACCENT, bg=BG_CARD, wraplength=670, justify="left", anchor="w").pack(fill=tk.X)
 
         # Form fields frame
-        _, form_card = self.create_card(self.container, padx=15, pady=10)
+        _, form_card = self.create_card(self.container, padx=15, pady=10, expand=True)
 
         # AI Smart CV Ingestion button
         cv_frame = tk.Frame(form_card, bg=BG_CARD)
@@ -647,7 +648,7 @@ class SetupWizard(tk.Tk):
         self.progress_bar = ModernProgressBar(self.container, width=700, height=22)
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
-        _, log_card = self.create_card(self.container, title="📋 Finalization Log:", padx=10, pady=10)
+        _, log_card = self.create_card(self.container, title="📋 Finalization Log:", padx=10, pady=10, expand=True)
         self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 10), relief="flat", height=13, state="disabled", borderwidth=0)
         self.log_area.pack(fill=tk.BOTH, expand=True)
 

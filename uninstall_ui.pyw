@@ -98,8 +98,9 @@ class UninstallWizard(tk.Tk):
         btn.bind("<Leave>", lambda e: btn.config(bg=bg))
         return btn
 
-    def create_card(self, parent, title=None, padx=18, pady=15):
+    def create_card(self, parent, title=None, padx=18, pady=15, expand=False):
         card_border = tk.Frame(parent, bg=BORDER_COL, padx=1, pady=1)
+        card_border.pack(fill=tk.BOTH, expand=expand, pady=(0, 10))
         card = tk.Frame(card_border, bg=BG_CARD, padx=padx, pady=pady)
         card.pack(fill=tk.BOTH, expand=True)
         if title:
@@ -122,7 +123,7 @@ class UninstallWizard(tk.Tk):
         sub = tk.Label(self.container, text="Select which components, schedules, and environments to remove.", font=("Segoe UI", 11), fg=FG_MUTED, bg=BG_DARK, anchor="w")
         sub.pack(fill=tk.X, pady=(0, 15))
 
-        _, card = self.create_card(self.container, title="🗑️ Select Cleanup Options:", padx=20, pady=15)
+        _, card = self.create_card(self.container, title="🗑️ Select Cleanup Options:", padx=20, pady=15, expand=True)
         
         options = [
             ("Remove Python Virtual Environment (venv directory)", self.remove_venv_var),
@@ -165,7 +166,7 @@ class UninstallWizard(tk.Tk):
         self.progress_bar = ModernProgressBar(self.container, width=620, height=22, fill_color=DANGER)
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
-        _, log_card = self.create_card(self.container, title="📋 Uninstallation Log:", padx=10, pady=10)
+        _, log_card = self.create_card(self.container, title="📋 Uninstallation Log:", padx=10, pady=10, expand=True)
         self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 10), relief="flat", height=12, state="disabled", borderwidth=0)
         self.log_area.pack(fill=tk.BOTH, expand=True)
 
