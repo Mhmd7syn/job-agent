@@ -139,12 +139,12 @@ class UninstallWizard(tk.Tk):
             chk = tk.Checkbutton(
                 row, text=label_text, variable=var, bg=BG_CARD, fg=FG_TEXT,
                 selectcolor=BG_INPUT, activebackground=BG_CARD, activeforeground=FG_TEXT,
-                font=("Segoe UI", 10.5), relief="flat", highlightthickness=0
+                font=("Segoe UI", 10), relief="flat", highlightthickness=0
             )
             chk.pack(anchor="w")
 
         # Note
-        tk.Label(self.container, text="⚠️ This action cleanly removes background tasks and system footprints.", font=("Segoe UI", 9.5), fg=DANGER, bg=BG_DARK, anchor="w").pack(fill=tk.X, pady=(15, 0))
+        tk.Label(self.container, text="⚠️ This action cleanly removes background tasks and system footprints.", font=("Segoe UI", 10), fg=DANGER, bg=BG_DARK, anchor="w").pack(fill=tk.X, pady=(15, 0))
 
         bottom = tk.Frame(self.container, bg=BG_DARK)
         bottom.pack(fill=tk.X, side=tk.BOTTOM, pady=(15, 0))
@@ -166,7 +166,7 @@ class UninstallWizard(tk.Tk):
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
         _, log_card = self.create_card(self.container, title="📋 Uninstallation Log:", padx=10, pady=10)
-        self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 9.5), relief="flat", height=12, state="disabled", borderwidth=0)
+        self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 10), relief="flat", height=12, state="disabled", borderwidth=0)
         self.log_area.pack(fill=tk.BOTH, expand=True)
 
         self.bottom_prog = tk.Frame(self.container, bg=BG_DARK)

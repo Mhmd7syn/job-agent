@@ -186,8 +186,8 @@ class SetupWizard(tk.Tk):
         for icon_title, desc in items:
             frame = tk.Frame(card, bg=BG_CARD)
             frame.pack(fill=tk.X, pady=5)
-            tk.Label(frame, text=icon_title, font=("Segoe UI", 10.5, "bold"), fg=FG_TEXT, bg=BG_CARD, width=24, anchor="w").pack(side=tk.LEFT, anchor="n")
-            tk.Label(frame, text=desc, font=("Segoe UI", 9.5), fg=FG_MUTED, bg=BG_CARD, wraplength=420, justify="left").pack(side=tk.LEFT, fill=tk.X, expand=True)
+            tk.Label(frame, text=icon_title, font=("Segoe UI", 11, "bold"), fg=FG_TEXT, bg=BG_CARD, width=24, anchor="w").pack(side=tk.LEFT, anchor="n")
+            tk.Label(frame, text=desc, font=("Segoe UI", 10), fg=FG_MUTED, bg=BG_CARD, wraplength=420, justify="left").pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         status_msg = "✓ All local project files found." if repo_exists else "⚡ Ready to download repository files from GitHub automatically."
         status_col = SUCCESS if repo_exists else ACCENT
@@ -254,7 +254,7 @@ class SetupWizard(tk.Tk):
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
         _, log_card = self.create_card(self.container, title="📋 Installation Activity Log:", padx=10, pady=10)
-        self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 9.5), relief="flat", height=13, state="disabled", borderwidth=0)
+        self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 10), relief="flat", height=13, state="disabled", borderwidth=0)
         self.log_area.pack(fill=tk.BOTH, expand=True)
 
         self.bottom_prog = tk.Frame(self.container, bg=BG_DARK)
@@ -287,7 +287,7 @@ class SetupWizard(tk.Tk):
                         s = os.path.join(extracted_dir, item)
                         d = os.path.join(PROJECT_ROOT, item)
                         # Overwrite or move cleanly
-                        if os.path.exists(d) and os.path.abspath(d) != os.path.abspath(sys.argv[0]):
+                        if os.path.exists(d) and os.path.normcase(os.path.abspath(d)) != os.path.normcase(os.path.abspath(sys.argv[0])):
                             if os.path.isdir(d):
                                 shutil.rmtree(d, ignore_errors=True)
                             else:
@@ -384,7 +384,7 @@ class SetupWizard(tk.Tk):
             "We strongly encourage you to customize these general settings below for your target country, locations, and career level! "
             "Don't worry—if you prefer these original settings, your configurations will remain untouched."
         )
-        tk.Label(alert_card, text=notice_txt, font=("Segoe UI", 9.5), fg=ACCENT, bg=BG_CARD, wraplength=670, justify="left", anchor="w").pack(fill=tk.X)
+        tk.Label(alert_card, text=notice_txt, font=("Segoe UI", 10), fg=ACCENT, bg=BG_CARD, wraplength=670, justify="left", anchor="w").pack(fill=tk.X)
 
         # Form fields frame
         _, form_card = self.create_card(self.container, padx=15, pady=10)
@@ -429,7 +429,7 @@ class SetupWizard(tk.Tk):
         def add_input_row(label_txt, var):
             row = tk.Frame(form_card, bg=BG_CARD)
             row.pack(fill=tk.X, pady=4)
-            tk.Label(row, text=label_txt, font=("Segoe UI", 9.5, "bold"), fg=FG_TEXT, bg=BG_CARD, width=22, anchor="w").pack(side=tk.LEFT)
+            tk.Label(row, text=label_txt, font=("Segoe UI", 10, "bold"), fg=FG_TEXT, bg=BG_CARD, width=22, anchor="w").pack(side=tk.LEFT)
             border = tk.Frame(row, bg=BORDER_COL, padx=1, pady=1)
             border.pack(side=tk.LEFT, fill=tk.X, expand=True)
             entry = tk.Entry(border, textvariable=var, font=("Segoe UI", 10), bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", relief="flat")
@@ -443,11 +443,11 @@ class SetupWizard(tk.Tk):
         # AI Brief text
         lbl_row = tk.Frame(form_card, bg=BG_CARD)
         lbl_row.pack(fill=tk.X, pady=(6, 2))
-        tk.Label(lbl_row, text="AI User Profile Brief (Used by Gemini AI to evaluate & score matches):", font=("Segoe UI", 9.5, "bold"), fg=FG_TEXT, bg=BG_CARD, anchor="w").pack(fill=tk.X)
+        tk.Label(lbl_row, text="AI User Profile Brief (Used by Gemini AI to evaluate & score matches):", font=("Segoe UI", 10, "bold"), fg=FG_TEXT, bg=BG_CARD, anchor="w").pack(fill=tk.X)
         
         txt_border = tk.Frame(form_card, bg=BORDER_COL, padx=1, pady=1)
         txt_border.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
-        self.brief_text_widget = tk.Text(txt_border, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Segoe UI", 9.5), height=5, relief="flat")
+        self.brief_text_widget = tk.Text(txt_border, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Segoe UI", 10), height=5, relief="flat")
         self.brief_text_widget.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
         self.brief_text_widget.insert(tk.END, self.brief_text_content)
 
@@ -565,7 +565,7 @@ class SetupWizard(tk.Tk):
             "• Why Gemini Key? Enables AI to read full job descriptions, filter irrelevant roles, and assign smart Match Scores.\n"
             "• Why LinkedIn? Enables scraping high-quality jobs directly. Tip: You may use a secondary 'burner' empty account!"
         )
-        tk.Label(tip_card, text=tips, font=("Segoe UI", 9.5), fg=FG_MUTED, bg=BG_CARD, justify="left", anchor="w").pack(fill=tk.X)
+        tk.Label(tip_card, text=tips, font=("Segoe UI", 10), fg=FG_MUTED, bg=BG_CARD, justify="left", anchor="w").pack(fill=tk.X)
 
         self.toggle_env_fields()
 
@@ -648,7 +648,7 @@ class SetupWizard(tk.Tk):
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
         _, log_card = self.create_card(self.container, title="📋 Finalization Log:", padx=10, pady=10)
-        self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 9.5), relief="flat", height=13, state="disabled", borderwidth=0)
+        self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 10), relief="flat", height=13, state="disabled", borderwidth=0)
         self.log_area.pack(fill=tk.BOTH, expand=True)
 
         self.bottom_prog = tk.Frame(self.container, bg=BG_DARK)

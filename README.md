@@ -43,7 +43,7 @@ See how to browse curated jobs, switch platforms, and customize your AI matching
 ### One-File Installation
 No need to clone or download the full repository manually.
 
-1. Download a single file: **[setup_ui.pyw](https://raw.githubusercontent.com/Mhmd7syn/job-agent/main/setup_ui.pyw)**
+1. Download a single file: **[setup_ui.pyw](https://github.com/Mhmd7syn/job-agent/blob/main/setup_ui.pyw)** (click the **Download raw file** button 📥 at the top right of the code viewer)
 2. Double-click it — a sleek, dark-mode **GUI Installation Wizard** will launch.
 3. The wizard handles everything:
    - **📁 Installation Directory**: Browse and choose where to install. The wizard downloads and sets up all files directly into your chosen folder.
@@ -104,9 +104,8 @@ All preferences can be set from the dashboard. For advanced manual tuning, two f
 ## Important Safety Notes
 
 > [!CAUTION]
-> **LinkedIn Scraping**: Do not run the agent too frequently. The default schedule is designed to be safe. Running it excessively (e.g., every hour) may trigger captchas or temporary blocks on your LinkedIn account.
-
-- **Using a secondary account**: If you're concerned about your main LinkedIn profile, consider creating a separate, empty account for the agent to use. No connections are required to search for jobs.
+> - **LinkedIn Scraping**: Do not run the agent too frequently. The default schedule is designed to be safe. Running it excessively (e.g., every hour) may trigger captchas or temporary blocks on your LinkedIn account.
+> - **Using a secondary account**: If you're concerned about your main LinkedIn profile, consider creating a separate, empty account for the agent to use. No connections are required to search for jobs.
 
 ## Architecture
 
