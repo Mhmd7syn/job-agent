@@ -51,13 +51,16 @@ file_handler = logging.FileHandler(os.path.join(_OUTPUT_DIR, "job_agent.log"), m
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 file_handler.addFilter(RootFilter())
 
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setFormatter(logging.Formatter('%(message)s'))
-console_handler.addFilter(RootFilter())
+handlers = [file_handler]
+if sys.stdout is not None:
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    console_handler.addFilter(RootFilter())
+    handlers.append(console_handler)
 
 logging.basicConfig(
     level=logging.WARNING,
-    handlers=[file_handler, console_handler]
+    handlers=handlers
 )
 
 
@@ -69,8 +72,11 @@ except ImportError:
     LinkedInSession = None
 
 
-if sys.stdout.encoding.lower() != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stdout is not None and getattr(sys.stdout, 'encoding', None) and sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
 
 
 def main():

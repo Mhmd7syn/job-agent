@@ -269,9 +269,9 @@
       "max_years_experience": 3
     }
   ],
-  "LOCATION": ["United States", "Remote"],
+  "LOCATION": ["Egypt", "Remote"],
   "TARGET_LOCATIONS": [
-    "New York", "San Francisco", "Remote", "Global"
+    "Cairo", "Giza", "Remote", "Global"
   ],
   "TARGET_LEVELS": [
     "Junior", "Entry-level", "Intern"

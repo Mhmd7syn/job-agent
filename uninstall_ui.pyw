@@ -243,14 +243,27 @@ class UninstallWizard(tk.Tk):
             # Task 2: Desktop Shortcut
             self.log_queue.put(("progress", 30, "Removing Desktop Shortcut..."))
             if self.remove_shortcut_var.get():
-                shortcut_path = os.path.join(os.path.expanduser("~"), "Desktop", "Job Agent.lnk")
-                self.log(f"Checking for Desktop Shortcut at: {shortcut_path}")
-                if os.path.exists(shortcut_path):
-                    try:
-                        os.remove(shortcut_path)
-                        self.log("✓ Desktop Shortcut deleted.")
-                    except Exception as e:
-                        self.log(f"Notice: {e}")
+                shortcut_paths = [
+                    os.path.join(os.path.expanduser("~"), "Desktop", "Job Agent.lnk"),
+                    os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop", "Job Agent.lnk")
+                ]
+                try:
+                    ps_cmd = "$wshell = New-Object -ComObject WScript.Shell; $wshell.SpecialFolders.Item('Desktop')"
+                    res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+                    if res.returncode == 0 and res.stdout.strip():
+                        shortcut_paths.append(os.path.join(res.stdout.strip(), "Job Agent.lnk"))
+                except Exception:
+                    pass
+                deleted_any = False
+                for shortcut_path in set(shortcut_paths):
+                    if os.path.exists(shortcut_path):
+                        try:
+                            os.remove(shortcut_path)
+                            deleted_any = True
+                        except Exception as e:
+                            self.log(f"Notice deleting {shortcut_path}: {e}")
+                if deleted_any:
+                    self.log("✓ Desktop Shortcut deleted.")
                 else:
                     self.log("Notice: Desktop Shortcut not found.")
             else:

@@ -54,9 +54,9 @@ EXCLUDE_KEYWORDS = _config_data.get("EXCLUDE_KEYWORDS", [])
 EXCLUDED_COMPANIES = _config_data.get("EXCLUDED_COMPANIES", [])
 FAVORITE_COMPANIES = _config_data.get("FAVORITE_COMPANIES", [])
 
-LOCATION = _config_data.get("LOCATION", ["United States", "Remote"])
+LOCATION = _config_data.get("LOCATION", ["Egypt", "Remote"])
 TARGET_LOCATIONS = _config_data.get("TARGET_LOCATIONS", [
-    "New York", "San Francisco", "Remote", "Global"
+    "Cairo", "Giza", "Remote", "Global"
 ])
 
 TARGET_LEVELS = _config_data.get("TARGET_LEVELS", ["Junior", "Entry-level", "Intern"])

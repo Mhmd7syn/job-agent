@@ -71,8 +71,8 @@ class SetupWizard(tk.Tk):
         self.install_path_var = tk.StringVar(value=default_install)
         
         # Career & config customization state
-        self.loc_var = tk.StringVar(value="United States, Remote")
-        self.cities_var = tk.StringVar(value="New York, San Francisco, Remote")
+        self.loc_var = tk.StringVar(value="Egypt, Remote")
+        self.cities_var = tk.StringVar(value="Cairo, Giza, Remote")
         self.levels_var = tk.StringVar(value="Junior, Entry-level, Intern")
         self.terms_var = tk.StringVar(value="AI Engineer, Data Scientist, Software Engineer")
         self.brief_text_content = (
@@ -392,10 +392,21 @@ class SetupWizard(tk.Tk):
                 for cmd in [
                     [git_cmd, "init"],
                     [git_cmd, "remote", "add", "origin", "https://github.com/Mhmd7syn/job-agent.git"],
-                    [git_cmd, "fetch", "--depth=1", "origin", "main"],
+                    [git_cmd, "fetch", "--depth=1", "origin", "main:refs/remotes/origin/main"],
                     [git_cmd, "reset", "--mixed", "origin/main"],
                     [git_cmd, "branch", "-M", "main"],
                     [git_cmd, "branch", "--set-upstream-to=origin/main", "main"]
+                ]:
+                    try:
+                        p = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+                        if p.stdout: self.log(p.stdout.strip())
+                    except Exception as e:
+                        self.log(f"Git notice: {e}")
+            else:
+                self.log("Syncing Git repository commit history to latest version...")
+                for cmd in [
+                    [git_cmd, "fetch", "--depth=1", "origin", "main:refs/remotes/origin/main"],
+                    [git_cmd, "reset", "--mixed", "origin/main"]
                 ]:
                     try:
                         p = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
@@ -784,9 +795,15 @@ class SetupWizard(tk.Tk):
                     # Overwrite first role's search terms to ensure matching
                     if cdata.get("ROLES") and isinstance(cdata["ROLES"], list):
                         cdata["ROLES"][0]["english_terms"] = terms
+                if locs:
+                    cdata["LOCATION"] = locs
+                if sub_locs:
+                    cdata["TARGET_LOCATIONS"] = sub_locs
+                if levels:
+                    cdata["TARGET_LEVELS"] = levels
                 with open(config_json_path, "w", encoding="utf-8") as f:
                     json.dump(cdata, f, ensure_ascii=False, indent=2)
-                self.log("✓ core/config.json updated with keywords.")
+                self.log("✓ core/config.json updated with personalized preferences.")
 
             # Step: Configure credentials & .env
             self.log_queue.put(("progress", 50, "Configuring encrypted environment credentials (.env)..."))
@@ -866,29 +883,34 @@ except Exception as e:
             # Step: Desktop Shortcut
             self.log_queue.put(("progress", 95, "Creating Desktop Shortcut..."))
             if self.shortcut_var.get():
-                target = os.path.join(PROJECT_ROOT, "Job_Agent.bat")
-                icon = os.path.join(PROJECT_ROOT, "logo.ico")
+                target = os.path.join(PROJECT_ROOT, "Job_Agent.bat").replace("/", "\\")
+                icon = os.path.join(PROJECT_ROOT, "logo.ico").replace("/", "\\")
+                work_dir = PROJECT_ROOT.replace("/", "\\")
                 ps_cmd = (
                     f"$wshell = New-Object -ComObject WScript.Shell; "
-                    f"$shortcut = $wshell.CreateShortcut('%USERPROFILE%\\Desktop\\Job Agent.lnk'); "
+                    f"$desktop = $wshell.SpecialFolders.Item('Desktop'); "
+                    f"$shortcut = $wshell.CreateShortcut(\"$desktop\\Job Agent.lnk\"); "
                     f"$shortcut.TargetPath = '{target}'; "
-                    f"$shortcut.WorkingDirectory = '{PROJECT_ROOT}'; "
+                    f"$shortcut.WorkingDirectory = '{work_dir}'; "
                     f"$shortcut.IconLocation = '{icon}'; "
                     f"$shortcut.Save()"
                 )
-                subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, creationflags=CREATE_NO_WINDOW)
-                self.log("✓ Desktop shortcut 'Job Agent.lnk' created.")
+                res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+                if res.returncode == 0:
+                    self.log("✓ Desktop shortcut 'Job Agent.lnk' created.")
+                else:
+                    self.log(f"Notice: Shortcut creation failed: {res.stderr or res.stdout}")
 
             # Step: Initial First-Run Job Search
             self.log_queue.put(("progress", 98, "Starting initial background job search..."))
             self.log("Starting initial automatic job search...")
             try:
-                venv_pyw = os.path.join(PROJECT_ROOT, "venv", "Scripts", "pythonw.exe")
-                if not os.path.exists(venv_pyw):
-                    venv_pyw = os.path.join(PROJECT_ROOT, "venv", "Scripts", "python.exe")
+                venv_py = os.path.join(PROJECT_ROOT, "venv", "Scripts", "python.exe")
+                if not os.path.exists(venv_py):
+                    venv_py = sys.executable
                 job_agent_script = os.path.join(PROJECT_ROOT, "job_agent.py")
-                if os.path.exists(job_agent_script) and os.path.exists(venv_pyw):
-                    subprocess.Popen([venv_pyw, job_agent_script], cwd=PROJECT_ROOT, creationflags=CREATE_NO_WINDOW)
+                if os.path.exists(job_agent_script) and os.path.exists(venv_py):
+                    subprocess.Popen([venv_py, job_agent_script], cwd=PROJECT_ROOT, creationflags=CREATE_NO_WINDOW)
                     self.log("✓ First-run job search started automatically in background.")
             except Exception as e:
                 self.log(f"Notice: Could not auto-start initial scan: {e}")

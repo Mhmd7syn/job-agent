@@ -10,9 +10,9 @@ git --version >nul 2>&1
 if not %errorlevel%==0 goto LaunchApp
 
 echo Checking for updates from GitHub...
-git fetch --depth=1 origin main >nul 2>&1
+git fetch --depth=1 origin main:refs/remotes/origin/main >nul 2>&1
 for /f "tokens=*" %%i in ('git rev-parse HEAD 2^>nul') do set "LOCAL_REV=%%i"
-for /f "tokens=*" %%i in ('git rev-parse origin/main 2^>nul') do set "REMOTE_REV=%%i"
+for /f "tokens=*" %%i in ('git rev-parse FETCH_HEAD 2^>nul') do set "REMOTE_REV=%%i"
 if "%LOCAL_REV%"=="" goto LaunchApp
 if "%REMOTE_REV%"=="" goto LaunchApp
 if "%LOCAL_REV%"=="%REMOTE_REV%" goto LaunchApp
@@ -27,8 +27,14 @@ if /I "%updateChoice%"=="N" goto LaunchApp
 :: Wrap git update in parenthesized block to prevent CMD from reading corrupted file offsets when script is updated on disk
 (
     echo Downloading and applying update...
-    git fetch --depth=1 origin main >nul 2>&1
+    if exist "core\config.py" copy /y "core\config.py" "core\config.py.bak" >nul 2>&1
+    if exist "core\config.json" copy /y "core\config.json" "core\config.json.bak" >nul 2>&1
+    git fetch --depth=1 origin main:refs/remotes/origin/main >nul 2>&1
     git reset --hard origin/main >nul 2>&1
+    if exist "core\config.py.bak" copy /y "core\config.py.bak" "core\config.py" >nul 2>&1
+    if exist "core\config.json.bak" copy /y "core\config.json.bak" "core\config.json" >nul 2>&1
+    if exist "core\config.py.bak" del /f /q "core\config.py.bak" >nul 2>&1
+    if exist "core\config.json.bak" del /f /q "core\config.json.bak" >nul 2>&1
     echo Update applied successfully! Re-launching updated Job Agent...
     timeout /t 1 /nobreak >nul
     start "" "%~f0"
