@@ -66,7 +66,12 @@ To cleanly remove all scheduled tasks, shortcuts, encryption keys, virtual envir
 ## How to Use
 
 ### 1. Desktop Dashboard
-Launch the dashboard anytime from the **Job Agent** shortcut on your Desktop. On startup it will:
+Launch the dashboard anytime from the **Job Agent** shortcut on your Desktop. 
+
+> [!NOTE]
+> **No Desktop Shortcut?** If shortcut creation failed during setup (e.g., due to custom Desktop paths or OneDrive encoding), navigate to your installation folder and double-click **`Job_Agent.bat`** (checks for updates and launches the app) or **`desktop_app.pyw`** (opens the UI directly). You can right-click either file to manually **Send to -> Desktop (create shortcut)**.
+
+On startup it will:
 1. Check for the latest updates from GitHub.
 2. Start the local FastAPI server.
 3. Open the dashboard window with your curated list of job matches.
@@ -83,7 +88,7 @@ The setup creates a Windows Scheduled Task called **"Weekly Job Agent"** that ru
 - **Changing the Schedule**: Open Windows **Task Scheduler**, find "Weekly Job Agent", and edit its triggers.
 
 ### 3. Manual On-Demand Run
-No need to open a terminal. Simply open the **Job Agent Dashboard** from your Desktop shortcut and click the **Run** button to trigger an immediate job scan.
+No need to open a terminal. Simply open the **Job Agent Dashboard** (from your Desktop shortcut or by double-clicking **`Job_Agent.bat`**) and click the **Search for New Jobs** button to trigger an immediate job scan.
 
 ## Configuration
 

@@ -69,6 +69,7 @@ class UninstallWizard(tk.Tk):
         self.remove_shortcut_var = tk.BooleanVar(value=True)
         self.remove_keys_var = tk.BooleanVar(value=True)
         self.remove_data_var = tk.BooleanVar(value=True)
+        self.remove_playwright_var = tk.BooleanVar(value=True)
         self.remove_project_var = tk.BooleanVar(value=True) # Delete entire folder by default
         
         # Synchronization logic so folder deletion cannot be selected if any component is preserved
