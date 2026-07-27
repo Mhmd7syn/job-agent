@@ -491,6 +491,12 @@ def main():
 
 if __name__ == "__main__":
     prevent_sleep()
+    lock_path = os.path.join(_OUTPUT_DIR, ".scraper.lock")
+    try:
+        with open(lock_path, "w", encoding="utf-8") as lf:
+            lf.write(str(os.getpid()))
+    except Exception:
+        pass
     start_time = time.time()
     logging.info("Starting job agent run...")
     try:
@@ -569,4 +575,9 @@ if __name__ == "__main__":
         except Exception as e:
             logging.error(f"Failed to generate or save AI evaluation: {e}")
 
+        try:
+            if os.path.exists(lock_path):
+                os.remove(lock_path)
+        except Exception:
+            pass
         allow_sleep()

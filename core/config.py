@@ -54,16 +54,12 @@ EXCLUDE_KEYWORDS = _config_data.get("EXCLUDE_KEYWORDS", [])
 EXCLUDED_COMPANIES = _config_data.get("EXCLUDED_COMPANIES", [])
 FAVORITE_COMPANIES = _config_data.get("FAVORITE_COMPANIES", [])
 
-LOCATION = _config_data.get("LOCATION", ["Egypt"])
+LOCATION = _config_data.get("LOCATION", ["United States", "Remote"])
 TARGET_LOCATIONS = _config_data.get("TARGET_LOCATIONS", [
-    "cairo", "giza", "new capital", "administrative capital", 
-    "maadi", "masr el gedida", "heliopolis", "nasr city", 
-    "new cairo", "tagamoa", "6th of october", "october", 
-    "sheikh zayed", "zayed", "shorouk", "obour", "badr", "10th of ramadan",
-    "smart village"
+    "New York", "San Francisco", "Remote", "Global"
 ])
 
-TARGET_LEVELS = _config_data.get("TARGET_LEVELS", ["junior", "fresh", "student", "intern", "entry", "trainee", "entry-level", "undergrad"])
+TARGET_LEVELS = _config_data.get("TARGET_LEVELS", ["Junior", "Entry-level", "Intern"])
 
 SITES = _config_data.get("SITES", ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb", "indeed"])
 RESULTS_PER_TERM = _config_data.get("RESULTS_PER_TERM", 15)
@@ -71,10 +67,10 @@ HOURS_OLD = _config_data.get("HOURS_OLD", 168)
 MAX_JOBS_TO_SEND = _config_data.get("MAX_JOBS_TO_SEND", 10)
 
 USER_BRIEF = _config_data.get("USER_BRIEF", """
-I am a Junior/Entry-level professional located in my target region.
-I am looking for suitable roles matching my skills and experience.
+I am a passionate software and AI professional looking for Junior or Entry-level positions.
+My core skills include Python, SQL, Machine Learning, and problem solving.
+I prefer Junior, Intern, or Entry-level positions.
 """)
-
 
 # Remote Location Boost Keywords
 GLOBAL_REMOTE_KEYWORDS = _config_data.get("GLOBAL_REMOTE_KEYWORDS", ['africa', 'middle east', 'mena', 'worldwide', 'global'])

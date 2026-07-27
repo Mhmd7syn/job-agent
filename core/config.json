@@ -269,23 +269,19 @@
       "max_years_experience": 3
     }
   ],
-  "LOCATION": ["Egypt"],
+  "LOCATION": ["United States", "Remote"],
   "TARGET_LOCATIONS": [
-    "cairo", "giza", "new capital", "administrative capital", 
-    "maadi", "masr el gedida", "heliopolis", "nasr city", 
-    "new cairo", "tagamoa", "6th of october", "october", 
-    "sheikh zayed", "zayed", "shorouk", "obour", "badr", "10th of ramadan",
-    "smart village"
+    "New York", "San Francisco", "Remote", "Global"
   ],
   "TARGET_LEVELS": [
-    "junior", "fresh", "student", "intern", "entry", "trainee", "entry-level", "undergrad"
+    "Junior", "Entry-level", "Intern"
   ],
   "SITES": ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb", "indeed"],
   "SITES_FOR_ARABIC": ["wuzzuf", "linkedin"],
   "RESULTS_PER_TERM": 15,
   "HOURS_OLD": 168,
   "MAX_JOBS_TO_SEND": 10,
-  "USER_BRIEF": "I am a Junior/Entry-level professional in AI and Data Science located in Egypt.\nI am looking for roles related to Machine Learning, Data Science, AI Engineering, and instructing/training positions.\nMy core skills include Python, SQL, Machine Learning, Deep Learning, and Computer Vision.\nI prefer Junior, Fresh Graduate, Intern, or Entry-level positions and want to avoid Senior, Lead, or Managerial roles.",
+  "USER_BRIEF": "I am a passionate software and AI professional looking for Junior or Entry-level positions.\nMy core skills include Python, SQL, Machine Learning, and problem solving.\nI prefer Junior, Intern, or Entry-level positions.",
   "GLOBAL_REMOTE_KEYWORDS": ["africa", "middle east", "mena", "worldwide", "global"],
   "RESTRICTED_REMOTE_KEYWORDS": ["us only", "uk only", "eu only"],
   "GLASSDOOR_LOC_ID": 69

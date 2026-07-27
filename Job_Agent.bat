@@ -2,6 +2,9 @@
 setlocal
 cd /d "%~dp0"
 
+:: If virtual environment does not exist yet (first-time setup), skip update checking!
+if not exist "venv\Scripts\activate.bat" goto RunSetup
+
 if not exist ".git" goto LaunchApp
 git --version >nul 2>&1
 if not %errorlevel%==0 goto LaunchApp
@@ -21,15 +24,23 @@ echo ==========================================
 set /p updateChoice="Do you want to download and apply the update? (Y/N) [Y]: "
 if /I "%updateChoice%"=="N" goto LaunchApp
 
-echo Downloading update...
-git fetch --depth=1 origin main >nul 2>&1
-git reset --hard origin/main
+:: Wrap git update in parenthesized block to prevent CMD from reading corrupted file offsets when script is updated on disk
+(
+    echo Downloading and applying update...
+    git fetch --depth=1 origin main >nul 2>&1
+    git reset --hard origin/main >nul 2>&1
+    echo Update applied successfully! Re-launching updated Job Agent...
+    timeout /t 1 /nobreak >nul
+    start "" "%~f0"
+    exit /b 0
+)
 
 :LaunchApp
-if exist "venv\Scripts\activate.bat" (
-    call venv\Scripts\activate.bat
-    start "" "venv\Scripts\pythonw.exe" desktop_app.pyw
-) else (
-    echo Virtual environment not found. Running setup...
-    call Setup_Job_Agent.bat
-)
+call venv\Scripts\activate.bat
+start "" "venv\Scripts\pythonw.exe" desktop_app.pyw
+exit /b 0
+
+:RunSetup
+echo Virtual environment not found. Starting setup wizard...
+call Setup_Job_Agent.bat
+exit /b 0

@@ -151,10 +151,21 @@ def run_scraper():
 @app.get("/api/scraper-status")
 def scraper_status():
     from datetime import datetime
+    import time
     global scraper_process
     is_running = False
     if scraper_process and scraper_process.poll() is None:
         is_running = True
+    else:
+        try:
+            lock_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", ".scraper.lock")
+            if os.path.exists(lock_path):
+                if (time.time() - os.path.getmtime(lock_path)) < 2700:
+                    is_running = True
+                else:
+                    os.remove(lock_path)
+        except Exception:
+            pass
         
     last_run_str = "Unknown"
     try:

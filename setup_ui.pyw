@@ -70,15 +70,14 @@ class SetupWizard(tk.Tk):
         self.install_path_var = tk.StringVar(value=PROJECT_ROOT)
         
         # Career & config customization state
-        self.loc_var = tk.StringVar(value="Egypt")
-        self.cities_var = tk.StringVar(value="cairo, giza, new capital, maadi, heliopolis, nasr city, new cairo, october, zayed, smart village")
-        self.levels_var = tk.StringVar(value="junior, fresh, student, intern, entry, trainee, entry-level, undergrad")
-        self.terms_var = tk.StringVar(value="AI Engineer, Machine Learning Engineer, Computer Vision, NLP, Deep Learning, Data Scientist, Data Analyst, BI")
+        self.loc_var = tk.StringVar(value="United States, Remote")
+        self.cities_var = tk.StringVar(value="New York, San Francisco, Remote")
+        self.levels_var = tk.StringVar(value="Junior, Entry-level, Intern")
+        self.terms_var = tk.StringVar(value="AI Engineer, Data Scientist, Software Engineer")
         self.brief_text_content = (
-            "I am a Junior/Entry-level professional in AI and Data Science located in Egypt.\n"
-            "I am looking for roles related to Machine Learning, Data Science, AI Engineering, and instructing/training positions.\n"
-            "My core skills include Python, SQL, Machine Learning, Deep Learning, and Computer Vision.\n"
-            "I prefer Junior, Fresh Graduate, Intern, or Entry-level positions and want to avoid Senior, Lead, or Managerial roles."
+            "I am a passionate software and AI professional looking for Junior or Entry-level positions.\n"
+            "My core skills include Python, SQL, Machine Learning, and problem solving.\n"
+            "I prefer Junior, Intern, or Entry-level positions."
         )
         
         # Credentials state
@@ -184,11 +183,15 @@ class SetupWizard(tk.Tk):
             ("⏰ Automation & Shortcuts", "Schedules background job scanning and adds a handy desktop shortcut.")
         ]
         
-        for icon_title, desc in items:
-            frame = tk.Frame(card, bg=BG_CARD)
-            frame.pack(fill=tk.X, pady=5)
-            tk.Label(frame, text=icon_title, font=("Segoe UI", 11, "bold"), fg=FG_TEXT, bg=BG_CARD, width=24, anchor="w").pack(side=tk.LEFT, anchor="n")
-            tk.Label(frame, text=desc, font=("Segoe UI", 10), fg=FG_MUTED, bg=BG_CARD, wraplength=420, justify="left").pack(side=tk.LEFT, fill=tk.X, expand=True)
+        grid_frame = tk.Frame(card, bg=BG_CARD)
+        grid_frame.pack(fill=tk.BOTH, expand=True, pady=4)
+        grid_frame.columnconfigure(1, weight=1)
+
+        for i, (icon_title, desc) in enumerate(items):
+            lbl_title = tk.Label(grid_frame, text=icon_title, font=("Segoe UI", 10, "bold"), fg=FG_TEXT, bg=BG_CARD, anchor="w", width=26)
+            lbl_title.grid(row=i, column=0, sticky="nw", padx=(0, 15), pady=6)
+            lbl_desc = tk.Label(grid_frame, text=desc, font=("Segoe UI", 10), fg=FG_MUTED, bg=BG_CARD, wraplength=400, justify="left", anchor="w")
+            lbl_desc.grid(row=i, column=1, sticky="nw", pady=6)
 
         status_msg = "✓ All local project files found." if repo_exists else "⚡ Ready to download repository files from GitHub automatically."
         status_col = SUCCESS if repo_exists else ACCENT
@@ -254,9 +257,27 @@ class SetupWizard(tk.Tk):
         self.progress_bar = ModernProgressBar(self.container, width=700, height=22)
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
-        _, log_card = self.create_card(self.container, title="📋 Installation Activity Log:", padx=10, pady=10, expand=True)
+        btn_row = tk.Frame(self.container, bg=BG_DARK)
+        btn_row.pack(fill=tk.X, pady=(0, 10))
+        
+        self.details_visible = False
+        def toggle_details():
+            if not self.details_visible:
+                self.log_border.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+                self.details_btn.config(text="▲ Hide Details")
+                self.details_visible = True
+            else:
+                self.log_border.pack_forget()
+                self.details_btn.config(text="👁 View Details")
+                self.details_visible = False
+
+        self.details_btn = self.create_button(btn_row, "👁 View Details", toggle_details, bg="#33334b", hover_bg="#474766", fg=FG_TEXT, px=14, py=5)
+        self.details_btn.pack(side=tk.LEFT)
+
+        self.log_border, log_card = self.create_card(self.container, title="📋 Installation Activity Log:", padx=10, pady=10, expand=True)
         self.log_area = scrolledtext.ScrolledText(log_card, bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", font=("Consolas", 10), relief="flat", height=13, state="disabled", borderwidth=0)
         self.log_area.pack(fill=tk.BOTH, expand=True)
+        self.log_border.pack_forget() # Hide logs by default as requested by user
 
         self.bottom_prog = tk.Frame(self.container, bg=BG_DARK)
         self.bottom_prog.pack(fill=tk.X, side=tk.BOTTOM, pady=(15, 0))
@@ -269,15 +290,31 @@ class SetupWizard(tk.Tk):
             need_download = not (os.path.exists(os.path.join(PROJECT_ROOT, "job_agent.py")) and os.path.exists(os.path.join(PROJECT_ROOT, "core", "config.json")))
             
             if need_download:
-                self.log_queue.put(("progress", 15, "Downloading Job Agent repository from GitHub..."))
+                self.log_queue.put(("progress", 10, "Downloading repository codebase..."))
                 self.log("Local repository files missing. Downloading directly from GitHub...")
                 zip_url = "https://github.com/Mhmd7syn/job-agent/archive/refs/heads/main.zip"
                 tmp_zip = os.path.join(PROJECT_ROOT, "repo_temp.zip")
                 
                 req = urllib.request.Request(zip_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) JobAgentInstaller/1.0'})
                 with urllib.request.urlopen(req) as response, open(tmp_zip, 'wb') as out_file:
-                    shutil.copyfileobj(response, out_file)
+                    total_bytes = int(response.headers.get('Content-Length', 0))
+                    if total_bytes <= 0:
+                        total_bytes = 5_500_000
+                    downloaded = 0
+                    start_t = time.time()
+                    while True:
+                        chunk = response.read(16384)
+                        if not chunk:
+                            break
+                        out_file.write(chunk)
+                        downloaded += len(chunk)
+                        elapsed = max(0.1, time.time() - start_t)
+                        speed = (downloaded / 1048576) / elapsed
+                        rem_secs = int(max(0, (total_bytes - downloaded) / 1048576) / max(0.01, speed))
+                        pct = 10 + int((downloaded / max(1, total_bytes)) * 20)
+                        self.log_queue.put(("progress", min(30, pct), f"Downloading code: {downloaded/1048576:.2f} MB / {total_bytes/1048576:.2f} MB ({speed:.1f} MB/s) — ~{rem_secs}s remaining"))
                 
+                self.log_queue.put(("progress", 32, "Extracting archive into working directory..."))
                 self.log("Extracting archive into working directory...")
                 with zipfile.ZipFile(tmp_zip, 'r') as zip_ref:
                     zip_ref.extractall(PROJECT_ROOT)
@@ -306,7 +343,7 @@ class SetupWizard(tk.Tk):
                 self.log("Local project codebase verified.")
 
             # Step: Git check & setup
-            self.log_queue.put(("progress", 35, "Checking Git environment for auto-updates..."))
+            self.log_queue.put(("progress", 40, "Configuring Git environments..."))
             git_cmd = "git"
             res = subprocess.run([git_cmd, "--version"], capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
             if res.returncode != 0:
@@ -341,18 +378,27 @@ class SetupWizard(tk.Tk):
                 self.log("Virtual environment (venv) already present.")
 
             # Step: Installing Python Requirements
-            self.log_queue.put(("progress", 75, "Installing required packages from requirements.txt..."))
+            self.log_queue.put(("progress", 65, "Installing required packages from requirements.txt..."))
             pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
             req_file = os.path.join(PROJECT_ROOT, "requirements.txt")
             if os.path.exists(req_file):
-                self.log("Installing required Python libraries...")
+                with open(req_file, "r", encoding="utf-8") as rf:
+                    req_cnt = len([l for l in rf if l.strip() and not l.strip().startswith("#")])
+                self.log(f"Installing {req_cnt} required Python libraries...")
                 process = subprocess.Popen(
                     [pip_exe, "install", "--prefer-binary", "-r", "requirements.txt"],
                     cwd=PROJECT_ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, bufsize=1, creationflags=CREATE_NO_WINDOW
                 )
+                inst_cnt = 0
+                t0 = time.time()
                 for line in process.stdout:
-                    self.log("  " + line.strip())
+                    cline = line.strip()
+                    self.log("  " + cline)
+                    if "Collecting" in cline or "Downloading" in cline:
+                        inst_cnt = min(req_cnt - 1, inst_cnt + 1)
+                        el = int(time.time() - t0)
+                        self.log_queue.put(("progress", 65 + int((inst_cnt/max(1, req_cnt))*25), f"Installing libraries: {inst_cnt}/{req_cnt} completed ({el}s elapsed)..."))
                 process.wait()
                 self.log("Python libraries installed successfully.")
 
@@ -427,19 +473,22 @@ class SetupWizard(tk.Tk):
 
         self.create_button(cv_frame, "📄 Auto-Tune from My CV / Resume (AI)", import_cv, bg=ACCENT, hover_bg=ACCENT_HOV, px=12, py=5).pack(side=tk.RIGHT)
 
-        def add_input_row(label_txt, var):
-            row = tk.Frame(form_card, bg=BG_CARD)
-            row.pack(fill=tk.X, pady=4)
-            tk.Label(row, text=label_txt, font=("Segoe UI", 10, "bold"), fg=FG_TEXT, bg=BG_CARD, width=22, anchor="w").pack(side=tk.LEFT)
-            border = tk.Frame(row, bg=BORDER_COL, padx=1, pady=1)
-            border.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        inputs_frame = tk.Frame(form_card, bg=BG_CARD)
+        inputs_frame.pack(fill=tk.X, pady=4)
+        inputs_frame.columnconfigure(1, weight=1)
+        
+        def add_input_row(row_idx, label_txt, var):
+            lbl = tk.Label(inputs_frame, text=label_txt, font=("Segoe UI", 10, "bold"), fg=FG_TEXT, bg=BG_CARD, anchor="w", width=26)
+            lbl.grid(row=row_idx, column=0, sticky="w", padx=(0, 10), pady=6)
+            border = tk.Frame(inputs_frame, bg=BORDER_COL, padx=1, pady=1)
+            border.grid(row=row_idx, column=1, sticky="ew", pady=6)
             entry = tk.Entry(border, textvariable=var, font=("Segoe UI", 10), bg=BG_INPUT, fg=FG_TEXT, insertbackground="white", relief="flat")
             entry.pack(fill=tk.X, padx=6, pady=4)
 
-        add_input_row("Target Country/Region:", self.loc_var)
-        add_input_row("Target Cities/Districts:", self.cities_var)
-        add_input_row("Experience Levels:", self.levels_var)
-        add_input_row("Primary Job Search Keywords:", self.terms_var)
+        add_input_row(0, "Target Country/Region:", self.loc_var)
+        add_input_row(1, "Target Cities/Districts:", self.cities_var)
+        add_input_row(2, "Experience Levels:", self.levels_var)
+        add_input_row(3, "Primary Job Search Keywords:", self.terms_var)
 
         # AI Brief text
         lbl_row = tk.Frame(form_card, bg=BG_CARD)
@@ -473,12 +522,15 @@ class SetupWizard(tk.Tk):
                     self.loc_var.set(", ".join(val))
                 tloc_m = re.search(r'TARGET_LOCATIONS\s*=\s*(\[[^\]]*\])', content, re.DOTALL)
                 if tloc_m:
-                    val = ast.literal_eval(tloc_m.group(1).replace("\n", "").replace(" ", ""))
-                    self.cities_var.set(", ".join(val))
+                    try:
+                        val = ast.literal_eval(tloc_m.group(1))
+                        self.cities_var.set(", ".join(val[:4]))
+                    except Exception:
+                        pass
                 lvl_m = re.search(r'TARGET_LEVELS\s*=\s*(\[[^\]]*\])', content, re.DOTALL)
                 if lvl_m:
                     val = ast.literal_eval(lvl_m.group(1))
-                    self.levels_var.set(", ".join(val))
+                    self.levels_var.set(", ".join(val[:4]))
                 brief_m = re.search(r'USER_BRIEF\s*=\s*"""(.*?)"""', content, re.DOTALL)
                 if not brief_m:
                     brief_m = re.search(r"USER_BRIEF\s*=\s*'''(.*?)'''", content, re.DOTALL)
@@ -494,10 +546,9 @@ class SetupWizard(tk.Tk):
                     for r in cdata.get("ROLES", []):
                         terms.extend(r.get("english_terms", []))
                 if terms:
-                    # Deduplicate while preserving order
                     seen = set()
                     unique = [x for x in terms if not (x in seen or seen.add(x))]
-                    self.terms_var.set(", ".join(unique[:15])) # Limit display length
+                    self.terms_var.set(", ".join(unique[:3])) # Limit display length to simple defaults
         except Exception as e:
             print("Notice loading defaults:", e)
 
@@ -792,6 +843,20 @@ except Exception as e:
                 subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, creationflags=CREATE_NO_WINDOW)
                 self.log("✓ Desktop shortcut 'Job Agent.lnk' created.")
 
+            # Step: Initial First-Run Job Search
+            self.log_queue.put(("progress", 98, "Starting initial background job search..."))
+            self.log("Starting initial automatic job search...")
+            try:
+                venv_pyw = os.path.join(PROJECT_ROOT, "venv", "Scripts", "pythonw.exe")
+                if not os.path.exists(venv_pyw):
+                    venv_pyw = os.path.join(PROJECT_ROOT, "venv", "Scripts", "python.exe")
+                job_agent_script = os.path.join(PROJECT_ROOT, "job_agent.py")
+                if os.path.exists(job_agent_script) and os.path.exists(venv_pyw):
+                    subprocess.Popen([venv_pyw, job_agent_script], cwd=PROJECT_ROOT, creationflags=CREATE_NO_WINDOW)
+                    self.log("✓ First-run job search started automatically in background.")
+            except Exception as e:
+                self.log(f"Notice: Could not auto-start initial scan: {e}")
+
             self.log("=========================================")
             self.log("🎉 All setup tasks completed successfully!")
             self.log_queue.put(("progress", 100, "Setup Complete!"))
@@ -827,11 +892,15 @@ except Exception as e:
                     self.create_button(self.bottom_prog, "Next: Personalize Preferences ➔", lambda: self.show_screen(2), bg=SUCCESS, hover_bg="#059669").pack(side=tk.RIGHT)
                 elif msg_type == "final_done":
                     self.progress_bar.set_progress(100, color=SUCCESS)
-                    self.prog_title.config(text="🎉 Job Agent Setup Complete!")
-                    self.prog_sub.config(text="Your automated job search assistant is configured and ready to hunt.")
-                    self.status_label.config(text="✓ Everything configured & ready to roll!", fg=SUCCESS)
+                    self.prog_title.config(text="🎉 Setup Complete & Initial Search Started!")
+                    self.prog_sub.config(text="Your automated assistant is configured and your initial background job scan is actively running!")
+                    self.status_label.config(text="✓ First job scan running right now in background!", fg=SUCCESS)
                     self.create_button(self.bottom_prog, "❌ Close", self.destroy, bg="#33334b", hover_bg="#474766", fg=FG_TEXT).pack(side=tk.LEFT)
                     self.create_button(self.bottom_prog, "🖥️ Launch Job Agent Dashboard Now", self.launch_app, bg=SUCCESS, hover_bg="#059669").pack(side=tk.RIGHT)
+                    messagebox.showinfo(
+                        "Initial Job Search Auto-Started!",
+                        "🎉 Welcome to Job Agent!\n\nSince this is your first time setting up, your initial background job search has been started automatically based on your configured career preferences!\n\nClick 'Launch Job Agent Dashboard Now' to view your live dashboard as new matching jobs and AI scores arrive!"
+                    )
                 elif msg_type == "error":
                     self.progress_bar.set_progress(100, color=DANGER)
                     self.prog_title.config(text="⚠️ Setup Encountered an Issue", fg=DANGER)
