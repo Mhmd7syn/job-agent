@@ -10,7 +10,8 @@ from playwright_stealth import Stealth
 import sys
 import logging
 import pandas as pd
-from core.llm_parser import extract_job_page_with_ai, extract_feed_posts_with_ai
+from core.llm_parser import extract_job_page_with_ai, extract_feed_posts_with_ai, extract_json_ld
+from core.database import is_job_seen
 
 LOGIN_FAILED = False
 
@@ -27,20 +28,43 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
     """Launch browser persistently using local Google Chrome or Microsoft Edge to save disk space and bypass anti-bot checks."""
     channels = ["chrome", "msedge", None]
     last_exception = None
-    for channel in channels:
-        try:
-            launch_args = {"user_data_dir": user_data_dir, "headless": headless, **kwargs}
-            if channel:
-                launch_args["channel"] = channel
-            return playwright_instance.chromium.launch_persistent_context(**launch_args)
-        except Exception as e:
-            last_exception = e
-            continue
-    logging.error(f"❌ Could not launch any browser (Chrome, Edge, or Chromium). Please ensure Google Chrome or Microsoft Edge is installed.")
-    if last_exception:
-        raise last_exception
+    
+    default_args = [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-infobars",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-quic",
+        "--ignore-certificate-errors",
+    ]
+    if not headless:
+        default_args.append("--start-maximized")
+    else:
+        default_args.append("--window-size=1920,1080")
+        
+    custom_args = kwargs.pop("args", [])
+    combined_args = list(set(default_args + custom_args))
+    
+    ignore_default_args = kwargs.pop("ignore_default_args", ["--enable-automation", "--enable-blink-features=IdleDetection"])
+    viewport = kwargs.pop("viewport", None)
 
+    chrome_bin = os.path.join(BASE_DIR, "chrome-win64", "chrome.exe")
+    
+    launch_args = {
+        "user_data_dir": user_data_dir,
+        "headless": headless,
+        "args": combined_args,
+        "ignore_default_args": ignore_default_args,
+        "viewport": viewport,
+        **kwargs
+    }
+    
+    if os.path.exists(chrome_bin):
+        launch_args["executable_path"] = chrome_bin
+    else:
+        launch_args["channel"] = "chrome"
 
+    return playwright_instance.chromium.launch_persistent_context(**launch_args)
 def auto_login_if_needed(page):
     global LOGIN_FAILED
     if LOGIN_FAILED:
@@ -172,7 +196,7 @@ _POST_EXTRACTOR_JS = r'''() => {
         let postUrl = "";
         for (let a of post.querySelectorAll('a')) {
             if (a.href) {
-                if (a.href.includes('/feed/update/urn:li:') || a.href.includes('/posts/')) {
+                if (a.href.includes('/feed/update/urn:li:') || a.href.includes('/posts/') || a.href.includes('-activity-')) {
                     postUrl = a.href.split('?')[0];
                     break;
                 }
@@ -181,18 +205,16 @@ _POST_EXTRACTOR_JS = r'''() => {
         if (!postUrl) {
             let dataUrn = post.getAttribute('data-urn') || post.querySelector('[data-urn]')?.getAttribute('data-urn');
             if (dataUrn) {
-                let match = dataUrn.match(/activity:(\d+)/) || dataUrn.match(/ugcPost:(\d+)/);
+                let match = dataUrn.match(/activity:(\d+)/) || dataUrn.match(/ugcPost:(\d+)/) || dataUrn.match(/share:(\d+)/);
                 if (match) {
                     postUrl = "https://www.linkedin.com/feed/update/urn:li:activity:" + match[1];
                 }
             }
         }
-        
-        let authorUrl = "";
-        for (let a of post.querySelectorAll('a')) {
-            if (isAuthorLink(a.href)) {
-                authorUrl = a.href.split('?')[0];
-                break;
+        if (!postUrl) {
+            let outerMatch = post.outerHTML.match(/(?:urn:li:)?(?:activity|ugcPost|share)[:-](\d{18,20})/);
+            if (outerMatch) {
+                postUrl = "https://www.linkedin.com/feed/update/urn:li:activity:" + outerMatch[1];
             }
         }
         
@@ -200,8 +222,6 @@ _POST_EXTRACTOR_JS = r'''() => {
         if (text && text.trim().length > 20) {
             if (postUrl) {
                 result += "Post URL: " + postUrl + "\\n";
-            } else if (authorUrl) {
-                result += "Author/Company URL: " + authorUrl + "\\n";
             }
             result += "Post Text:\\n" + text + "\\n\\n---END OF POST---\\n\\n";
         }
@@ -279,7 +299,12 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
             page.wait_for_timeout(700)
 
         links = page.evaluate(_JOB_LINK_EXTRACTOR_JS)
-        links = links[:results_wanted]
+        # Pre-AI deduplication: skip URLs already in DB before navigating
+        new_links = [url for url in links if not is_job_seen(url)]
+        skipped = len(links) - len(new_links)
+        if skipped:
+            logging.info(f"    ⏭️ Skipping {skipped} already-known job(s) (dedup cache)")
+        links = new_links[:results_wanted]
 
         for job_url in links:
             try:
@@ -306,8 +331,14 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                     except:
                         pass
 
-                page_text = page.evaluate("document.body.innerText")
-                ai_data = extract_job_page_with_ai(page_text[:10000])
+                page_html = page.evaluate("document.documentElement.innerHTML")
+                # Try JSON-LD zero-token fast-path first
+                ai_data = extract_json_ld(page_html)
+                if ai_data:
+                    logging.debug(f"    ⚡ JSON-LD fast-path used for {job_url}")
+                else:
+                    page_text = page.evaluate("document.body.innerText")
+                    ai_data = extract_job_page_with_ai(page_text[:10000])
 
                 if ai_data and not ai_data.get("error"):
                     title = ai_data.get('title', 'Unknown')

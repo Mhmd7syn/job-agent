@@ -28,6 +28,7 @@
             </button>
             <span id="last-run-text" style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">Last Run: Checking...</span>
         </div>
+        <button class="btn btn-secondary" id="rescore-btn" onclick="rescoreJobs()"><i class="fa-solid fa-wand-magic-sparkles" id="rescore-icon"></i><i class="fa-solid fa-spinner fa-spin hidden" id="rescore-spinner"></i><span id="rescore-text">Rescore Jobs</span></button>
         <button class="btn btn-secondary" onclick="showSettings()"><i class="fa-solid fa-gear"></i>Settings</button>
         <button class="btn btn-secondary" onclick="showSystemStatus()"><i class="fa-solid fa-server"></i>System Status</button>
         <div class="stat-box" style="white-space: nowrap;">
@@ -225,6 +226,23 @@
                 </button>
             </div>
         </main>
+    </div>
+
+    <!-- Rerank Confirmation Modal -->
+    <div id="rerank-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 480px; padding: 2rem; text-align: center;">
+            <div style="font-size: 3rem; color: var(--accent); margin-bottom: 1rem;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+            </div>
+            <h2 style="margin-bottom: 0.75rem; color: var(--text-main);">Rerank Current Jobs?</h2>
+            <p style="color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.6; font-size: 0.95rem;">
+                You just updated your preferences! Would you like to instantly rescore and re-rank all jobs currently in your dashboard?
+            </p>
+            <div style="display: flex; justify-content: center; gap: 1rem;">
+                <button class="btn btn-secondary" onclick="hideRerankModal()"><i class="fa-solid fa-clock"></i> Later</button>
+                <button class="btn btn-primary" onclick="confirmRerankFromModal()"><i class="fa-solid fa-wand-magic-sparkles"></i> Yes, Rescore Now</button>
+            </div>
+        </div>
     </div>
 
     <!-- Toast Notification Container -->

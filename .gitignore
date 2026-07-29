@@ -4,6 +4,7 @@ __pycache__/
 
 # Browser session data
 playwright_profile/
+chrome-win64/
 
 # All runtime-generated output (logs, CSVs, state, evaluations)
 output/
@@ -12,3 +13,15 @@ output/
 venv/
 .venv/
 env/
+
+# User personal configuration override (keep safe from git updates)
+core/config.json
+
+# Log files
+*.log
+
+# Temporary and Lock files
+*.lock
+
+# Temporary downloaded files
+downloaded_files/

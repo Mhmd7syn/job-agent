@@ -2,11 +2,12 @@ import urllib.parse
 import pandas as pd
 import datetime
 import logging
-from curl_cffi import requests
+import random
 
 from core.llm_parser import extract_feed_posts_with_ai
+from core.database import is_job_seen
 
-def scrape_indeed(search_term, location, results_wanted=15, hours_old=None):
+def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driver=None):
     jobs = []
     
     url = f"https://www.indeed.com/jobs?q={urllib.parse.quote(search_term)}&l={urllib.parse.quote(location)}&sort=date"
@@ -15,32 +16,26 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None):
         if days > 0:
             url += f"&fromage={days}"
     
-    try:
-        import time
-        response = None
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                # Use impersonate to mimic a modern Chrome browser to bypass Cloudflare
-                response = requests.get(url, impersonate="chrome110", timeout=30)
-                if response.status_code == 200:
-                    break
-            except Exception as e:
-                logging.debug(f"Indeed request failed: {e}")
-                
-            logging.warning(f"⚠️ Indeed Scraper attempt {attempt + 1} failed. Retrying in {2 ** attempt} seconds...")
-            time.sleep(2 ** attempt)
+    if driver is None:
+        logging.error("Indeed scraper requires a SeleniumBase driver.")
+        return pd.DataFrame()
         
-        if not response or response.status_code != 200:
-            status = response.status_code if response else 'Unknown'
-            if status == 403:
-                logging.error(f"⚠️ Indeed Scraper blocked by Cloudflare (Status 403) after {max_retries} attempts.")
-            else:
-                logging.error(f"⚠️ Indeed Scraper returned status {status} after {max_retries} attempts.")
-            return pd.DataFrame()
+    try:
+        driver.uc_open_with_reconnect(url, 4)
+        try:
+            driver.uc_gui_click_captcha()
+        except Exception:
+            pass
 
+        # Check for Cloudflare block visually or just wait for content
+        try:
+            driver.wait_for_element('div.job_seen_beacon, ul.jobsearch-ResultsList', timeout=10)
+        except:
+            pass
+            
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(response.text, 'html.parser')
+        html_content = driver.get_page_source()
+        soup = BeautifulSoup(html_content, 'html.parser')
         
         content_text = ""
         # Extract job cards
@@ -51,7 +46,9 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None):
                 href = a_tag.get('href', '')
                 if href.startswith('/'):
                     href = "https://www.indeed.com" + href
-                
+                if is_job_seen(href):
+                    logging.debug(f"    ⏭️ Skipping known job (cached): {href}")
+                    continue
                 text = card.get_text(separator=" ", strip=True)
                 if len(text) > 10:
                     content_text += f"Job Link: {href}\nJob Info: {text}\n\n"
@@ -63,6 +60,9 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None):
                 if '/rc/clk' in href or 'vjk=' in href:
                     if href.startswith('/'):
                         href = "https://www.indeed.com" + href
+                    if is_job_seen(href):
+                        logging.debug(f"    ⏭️ Skipping known job (cached): {href}")
+                        continue
                     text = a.get_text(separator=" ", strip=True)
                     content_text += f"Job Link: {href}\nJob Info: {text}\n\n"
 

@@ -2,12 +2,13 @@ import urllib.parse
 import pandas as pd
 import datetime
 import logging
-from curl_cffi import requests
+import random
 
 from core.llm_parser import extract_feed_posts_with_ai
 from core.config import GLASSDOOR_LOC_ID
+from core.database import is_job_seen
 
-def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None):
+def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, driver=None):
     jobs = []
     
     # Simple URL encoding for glassdoor (this will redirect to the right search)
@@ -17,45 +18,26 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None):
         if days > 0:
             url += f"&fromAge={days}"
     
+    if driver is None:
+        logging.error("Glassdoor scraper requires a SeleniumBase driver.")
+        return pd.DataFrame()
+        
     try:
-        # Try Safari impersonation to bypass Cloudflare
+        driver.uc_open_with_reconnect(url, 4)
+        try:
+            driver.uc_gui_click_captcha()
+        except Exception:
+            pass
         
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Cache-Control": "max-age=0",
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": "\"Windows\"",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-            "Upgrade-Insecure-Requests": "1"
-        }
-        
-        import time
-        response = None
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(url, impersonate="safari15_5", headers=headers, timeout=30)
-                if response.status_code == 200:
-                    break
-            except Exception as req_e:
-                logging.debug(f"Glassdoor request failed: {req_e}")
-            
-            if response and response.status_code == 200:
-                break
-                
-            logging.warning(f"⚠️ Glassdoor Scraper attempt {attempt + 1} failed. Retrying in {2 ** attempt} seconds...")
-            time.sleep(2 ** attempt)
-                
-        if response is None or response.status_code != 200:
-            logging.error(f"⚠️ Glassdoor Scraper returned status {response.status_code if response else 'Unknown'} after {max_retries} attempts.")
-            return pd.DataFrame()
+        # wait for job cards or cloudflare bypass
+        try:
+            driver.wait_for_element('li', timeout=10)
+        except:
+            pass
 
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(response.text, 'html.parser')
+        html_content = driver.get_page_source()
+        soup = BeautifulSoup(html_content, 'html.parser')
         
         content_text = ""
         # Extract job cards (Glassdoor usually uses li tags for jobs)
@@ -67,7 +49,9 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None):
                 if 'job-listing' in href or '/partner/' in href:
                     if href.startswith('/'):
                         href = "https://www.glassdoor.com" + href
-                    
+                    if is_job_seen(href):
+                        logging.debug(f"    ⏭️ Skipping known job (cached): {href}")
+                        continue
                     text = card.get_text(separator=" ", strip=True)
                     if len(text) > 10:
                         content_text += f"Job Link: {href}\nJob Info: {text}\n\n"

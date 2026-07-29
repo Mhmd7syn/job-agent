@@ -2,11 +2,12 @@ import urllib.parse
 import pandas as pd
 import datetime
 import logging
-from curl_cffi import requests
+import random
 
 from core.llm_parser import extract_feed_posts_with_ai
+from core.database import is_job_seen
 
-def scrape_bayt(search_term, location, results_wanted=15, hours_old=None):
+def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver=None):
     jobs = []
     query = search_term
     
@@ -22,22 +23,31 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None):
             interval = 1
         url += f"&filters[jb_last_modification_date_interval][]={interval}"
     
+    if driver is None:
+        logging.error("Bayt scraper requires a SeleniumBase driver.")
+        return pd.DataFrame()
+
     try:
-        # Use impersonate to mimic a Safari browser and bypass Cloudflare TLS fingerprints
-        response = requests.get(url, impersonate="safari15_5", timeout=20)
+        driver.uc_open_with_reconnect(url, 4)
+        try:
+            driver.uc_gui_click_captcha()
+        except Exception:
+            pass
         
-        if response.status_code != 200:
-            logging.error(f"⚠️ Bayt Scraper returned status {response.status_code}")
-            return pd.DataFrame()
+        try:
+            driver.wait_for_element('li.has-pointer-d', timeout=10)
+        except:
+            pass
 
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(response.text, 'html.parser')
+        html_content = driver.get_page_source()
+        soup = BeautifulSoup(html_content, 'html.parser')
         
         content_text = ""
         # Extract job cards
         job_cards = soup.find_all('li', class_='has-pointer-d')
         for card in job_cards:
-            title_elem = card.find('h2', class_='m0 t-regular')
+            title_elem = card.find('h2')
             if title_elem and title_elem.find('a'):
                 a_tag = title_elem.find('a')
                 href = a_tag.get('href', '')

@@ -31,7 +31,13 @@ if os.getenv("GEMINI_API_KEY"):
     os.environ["GEMINI_API_KEY"] = decrypt_value(os.getenv("GEMINI_API_KEY"))
 
 
-with open(os.path.join(os.path.dirname(__file__), 'config.json'), 'r', encoding='utf-8') as f:
+config_json_path = os.path.join(os.path.dirname(__file__), 'config.json')
+default_json_path = os.path.join(os.path.dirname(__file__), 'config.default.json')
+if not os.path.exists(config_json_path) and os.path.exists(default_json_path):
+    import shutil
+    shutil.copy2(default_json_path, config_json_path)
+
+with open(config_json_path, 'r', encoding='utf-8') as f:
     _config_data = json.load(f)
 
 ROLES = _config_data.get("ROLES", [])
@@ -54,12 +60,16 @@ EXCLUDE_KEYWORDS = _config_data.get("EXCLUDE_KEYWORDS", [])
 EXCLUDED_COMPANIES = _config_data.get("EXCLUDED_COMPANIES", [])
 FAVORITE_COMPANIES = _config_data.get("FAVORITE_COMPANIES", [])
 
-LOCATION = _config_data.get("LOCATION", ["Egypt", "Remote"])
+LOCATION = _config_data.get("LOCATION", ["Egypt"])
 TARGET_LOCATIONS = _config_data.get("TARGET_LOCATIONS", [
-    "Cairo", "Giza", "Remote", "Global"
+    "cairo", "giza", "new capital", "administrative capital", 
+    "maadi", "masr el gedida", "heliopolis", "nasr city", 
+    "new cairo", "tagamoa", "6th of october", "october", 
+    "sheikh zayed", "zayed", "shorouk", "obour", "badr", "10th of ramadan",
+    "smart village"
 ])
 
-TARGET_LEVELS = _config_data.get("TARGET_LEVELS", ["Junior", "Entry-level", "Intern"])
+TARGET_LEVELS = _config_data.get("TARGET_LEVELS", ["junior", "fresh", "student", "intern", "entry", "trainee", "entry-level", "undergrad"])
 
 SITES = _config_data.get("SITES", ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb", "indeed"])
 RESULTS_PER_TERM = _config_data.get("RESULTS_PER_TERM", 15)
@@ -67,9 +77,8 @@ HOURS_OLD = _config_data.get("HOURS_OLD", 168)
 MAX_JOBS_TO_SEND = _config_data.get("MAX_JOBS_TO_SEND", 10)
 
 USER_BRIEF = _config_data.get("USER_BRIEF", """
-I am a passionate software and AI professional looking for Junior or Entry-level positions.
-My core skills include Python, SQL, Machine Learning, and problem solving.
-I prefer Junior, Intern, or Entry-level positions.
+I am a Junior/Entry-level professional located in my target region.
+I am looking for suitable roles matching my skills and experience.
 """)
 
 # Remote Location Boost Keywords

@@ -3,6 +3,7 @@ from scrapers.glassdoor_scraper import scrape_glassdoor
 from scrapers.bayt_scraper import scrape_bayt
 from scrapers.tanqeeb_scraper import scrape_tanqeeb
 from scrapers.wuzzuf_scraper import scrape_wuzzuf
+from scrapers.selenium_scraper import SeleniumSession
 from core.config import (
     SITES, RESULTS_PER_TERM, HOURS_OLD, SEARCH_TERMS, LOCATION,
     EXCLUDE_KEYWORDS, EXCLUDED_COMPANIES, FAVORITE_COMPANIES,
@@ -99,7 +100,7 @@ def main():
                     logging.error(f"❌ Final failure for {scraper_func.__name__}: {e}")
                     return None
 
-    def run_scrapers_for_term_loc(term, loc, li_page=None):
+    def run_scrapers_for_term_loc(term, loc, li_page=None, sb_driver=None):
         local_jobs_list = []
         search_loc = loc
         if loc.lower() == "remote":
@@ -108,24 +109,51 @@ def main():
         futures = []
         # Use ThreadPoolExecutor to run non-Playwright scrapers in the background
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            if 'wuzzuf' in sites_lower:
-                futures.append(executor.submit(retry_scraper, scrape_wuzzuf, term, loc, RESULTS_PER_TERM, HOURS_OLD))
             if 'tanqeeb' in sites_lower:
                 futures.append(executor.submit(retry_scraper, scrape_tanqeeb, term, loc, RESULTS_PER_TERM, HOURS_OLD))
-            if 'bayt' in sites_lower:
-                futures.append(executor.submit(retry_scraper, scrape_bayt, term, loc, RESULTS_PER_TERM, HOURS_OLD))
-            if 'glassdoor' in sites_lower:
-                futures.append(executor.submit(retry_scraper, scrape_glassdoor, term, loc, RESULTS_PER_TERM, HOURS_OLD))
-            if 'indeed' in sites_lower:
-                try:
-                    from scrapers.indeed_scraper import scrape_indeed
-                    futures.append(executor.submit(retry_scraper, scrape_indeed,
-                                   term, loc, RESULTS_PER_TERM, HOURS_OLD))
-                except ImportError:
-                    pass
 
-            # Run Playwright tasks in the main thread while background threads run the rest
-            if 'linkedin' in sites_lower:
+            # Run SeleniumBase/Playwright tasks in the main thread
+            if sb_driver is not None:
+                # Wuzzuf
+                if 'wuzzuf' in sites_lower:
+                    try:
+                        res = retry_scraper(scrape_wuzzuf, term, loc, RESULTS_PER_TERM, HOURS_OLD, sb_driver)
+                        if res is not None and not res.empty:
+                            local_jobs_list.append(res)
+                    except Exception as e:
+                        logging.error(f"⚠️ Playwright wuzzuf scraper failed for '{term}' in '{loc}': {e}")
+                
+                # Bayt
+                if 'bayt' in sites_lower:
+                    try:
+                        res = retry_scraper(scrape_bayt, term, loc, RESULTS_PER_TERM, HOURS_OLD, sb_driver)
+                        if res is not None and not res.empty:
+                            local_jobs_list.append(res)
+                    except Exception as e:
+                        logging.error(f"⚠️ Playwright bayt scraper failed for '{term}' in '{loc}': {e}")
+                
+                # Glassdoor
+                if 'glassdoor' in sites_lower:
+                    try:
+                        res = retry_scraper(scrape_glassdoor, term, loc, RESULTS_PER_TERM, HOURS_OLD, sb_driver)
+                        if res is not None and not res.empty:
+                            local_jobs_list.append(res)
+                    except Exception as e:
+                        logging.error(f"⚠️ Playwright glassdoor scraper failed for '{term}' in '{loc}': {e}")
+                
+                # Indeed
+                if 'indeed' in sites_lower:
+                    try:
+                        from scrapers.indeed_scraper import scrape_indeed
+                        res = retry_scraper(scrape_indeed, term, loc, RESULTS_PER_TERM, HOURS_OLD, sb_driver)
+                        if res is not None and not res.empty:
+                            local_jobs_list.append(res)
+                    except ImportError:
+                        pass
+                    except Exception as e:
+                        logging.error(f"⚠️ Playwright indeed scraper failed for '{term}' in '{loc}': {e}")
+
+            if li_page is not None and 'linkedin' in sites_lower:
                 if scrape_linkedin_jobs_playwright:
                     try:
                         res = retry_scraper(scrape_linkedin_jobs_playwright, term,
@@ -156,19 +184,19 @@ def main():
 
     total_iterations = len(SEARCH_TERMS) * len(LOCATION)
 
-    def _scrape_all(li_page=None):
+    def _scrape_all(li_page=None, sb_driver=None):
         with tqdm(total=total_iterations, desc="Scraping Jobs", unit="search") as pbar:
             for term in SEARCH_TERMS:
                 for loc in LOCATION:
                     try:
-                        local_results = run_scrapers_for_term_loc(term, loc, li_page)
+                        local_results = run_scrapers_for_term_loc(term, loc, li_page, sb_driver)
                         jobs_list.extend(local_results)
                     except Exception as e:
                         logging.error(f"⚠️ Error in term/loc loop '{term}' in {loc}: {e}")
                     pbar.update(1)
 
     # --- Arabic terms pass (restricted to SITES_FOR_ARABIC) ---
-    def _arabic_pass(li_page=None):
+    def _arabic_pass(li_page=None, sb_driver=None):
         arabic_sites_active = {s.lower() for s in SITES_FOR_ARABIC} & sites_lower
         if not ARABIC_SEARCH_TERMS or not arabic_sites_active:
             return
@@ -177,7 +205,7 @@ def main():
                 for loc in LOCATION:
                     if 'wuzzuf' in arabic_sites_active:
                         try:
-                            res = retry_scraper(scrape_wuzzuf, term, loc, RESULTS_PER_TERM, HOURS_OLD)
+                            res = retry_scraper(scrape_wuzzuf, term, loc, RESULTS_PER_TERM, HOURS_OLD, sb_driver)
                             if res is not None and not res.empty:
                                 jobs_list.append(res)
                         except Exception as e:
@@ -194,9 +222,10 @@ def main():
 
     # Reuse a single LinkedIn browser session for the entire run (main + Arabic passes)
     if LinkedInSession and 'linkedin' in sites_lower:
-        with LinkedInSession() as li_page:
-            _scrape_all(li_page)
-            _arabic_pass(li_page)
+        with SeleniumSession() as sb_driver:
+            with LinkedInSession() as li_page:
+                _scrape_all(li_page, sb_driver)
+                _arabic_pass(li_page, sb_driver)
     else:
         _scrape_all()
         _arabic_pass()
@@ -248,6 +277,38 @@ def main():
             return str(row.get('job_type', 'Not specified')).title()
 
         all_jobs['job_type'] = all_jobs.apply(fix_job_type, axis=1)
+
+        import re
+        def fix_company(row):
+            company = str(row.get('company', '')).strip()
+            desc = str(row.get('description', ''))
+            generic_names = {'nan', 'confidential', 'unknown', 'not specified', 'not mentioned', 'staffing and recruiting', 'client', 'our client', 'a leading client', 'our multinational client', 'the company'}
+            if not company or company.lower() in generic_names:
+                # 1. Pattern: "<Company> is looking for / seeking / hiring / searching / recruiting"
+                match = re.search(r'\b([A-Z][A-Za-z0-9\.\-\s&]{1,30}?)\s+(?:is\s+)?(?:looking|seeking|hiring|searching|recruiting)\s+(?:for|to|a|an)\b', desc[:800])
+                if match:
+                    extracted = match.group(1).strip()
+                    ignore_words = ['we', 'our', 'the', 'this', 'here', 'currently', 'an', 'a', 'our client', 'client', 'someone', 'who', 'they', 'he', 'she']
+                    if extracted.lower() not in ignore_words and not any(gw in extracted.lower() for gw in ['our client', 'leading client', 'multinational', 'reputable company']):
+                        return extracted
+                
+                # 2. Pattern: "About <Company>" at start of paragraphs or sentences
+                match_about = re.search(r'(?:^|\n|\.\s+)\s*About\s+([A-Z][A-Za-z0-9\.\-\s&]{2,30}?)(?:\s*:|\s*\.|\s*\n|\s+is|\s+was|\s+-)', desc)
+                if match_about:
+                    extracted = match_about.group(1).strip()
+                    if extracted.lower() not in ['this job', 'the role', 'us', 'our company', 'the company', 'the position', 'the team', 'the client'] and not any(gw in extracted.lower() for gw in ['our client', 'leading client']):
+                        return extracted
+                    
+                # 3. Pattern: "Welcome to <Company>" or "Join <Company>"
+                match_join = re.search(r'\b(?:Welcome to|Join)\s+([A-Z][A-Za-z0-9\.\-\s&]{2,30}?)(?:\'s|\s+as|\s+to|\s+in|\s+team|,|\.|\n)', desc[:800])
+                if match_join:
+                    extracted = match_join.group(1).strip()
+                    if extracted.lower() not in ['our team', 'us', 'our dynamic team', 'the team', 'the company', 'our company', 'our client'] and len(extracted) > 2:
+                        return extracted
+
+            return row.get('company', 'Unknown')
+
+        all_jobs['company'] = all_jobs.apply(fix_company, axis=1)
 
     import re
 
@@ -375,7 +436,7 @@ def main():
         if any(level in title or level in job_type_val or level in desc for level in TARGET_LEVELS):
             score += 15
 
-        # 4. Recency Boost
+        # 4. Recency Boost (Only boost fresh jobs, never penalize older jobs)
         post_date = row.get('date_posted')
         if pd.notna(post_date):
             try:
@@ -386,9 +447,9 @@ def main():
 
                 days_old = (date.today() - p_date).days
 
-                if HOURS_OLD > 0:
+                if HOURS_OLD > 0 and days_old * 24 <= HOURS_OLD:
                     hours_old_calc = days_old * 24
-                    freshness_ratio = 1.0 - (hours_old_calc / HOURS_OLD)
+                    freshness_ratio = max(0.0, 1.0 - (hours_old_calc / HOURS_OLD))
                     score += int(15 * freshness_ratio)
             except Exception:
                 pass

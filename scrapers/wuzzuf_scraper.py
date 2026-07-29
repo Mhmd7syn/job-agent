@@ -6,24 +6,7 @@ import time
 import re
 import datetime
 import logging
-
-def fetch_with_retries(url, retries=5, timeout=10):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-    }
-    for attempt in range(retries):
-        try:
-            response = requests.get(url, headers=headers, timeout=timeout)
-            if response.status_code == 200:
-                return response
-        except Exception as e:
-            if attempt < retries - 1:
-                logging.warning(f"    (Wuzzuf network issue. Retrying {attempt+1}/{retries}...)")
-            else:
-                logging.error(f"⚠️ Network error on {url} after {retries} attempts: {e}")
-            time.sleep(2)
-    return None
+import random
 
 # Per-job description fetch removed: card-level text is sufficient for scoring
 # and avoids ~210 extra HTTP requests + 315 s of mandatory sleep per run.
@@ -39,7 +22,7 @@ def parse_wuzzuf_date_to_hours(date_str):
     if hr: hours += int(hr.group(1))
     return hours
 
-def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None):
+def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driver=None):
     jobs = []
     query = search_term
     if location.lower() == "worldwide" or location.lower() == "remote":
@@ -55,19 +38,32 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None):
         else:
             url += "&filters[post_date][0]=within_1_month"
     
-    response = fetch_with_retries(url)
-    if not response:
+    if driver is None:
+        logging.error("Wuzzuf scraper requires a SeleniumBase driver.")
         return pd.DataFrame()
         
     try:
-        soup = BeautifulSoup(response.content, 'html.parser')
+        driver.uc_open_with_reconnect(url, 4)
+        try:
+            driver.uc_gui_click_captcha()
+        except Exception:
+            pass
+        
+        try:
+            driver.wait_for_element('div.css-pkv5jc', timeout=10)
+        except:
+            driver.save_screenshot("wuzzuf.png")
+            pass
+
+        html_content = driver.get_page_source()
+        soup = BeautifulSoup(html_content, 'html.parser')
         job_cards = soup.find_all('div', class_=lambda c: c and 'css-pkv5jc' in c)
         
         for card in job_cards:
             if len(jobs) >= results_wanted:
                 break
                 
-            title_tag = card.find('h2', class_='css-193uk2c')
+            title_tag = card.find('h2')
             if not title_tag or not title_tag.a: continue
             
             # Extract date to filter old posts

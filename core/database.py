@@ -112,6 +112,21 @@ def get_job_by_id(job_id):
     conn.close()
     return dict(row) if row else None
 
+def is_job_seen(job_url: str) -> bool:
+    """Fast pre-AI deduplication check. Returns True if this URL already exists in the DB.
+    Always returns False on any error so the scraper proceeds safely."""
+    if not job_url:
+        return False
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM jobs WHERE job_url = ? LIMIT 1", (job_url,))
+        found = cursor.fetchone() is not None
+        conn.close()
+        return found
+    except Exception:
+        return False
+
 # Initialize DB when module is loaded
 init_db()
 

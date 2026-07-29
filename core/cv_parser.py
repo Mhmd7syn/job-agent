@@ -140,14 +140,14 @@ def parse_cv_heuristic(text):
     if any(k in text_lower for k in ["data scientist", "machine learning", "deep learning", "ai", "artificial intelligence", "nlp", "computer vision"]):
         roles.append({
             "title": "AI & Machine Learning",
-            "english_terms": ["AI Engineer", "Machine Learning Engineer", "Data Scientist"],
-            "arabic_terms": ["مهندس ذكاء اصطناعي", "عالم بيانات"]
+            "english_terms": ["AI Engineer", "Machine Learning Engineer", "Data Scientist", "Computer Vision Engineer", "NLP Engineer", "Deep Learning Engineer"],
+            "arabic_terms": ["مهندس ذكاء اصطناعي", "مهندس تعلم الآلة", "عالم بيانات"]
         })
     if any(k in text_lower for k in ["data analyst", "power bi", "tableau", "business intelligence", "analytics", "sql"]):
         roles.append({
             "title": "Data & Business Analytics",
-            "english_terms": ["Data Analyst", "Business Intelligence", "Data Analytics"],
-            "arabic_terms": ["محلل بيانات"]
+            "english_terms": ["Data Analyst", "Business Intelligence", "BI Analyst", "BI Developer", "Data Analytics", "Analytics Engineer"],
+            "arabic_terms": ["محلل بيانات", "ذكاء الأعمال", "محلل ذكاء الأعمال", "تحليلات البيانات"]
         })
     if any(k in text_lower for k in ["backend", "frontend", "full stack", "software engineer", "web developer", "react", "django", "fastapi"]):
         roles.append({

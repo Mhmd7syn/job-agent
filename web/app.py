@@ -53,6 +53,15 @@ async def update_config(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+@app.post("/api/rerank-jobs")
+def rerank_jobs_endpoint():
+    from core.scorer import rescore_all_jobs
+    try:
+        result = rescore_all_jobs()
+        return result
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
 @app.post("/api/parse-cv")
 async def parse_cv_endpoint(file: UploadFile = File(...)):
     """Uploads a CV file (PDF/DOCX/TXT) and parses skills, roles, and preferences via AI."""

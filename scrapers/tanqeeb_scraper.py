@@ -1,23 +1,29 @@
-import requests
 import urllib.parse
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import time
+import random
 import datetime
 import logging
 
 from core.llm_parser import extract_feed_posts_with_ai
+from core.database import is_job_seen
+
+_IMPERSONATE_PROFILES = ["chrome120", "chrome110", "chrome107", "edge99", "safari15_5"]
 
 def fetch_with_retries(url, retries=3, timeout=15):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-    }
     for attempt in range(retries):
         try:
-            response = requests.get(url, headers=headers, timeout=timeout)
+            response = requests.get(
+                url,
+                impersonate=random.choice(_IMPERSONATE_PROFILES),
+                timeout=timeout
+            )
             if response.status_code == 200:
                 return response
+            if response.status_code in (403, 429):
+                logging.warning(f"    (Tanqeeb blocked ({response.status_code}). Retrying {attempt+1}/{retries}...)")
         except Exception as e:
             logging.warning(f"    (Tanqeeb network issue. Retrying {attempt+1}/{retries}...)")
             time.sleep(2)
@@ -78,6 +84,9 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                     if href in seen:
                         continue
                     seen.add(href)
+                    if is_job_seen(href):
+                        logging.debug(f"    ⏭️ Skipping known job (cached): {href}")
+                        continue
                     card = a.find_parent(['li', 'article', 'div'])
                     card_text = card.get_text(separator=' ', strip=True) if card else a.get_text(strip=True)
                     if len(card_text) > 10:
@@ -103,6 +112,9 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                     
                     if href.startswith('/'):
                         href = "https://egypt.tanqeeb.com" + href
+                    if is_job_seen(href):
+                        logging.debug(f"    ⏭️ Skipping known job (cached): {href}")
+                        continue
                     card_text = card.get_text(separator=' ', strip=True)
                     content_text += f"Job Link: {href}\nJob Info: {card_text}\n\n"
 

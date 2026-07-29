@@ -567,6 +567,10 @@ async function saveSettings() {
             hideSettings();
             document.getElementById('settings-warning').classList.add('hidden');
             showToast('Settings saved successfully!', 'success', 'fa-check');
+            
+            setTimeout(() => {
+                showRerankModal();
+            }, 400);
         } else {
             showToast('Failed to save settings', 'danger', 'fa-xmark');
         }
@@ -787,6 +791,60 @@ async function pollScraper() {
         }
     } catch(e) {
         console.error(e);
+    }
+}
+
+function showRerankModal() {
+    const modal = document.getElementById('rerank-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function hideRerankModal() {
+    const modal = document.getElementById('rerank-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function confirmRerankFromModal() {
+    hideRerankModal();
+    rescoreJobs();
+}
+
+async function rescoreJobs() {
+    const btn = document.getElementById('rescore-btn');
+    const icon = document.getElementById('rescore-icon');
+    const spinner = document.getElementById('rescore-spinner');
+    const text = document.getElementById('rescore-text');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.7';
+        btn.style.cursor = 'wait';
+        if (icon) icon.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+        if (text) text.innerText = 'Rescoring...';
+    }
+
+    try {
+        const response = await fetch('/api/rerank-jobs', { method: 'POST' });
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            showToast(`Rescored ${result.rescored} jobs in ${result.duration_seconds}s!`, 'success', 'fa-wand-magic-sparkles');
+            fetchJobs();
+        } else {
+            showToast('Error rescoring jobs: ' + (result.error || 'Unknown'), 'danger', 'fa-xmark');
+        }
+    } catch (e) {
+        showToast('Error connecting to server', 'danger', 'fa-xmark');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+            if (icon) icon.classList.remove('hidden');
+            if (spinner) spinner.classList.add('hidden');
+            if (text) text.innerText = 'Rescore Jobs';
+        }
     }
 }
 

@@ -15,8 +15,14 @@ def ask_user_permission(title, message):
     result = ctypes.windll.user32.MessageBoxW(0, message, title, style)
     return result == 6  # 6 is IDYES
 
+def _get_alert_path():
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(root_dir, 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    return os.path.join(data_dir, 'pending_alerts.json')
+
 def save_pending_alert(title, message, updates):
-    alert_path = os.path.join('data', 'pending_alerts.json')
+    alert_path = _get_alert_path()
     alerts = []
     if os.path.exists(alert_path):
         try:
@@ -31,7 +37,7 @@ def save_pending_alert(title, message, updates):
         json.dump(alerts, f, indent=2)
 
 def process_pending_alerts():
-    alert_path = os.path.join('data', 'pending_alerts.json')
+    alert_path = _get_alert_path()
     if not os.path.exists(alert_path):
         return
     try:

@@ -42,11 +42,120 @@ class JobPageExtractionSchema(BaseModel):
     date_posted: str = Field(default="", description="The date the job was posted in YYYY-MM-DD format. Calculate using today's date if relative (e.g., '3 weeks ago' or 'منذ 3 أسابيع' -> subtract 21 days from today; '2 days ago' or 'منذ يومين' -> subtract 2 days; 'yesterday' or 'أمس' -> subtract 1 day).")
 
 
+def extract_json_ld(html_content: str) -> dict | None:
+    """Zero-token Schema.org JSON-LD extractor.
+
+    Searches for a <script type="application/ld+json"> tag containing a
+    Schema.org JobPosting object and maps its fields to our internal schema.
+    Returns a dict on success, or None to signal Gemini fallback is needed.
+    """
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
+        scripts = soup.find_all('script', type='application/ld+json')
+        for script in scripts:
+            if not script.string:
+                continue
+            try:
+                data = json.loads(script.string)
+            except Exception:
+                continue
+
+            # Handle both single objects and @graph arrays
+            candidates = []
+            if isinstance(data, list):
+                candidates = data
+            elif isinstance(data, dict):
+                if data.get('@type') == 'JobPosting':
+                    candidates = [data]
+                elif '@graph' in data:
+                    candidates = data['@graph']
+
+            for item in candidates:
+                if not isinstance(item, dict):
+                    continue
+                if item.get('@type') != 'JobPosting':
+                    continue
+
+                # Map Schema.org fields → internal schema
+                title = item.get('title', '') or item.get('name', '')
+                
+                # Company: hiringOrganization.name or plain string
+                org = item.get('hiringOrganization', {})
+                if isinstance(org, dict):
+                    company = org.get('name', 'Unknown')
+                elif isinstance(org, str):
+                    company = org
+                else:
+                    company = 'Unknown'
+
+                # Location: jobLocation.address or plain string
+                loc_raw = item.get('jobLocation', {})
+                if isinstance(loc_raw, list):
+                    loc_raw = loc_raw[0] if loc_raw else {}
+                if isinstance(loc_raw, dict):
+                    addr = loc_raw.get('address', {})
+                    if isinstance(addr, dict):
+                        location = ', '.join(filter(None, [
+                            addr.get('addressLocality', ''),
+                            addr.get('addressRegion', ''),
+                            addr.get('addressCountry', '')
+                        ])) or 'Unknown'
+                    elif isinstance(addr, str):
+                        location = addr
+                    else:
+                        location = 'Unknown'
+                elif isinstance(loc_raw, str):
+                    location = loc_raw
+                else:
+                    location = 'Unknown'
+
+                # Employment type normalisation
+                emp_type_raw = item.get('employmentType', 'Not specified')
+                if isinstance(emp_type_raw, list):
+                    emp_type_raw = emp_type_raw[0] if emp_type_raw else 'Not specified'
+                emp_map = {
+                    'FULL_TIME': 'Full-time', 'PART_TIME': 'Part-time',
+                    'CONTRACTOR': 'Contract', 'TEMPORARY': 'Temporary',
+                    'INTERN': 'Internship', 'VOLUNTEER': 'Volunteer',
+                    'PER_DIEM': 'Per Diem', 'OTHER': 'Not specified',
+                }
+                job_type = emp_map.get(str(emp_type_raw).upper(), str(emp_type_raw).title())
+
+                # Date posted – prefer datePosted, fall back to validThrough
+                date_posted = item.get('datePosted', '') or item.get('validThrough', '')
+                if date_posted and 'T' in date_posted:
+                    date_posted = date_posted.split('T')[0]
+
+                # Description: strip HTML tags from Schema.org description
+                desc_raw = item.get('description', '')
+                if desc_raw:
+                    from bs4 import BeautifulSoup as _BS
+                    desc_raw = _BS(desc_raw, 'html.parser').get_text(separator=' ', strip=True)
+
+                if not title:
+                    continue  # Skip malformed entries
+
+                logging.debug(f"    ⚡ JSON-LD hit: '{title}' @ '{company}' (zero tokens)")
+                return {
+                    'title': title,
+                    'company': company,
+                    'location': location,
+                    'job_type': job_type,
+                    'description': desc_raw,
+                    'date_posted': date_posted,
+                }
+    except Exception as e:
+        logging.debug(f"JSON-LD extraction error (non-fatal): {e}")
+    return None
+
+
 def extract_feed_posts_with_ai(feed_text):
     prompt = f"""
     You are an expert HR assistant. Read the following text from a LinkedIn search feed or job card and extract all the job listings you can find in it.
     For each job, extract the title, company, location, the post description text, and the job_url (Post URL).
-    CRITICAL: For job_url, you MUST extract the 'Post URL' or Job Link provided at the beginning of each block. Do NOT extract links from within the post text (like application links).
+    CRITICAL ON JOB URL: For job_url, you MUST extract the 'Post URL' or Job Link provided at the beginning of each block. Do NOT extract links from within the post text (like application links).
+    CRITICAL ON COMPANY NAME: If the company field in the posting header is listed as 'Confidential', 'Unknown', or is missing, inspect the job description text for mentions of the hiring company (e.g., 'Advansys is looking for...', 'About [Company]', or 'We at [Company] are seeking...'). If a specific company name is revealed in the description text, extract that real company name instead of 'Confidential'.
     Ignore generic posts, articles, and people looking for jobs.
     Today's date is {datetime.date.today().isoformat()}. Use it to calculate YYYY-MM-DD from English or Arabic relative times (e.g. '1w', '2d', '1 week ago', 'منذ 3 أسابيع', 'قبل يومين', 'أمس').
     
@@ -81,6 +190,7 @@ def extract_feed_posts_with_ai(feed_text):
 def extract_job_page_with_ai(page_text):
     prompt = f"""
     You are an expert HR assistant. Read the following raw text extracted from a job board webpage and extract the structured job details.
+    CRITICAL ON COMPANY NAME: If the company field is listed as 'Confidential', 'Unknown', or is missing, inspect the body text for mentions of the hiring company (e.g., 'Advansys is looking for...', 'About [Company]', or 'We at [Company] are seeking...'). If a specific company name is revealed in the description, extract that real company name instead of 'Confidential'.
     Ignore navigation menus, footers, and generic UI text. Focus on the actual job posting.
     Today's date is {datetime.date.today().isoformat()}. Use it to calculate YYYY-MM-DD from English or Arabic relative times (e.g. '1w', '2d', '1 week ago', 'منذ 3 أسابيع', 'قبل يومين', 'أمس').
     

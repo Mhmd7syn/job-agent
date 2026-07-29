@@ -1,0 +1,114 @@
+{
+  "RESUME_KEYWORDS": [
+    "python",
+    "sql",
+    "machine learning",
+    "data science",
+    "artificial intelligence",
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "deep learning",
+    "tensorflow",
+    "pytorch",
+    "nlp",
+    "computer vision",
+    "git",
+    "fastapi"
+  ],
+  "NICE_TO_HAVE_SKILLS": [
+    "docker",
+    "aws",
+    "gcp",
+    "azure",
+    "langchain",
+    "llamaindex",
+    "mlops",
+    "kubernetes",
+    "sql"
+  ],
+  "EXCLUDE_KEYWORDS": [
+    "senior",
+    "lead",
+    "manager",
+    "principal",
+    "director",
+    "vp",
+    "head",
+    "executive"
+  ],
+  "FAVORITE_COMPANIES": [
+    "microsoft",
+    "amazon",
+    "ibm",
+    "google",
+    "valeo",
+    "vodafone"
+  ],
+  "EXCLUDED_COMPANIES": [],
+  "job_retention_days": 90,
+  "last_reviewed_date": "2026-07-27",
+  "ROLES": [
+    {
+      "title": "AI & Machine Learning",
+      "english_terms": [
+        "AI Engineer",
+        "Machine Learning Engineer",
+        "Data Scientist",
+        "Computer Vision Engineer",
+        "NLP Engineer",
+        "Deep Learning Engineer"
+      ],
+      "arabic_terms": [
+        "مهندس ذكاء اصطناعي",
+        "مهندس تعلم الآلة",
+        "عالم بيانات"
+      ],
+      "max_years_experience": 3
+    }
+  ],
+  "LOCATION": [
+    "Egypt",
+    "Remote"
+  ],
+  "TARGET_LOCATIONS": [
+    "Cairo",
+    "Giza",
+    "Remote",
+    "Global"
+  ],
+  "TARGET_LEVELS": [
+    "Junior",
+    "Entry-level",
+    "Intern"
+  ],
+  "SITES": [
+    "linkedin",
+    "wuzzuf",
+    "bayt",
+    "glassdoor",
+    "tanqeeb",
+    "indeed"
+  ],
+  "SITES_FOR_ARABIC": [
+    "wuzzuf",
+    "linkedin"
+  ],
+  "RESULTS_PER_TERM": 15,
+  "HOURS_OLD": 168,
+  "MAX_JOBS_TO_SEND": 10,
+  "USER_BRIEF": "I am a software and AI professional looking for Junior or Entry-level positions.\nMy core skills include Python, SQL, Machine Learning, and problem solving.\nI prefer Junior, Intern, or Entry-level positions.",
+  "GLOBAL_REMOTE_KEYWORDS": [
+    "africa",
+    "middle east",
+    "mena",
+    "worldwide",
+    "global"
+  ],
+  "RESTRICTED_REMOTE_KEYWORDS": [
+    "us only",
+    "uk only",
+    "eu only"
+  ],
+  "GLASSDOOR_LOC_ID": 69
+}

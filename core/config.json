@@ -154,11 +154,14 @@
     "supervisor",
     "executive",
     "founding",
-    "finance",
+    "financial analyst",
+    "accountant",
     "project management",
-    "product",
-    "marketing",
-    "sales",
+    "product manager",
+    "marketing manager",
+    "marketing specialist",
+    "sales representative",
+    "sales manager",
     "ms",
     "phd",
     "master",
@@ -173,17 +176,24 @@
     "primavera",
     "f&b",
     "bim",
-    "backend",
+    "backend developer",
+    "backend engineer",
     "it support",
     "experienced",
     "expert",
-    "hr",
+    "human resources",
+    "recruiter",
     "qa engineer",
     "billing activation",
     "nms",
     "pmo",
     "facility",
-    "electrical design"
+    "electrical design",
+    "internship",
+    "disabilities",
+    "ignite program",
+    "technical support",
+    "intern"
   ],
   "FAVORITE_COMPANIES": [
     "microsoft",
@@ -228,12 +238,14 @@
       "english_terms": [
         "AI Engineer",
         "Machine Learning Engineer",
-        "Computer Vision",
-        "NLP",
-        "Deep Learning"
+        "Computer Vision Engineer",
+        "NLP Engineer",
+        "Deep Learning Engineer"
       ],
       "arabic_terms": [
-        "مهندس ذكاء اصطناعي"
+        "مهندس ذكاء اصطناعي",
+        "مهندس تعلم الآلة",
+        "عالم بيانات"
       ],
       "max_years_experience": 3
     },
@@ -243,12 +255,21 @@
         "Data Scientist",
         "Data Analyst",
         "Data Engineer",
-        "Analytics",
-        "BI"
+        "Business Intelligence",
+        "BI Analyst",
+        "BI Developer",
+        "BI Engineer",
+        "Data Analytics",
+        "Business Analytics",
+        "Analytics Engineer"
       ],
       "arabic_terms": [
         "عالم بيانات",
-        "محلل بيانات"
+        "محلل بيانات",
+        "مهندس بيانات",
+        "ذكاء الأعمال",
+        "محلل ذكاء الأعمال",
+        "تحليلات البيانات"
       ],
       "max_years_experience": 3
     },
@@ -264,25 +285,74 @@
       ],
       "arabic_terms": [
         "محاضر بايثون",
-        "مدرب برمجة"
+        "مدرب برمجة",
+        "محاضر ذكاء اصطناعي",
+        "محاضر علوم بيانات"
       ],
       "max_years_experience": 3
     }
   ],
-  "LOCATION": ["Egypt", "Remote"],
+  "LOCATION": [
+    "Egypt"
+  ],
   "TARGET_LOCATIONS": [
-    "Cairo", "Giza", "Remote", "Global"
+    "cairo",
+    "giza",
+    "new capital",
+    "administrative capital",
+    "maadi",
+    "masr el gedida",
+    "heliopolis",
+    "nasr city",
+    "new cairo",
+    "tagamoa",
+    "6th of october",
+    "october",
+    "sheikh zayed",
+    "zayed",
+    "shorouk",
+    "obour",
+    "badr",
+    "10th of ramadan",
+    "smart village"
   ],
   "TARGET_LEVELS": [
-    "Junior", "Entry-level", "Intern"
+    "junior",
+    "fresh",
+    "student",
+    "intern",
+    "entry",
+    "trainee",
+    "entry-level",
+    "undergrad"
   ],
-  "SITES": ["linkedin", "wuzzuf", "bayt", "glassdoor", "tanqeeb", "indeed"],
-  "SITES_FOR_ARABIC": ["wuzzuf", "linkedin"],
+  "SITES": [
+    "linkedin",
+    "wuzzuf",
+    "bayt",
+    "glassdoor",
+    "tanqeeb",
+    "indeed"
+  ],
+  "SITES_FOR_ARABIC": [
+    "wuzzuf",
+    "linkedin"
+  ],
   "RESULTS_PER_TERM": 15,
   "HOURS_OLD": 168,
   "MAX_JOBS_TO_SEND": 10,
-  "USER_BRIEF": "I am a passionate software and AI professional looking for Junior or Entry-level positions.\nMy core skills include Python, SQL, Machine Learning, and problem solving.\nI prefer Junior, Intern, or Entry-level positions.",
-  "GLOBAL_REMOTE_KEYWORDS": ["africa", "middle east", "mena", "worldwide", "global"],
-  "RESTRICTED_REMOTE_KEYWORDS": ["us only", "uk only", "eu only"],
+  "USER_BRIEF": "I am a Junior/Entry-level professional in AI and Data Science located in Egypt.\nI am looking for roles related to Machine Learning, Data Science, AI Engineering, and instructing/training positions.\nMy core skills include Python, SQL, Machine Learning, Deep Learning, and Computer Vision.\nI prefer Junior, Fresh Graduate, Intern, or Entry-level positions and want to avoid Senior, Lead, or Managerial roles.",
+  "GLOBAL_REMOTE_KEYWORDS": [
+    "africa",
+    "middle east",
+    "mena",
+    "worldwide",
+    "global"
+  ],
+  "RESTRICTED_REMOTE_KEYWORDS": [
+    "us only",
+    "uk only",
+    "eu only"
+  ],
   "GLASSDOOR_LOC_ID": 69
 }
