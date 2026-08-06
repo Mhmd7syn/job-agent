@@ -1,5 +1,6 @@
 import webview
 import subprocess
+import logging
 import time
 import sys
 import os
@@ -31,25 +32,21 @@ def start_desktop_app():
 
     # Create the native desktop window pointing to the server
     
-    # Process any pending alerts deferred from background scraping runs
+
     try:
-        from core.config_tuner import process_pending_alerts
-        process_pending_alerts()
-    except Exception as e:
-        print(f"Error processing pending alerts: {e}")
+        webview.create_window('Job Agent', 'http://127.0.0.1:8000', width=1200, height=800)
 
-    webview.create_window('Job Agent', 'http://127.0.0.1:8000', width=1200, height=800)
-
-    # Start the UI loop with the logo icon
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.ico')
-    webview.start(icon=icon_path)
-
-    # When the user closes the window, this unblocks and we terminate the server
-    server_process.terminate()
-    try:
-        server_process.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        server_process.kill()
+        # Start the UI loop with the logo icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.ico')
+        webview.start(icon=icon_path)
+    finally:
+        # When the user closes the window, or if an error occurs, terminate the server
+        server_process.terminate()
+        try:
+            server_process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            server_process.kill()
+        log_file.close()
 
 if __name__ == '__main__':
     start_desktop_app()

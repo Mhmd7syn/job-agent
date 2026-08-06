@@ -91,12 +91,12 @@ def auto_login_if_needed(page):
                     page.fill('input[id="session_password"]', password)
                     try:
                         page.click('button[data-id="sign-in-form__submit-btn"]', timeout=3000)
-                    except:
+                    except Exception:
                         page.click('button[type="submit"]', timeout=3000)
 
                 try:
                     page.wait_for_url(lambda url: "login" not in url and "checkpoint" not in url and "challenge" not in url, timeout=10000)
-                except:
+                except Exception:
                     pass
                 page.wait_for_timeout(random.randint(3000, 5000))
 
@@ -328,7 +328,7 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                     try:
                         see_more_btn.click(timeout=3000)
                         page.wait_for_timeout(700)
-                    except:
+                    except Exception:
                         pass
 
                 page_html = page.evaluate("document.documentElement.innerHTML")

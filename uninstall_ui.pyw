@@ -1,11 +1,11 @@
+import logging
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext
 import os
 import sys
 import subprocess
 import threading
 import queue
-import time
 import shutil
 
 # Windows creation flag to hide console window
@@ -409,7 +409,7 @@ class UninstallWizard(tk.Tk):
                     creationflags=CREATE_NO_WINDOW | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
                 )
             except Exception as e:
-                print(f"Error launching folder deletion script: {e}")
+                logging.warning(f"Error launching folder deletion script: {e}")
         try:
             self.destroy()
         except Exception:

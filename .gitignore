@@ -25,3 +25,13 @@ core/config.json
 
 # Temporary downloaded files
 downloaded_files/
+
+# Backups
+*.bak
+
+# Runtime data & alerts
+data/
+
+# Generated screenshots / debug images
+*.png
+

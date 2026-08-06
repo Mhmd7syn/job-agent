@@ -1,7 +1,6 @@
 import os
 import sys
-import asyncio
-from pprint import pprint
+import logging
 
 # Ensure the root directory is in sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -12,12 +11,14 @@ from scrapers.bayt_scraper import scrape_bayt
 from scrapers.glassdoor_scraper import scrape_glassdoor
 try:
     from scrapers.indeed_scraper import scrape_indeed
-except ImportError:
+except ImportError as e:
+    logging.warning(f"indeed_scraper unavailable: {e}")
     scrape_indeed = None
 
 try:
     from scrapers.playwright_scraper import scrape_linkedin_jobs_playwright, LinkedInSession
-except ImportError:
+except ImportError as e:
+    logging.warning(f"playwright_scraper unavailable: {e}")
     scrape_linkedin_jobs_playwright = None
     LinkedInSession = None
 

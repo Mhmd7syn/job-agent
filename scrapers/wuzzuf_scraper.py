@@ -51,7 +51,7 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
         
         try:
             driver.wait_for_element('div.css-pkv5jc', timeout=10)
-        except:
+        except Exception:
             driver.save_screenshot("wuzzuf.png")
             pass
 

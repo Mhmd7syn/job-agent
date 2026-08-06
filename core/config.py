@@ -55,7 +55,6 @@ if not ARABIC_SEARCH_TERMS:
 SITES_FOR_ARABIC = _config_data.get("SITES_FOR_ARABIC", ["wuzzuf", "linkedin"])
 
 RESUME_KEYWORDS = _config_data.get("RESUME_KEYWORDS", [])
-NICE_TO_HAVE_SKILLS = _config_data.get("NICE_TO_HAVE_SKILLS", [])
 EXCLUDE_KEYWORDS = _config_data.get("EXCLUDE_KEYWORDS", [])
 EXCLUDED_COMPANIES = _config_data.get("EXCLUDED_COMPANIES", [])
 FAVORITE_COMPANIES = _config_data.get("FAVORITE_COMPANIES", [])

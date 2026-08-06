@@ -29,7 +29,10 @@
             <span id="last-run-text" style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">Last Run: Checking...</span>
         </div>
         <button class="btn btn-secondary" id="rescore-btn" onclick="rescoreJobs()"><i class="fa-solid fa-wand-magic-sparkles" id="rescore-icon"></i><i class="fa-solid fa-spinner fa-spin hidden" id="rescore-spinner"></i><span id="rescore-text">Rescore Jobs</span></button>
-        <button class="btn btn-secondary" onclick="showSettings()"><i class="fa-solid fa-gear"></i>Settings</button>
+        <button class="btn btn-secondary" onclick="showSettings()" style="position: relative;">
+            <i class="fa-solid fa-gear"></i>Settings
+            <span id="settings-notification" class="hidden" style="position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; background-color: var(--danger); border-radius: 50%; border: 2px solid var(--bg-main); box-shadow: 0 0 8px var(--danger);"></span>
+        </button>
         <button class="btn btn-secondary" onclick="showSystemStatus()"><i class="fa-solid fa-server"></i>System Status</button>
         <div class="stat-box" style="white-space: nowrap;">
             <i class="fa-solid fa-briefcase"></i>
@@ -58,13 +61,18 @@
         <div id="settings-modal" class="modal hidden">
             <div class="modal-content settings-content">
                 <div class="modal-header">
-                    <h2><i class="fa-solid fa-gear"></i> AI Matching Settings</h2>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <h2><i class="fa-solid fa-gear"></i> AI Matching Settings</h2>
+                        <button class="btn btn-secondary" onclick="openProposalsModal()" id="open-proposals-btn" style="padding: 0.35rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem;">
+                            <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent);"></i> Review Proposals <span id="proposals-badge" style="background: var(--accent); color: white; border-radius: 99px; padding: 1px 7px; font-size: 0.75rem; margin-left: 4px;" class="hidden">0</span>
+                        </button>
+                    </div>
                     <button class="close-btn" onclick="hideSettings()"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div class="modal-body">
                     <div style="background: rgba(59, 130, 246, 0.15); border: 1px dashed var(--accent); padding: 1.2rem; border-radius: 0.75rem; text-align: center; margin-bottom: 1.8rem; display: flex; flex-direction: column; align-items: center; gap: 0.6rem;">
                         <span style="font-size: 1rem; font-weight: 600; color: var(--text-main);"><i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent); margin-right: 0.5rem;"></i>AI Smart CV Ingestion</span>
-                        <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">Upload your CV or Resume (PDF, DOCX, TXT) and let Gemini AI automatically configure your career experience, target roles, technical skills, seniority level, and profile brief!</p>
+                        <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">Upload your CV or Resume (PDF, DOCX, TXT) and let Gemini AI generate tailored configuration suggestions for your review!</p>
                         <input type="file" id="cv-upload-input" accept=".pdf,.docx,.txt,.md" style="display: none;" onchange="handleCVUpload(this.files)">
                         <button class="btn btn-primary" onclick="document.getElementById('cv-upload-input').click()" id="upload-cv-btn" style="padding: 0.6rem 1.5rem; margin-top: 0.3rem;">
                             <i class="fa-solid fa-file-arrow-up" id="cv-btn-icon"></i><i class="fa-solid fa-spinner fa-spin hidden" id="cv-btn-spinner"></i> <span id="cv-btn-text">Import Skills & Preferences from CV</span>
@@ -102,26 +110,24 @@
                     
                     <h3 style="margin-bottom: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">📜 Resume & Skills</h3>
                     <label>Resume Keywords (Core Skills)</label>
+                    <div id="pending-resume-keywords"></div>
                     <div id="config-resume-keywords"></div>
                     
-                    <label>Nice to Have Skills</label>
-                    <div id="config-nice-skills"></div>
-                    
                     <label>Exclude Keywords (Negative Skills/Titles)</label>
+                    <div id="pending-exclude-keywords"></div>
                     <div id="config-exclude-keywords"></div>
                     
                     <label>Favorite Companies</label>
+                    <div id="pending-favorite-companies"></div>
                     <div id="config-favorite-companies"></div>
                     
                     <label>Excluded Companies</label>
+                    <div id="pending-excluded-companies"></div>
                     <div id="config-excluded-companies"></div>
 
                     <h3 style="margin: 1.5rem 0 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">⚙️ Platforms & Scraping Rules</h3>
                     <label>Active Job Sites (e.g., linkedin, wuzzuf, bayt, glassdoor, tanqeeb, indeed)</label>
                     <div id="config-sites"></div>
-
-                    <label>Sites for Arabic Search Keywords</label>
-                    <div id="config-arabic-sites"></div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
                         <div>
@@ -241,6 +247,35 @@
             <div style="display: flex; justify-content: center; gap: 1rem;">
                 <button class="btn btn-secondary" onclick="hideRerankModal()"><i class="fa-solid fa-clock"></i> Later</button>
                 <button class="btn btn-primary" onclick="confirmRerankFromModal()"><i class="fa-solid fa-wand-magic-sparkles"></i> Yes, Rescore Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Proposals Modal -->
+    <div id="ai-proposals-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 750px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent);"></i> Review AI Configuration Proposals</h2>
+                <button class="close-btn" onclick="hideProposalsModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem;">
+                <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid var(--accent); padding: 1rem; border-radius: 0.75rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+                    <div>
+                        <strong style="color: var(--text-main); font-size: 0.95rem;">Review & Approve AI Suggestions</strong>
+                        <p style="margin: 0.2rem 0 0 0; font-size: 0.85rem; color: var(--text-muted);">AI analyzed your resume or job actions. Review each addition (+ Green) or removal (- Red) below before applying to your settings.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+                        <button class="btn btn-primary" onclick="handleBatchProposalsAction('accept_all')" style="padding: 0.4rem 0.9rem; font-size: 0.85rem;"><i class="fa-solid fa-check-double"></i> Accept All</button>
+                        <button class="btn btn-secondary" onclick="handleBatchProposalsAction('reject_all')" style="padding: 0.4rem 0.9rem; font-size: 0.85rem;"><i class="fa-solid fa-trash-can"></i> Reject All</button>
+                    </div>
+                </div>
+
+                <div id="proposals-list-container" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 450px; overflow-y: auto; padding-right: 0.5rem;">
+                    <!-- Proposal cards injected dynamically -->
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: flex-end; gap: 0.75rem; background: rgba(0,0,0,0.2);">
+                <button class="btn btn-secondary" onclick="hideProposalsModal()"><i class="fa-solid fa-xmark"></i> Close</button>
             </div>
         </div>
     </div>

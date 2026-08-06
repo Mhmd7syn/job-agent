@@ -1,3 +1,4 @@
+import sys
 import urllib.parse
 import pandas as pd
 import datetime
@@ -36,7 +37,7 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver
         
         try:
             driver.wait_for_element('li.has-pointer-d', timeout=10)
-        except:
+        except Exception:
             pass
 
         from bs4 import BeautifulSoup

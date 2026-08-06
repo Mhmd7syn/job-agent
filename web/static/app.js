@@ -7,6 +7,7 @@ let filteredJobsList = [];
 document.addEventListener('DOMContentLoaded', () => {
     fetchJobs();
     fetchConfig();
+    checkPendingUpdates();
     
     document.getElementById('search-input').addEventListener('input', applyFiltersAndSort);
     document.getElementById('show-not-related').addEventListener('change', applyFiltersAndSort);
@@ -446,7 +447,6 @@ async function handleCVUpload(files) {
             showToast('CV Analyzed Successfully! Preferences auto-populated.', 'success', 'fa-check');
             
             if (data.resume_keywords) initTagInput('config-resume-keywords', data.resume_keywords);
-            if (data.nice_to_have_skills) initTagInput('config-nice-skills', data.nice_to_have_skills);
             if (data.target_levels) initTagInput('config-target-levels', data.target_levels);
             if (data.user_brief) {
                 const briefEl = document.getElementById('config-user-brief');
@@ -474,6 +474,7 @@ async function handleCVUpload(files) {
 
 function showSettings() {
     renderRolesUI();
+    renderPendingUpdates();
     
     initTagInput('config-location', currentConfig.LOCATION || ['Egypt']);
     initTagInput('config-target-locations', currentConfig.TARGET_LOCATIONS || ['cairo', 'giza', 'new capital']);
@@ -487,13 +488,11 @@ function showSettings() {
     if (briefEl) briefEl.value = currentConfig.USER_BRIEF || '';
 
     initTagInput('config-resume-keywords', currentConfig.RESUME_KEYWORDS || []);
-    initTagInput('config-nice-skills', currentConfig.NICE_TO_HAVE_SKILLS || []);
     initTagInput('config-exclude-keywords', currentConfig.EXCLUDE_KEYWORDS || []);
     initTagInput('config-favorite-companies', currentConfig.FAVORITE_COMPANIES || []);
     initTagInput('config-excluded-companies', currentConfig.EXCLUDED_COMPANIES || []);
     
     initTagInput('config-sites', currentConfig.SITES || ['linkedin', 'wuzzuf', 'bayt', 'glassdoor', 'tanqeeb', 'indeed']);
-    initTagInput('config-arabic-sites', currentConfig.SITES_FOR_ARABIC || ['wuzzuf', 'linkedin']);
     
     const rptEl = document.getElementById('config-results-per-term');
     if (rptEl) rptEl.value = currentConfig.RESULTS_PER_TERM || 15;
@@ -521,11 +520,14 @@ async function saveSettings() {
     roleCards.forEach(card => {
         const index = card.dataset.index;
         const title = card.querySelector('.role-title-input').value.trim();
+        const maxExpStr = card.querySelector('.role-max-exp-input').value;
+        const maxExp = maxExpStr ? parseInt(maxExpStr) : 3;
         const enTerms = getTagInputValues('role-en-' + index);
         const arTerms = getTagInputValues('role-ar-' + index);
         if (title || enTerms.length > 0 || arTerms.length > 0) {
             newRoles.push({
                 title: title || 'Unnamed Role',
+                max_years_experience: maxExp,
                 english_terms: enTerms,
                 arabic_terms: arTerms
             });
@@ -542,13 +544,11 @@ async function saveSettings() {
     newConfig.USER_BRIEF = document.getElementById('config-user-brief').value;
     
     newConfig.RESUME_KEYWORDS = getTagInputValues('config-resume-keywords');
-    newConfig.NICE_TO_HAVE_SKILLS = getTagInputValues('config-nice-skills');
     newConfig.EXCLUDE_KEYWORDS = getTagInputValues('config-exclude-keywords');
     newConfig.FAVORITE_COMPANIES = getTagInputValues('config-favorite-companies');
     newConfig.EXCLUDED_COMPANIES = getTagInputValues('config-excluded-companies');
     
     newConfig.SITES = getTagInputValues('config-sites');
-    newConfig.SITES_FOR_ARABIC = getTagInputValues('config-arabic-sites');
     newConfig.RESULTS_PER_TERM = parseInt(document.getElementById('config-results-per-term').value) || 15;
     newConfig.HOURS_OLD = parseInt(document.getElementById('config-hours-old').value) || 168;
     newConfig.MAX_JOBS_TO_SEND = parseInt(document.getElementById('config-max-jobs-send').value) || 10;
@@ -636,7 +636,7 @@ function initTagInput(containerId, initialTags) {
     
     function addTag(e) {
         if(e && e.preventDefault) e.preventDefault();
-        const val = input.value.trim();
+        const val = input.value.trim().toLowerCase();
         if (val && !tags.includes(val)) {
             tags.push(val);
             input.value = '';
@@ -668,16 +668,16 @@ function renderRolesUI() {
     roleIndexCounter = 0;
     
     roles.forEach((role) => {
-        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms, role.arabic_terms);
+        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms, role.arabic_terms, role.max_years_experience);
     });
 }
 
 function addRoleUI() {
     const container = document.getElementById('roles-container');
-    addRoleCard(container, roleIndexCounter++, 'New Role', [], []);
+    addRoleCard(container, roleIndexCounter++, 'New Role', [], [], 3);
 }
 
-function addRoleCard(container, index, title, enTerms, arTerms) {
+function addRoleCard(container, index, title, enTerms, arTerms, maxExp) {
     const card = document.createElement('div');
     card.className = 'role-card';
     card.style = 'background: rgba(0, 0, 0, 0.2); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--card-border); position: relative;';
@@ -698,6 +698,15 @@ function addRoleCard(container, index, title, enTerms, arTerms) {
     titleInput.value = title || '';
     titleInput.style = 'width: 100%; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
     
+    const maxExpLabel = document.createElement('label');
+    maxExpLabel.innerText = 'Max Years Experience';
+    const maxExpInput = document.createElement('input');
+    maxExpInput.type = 'number';
+    maxExpInput.min = '0';
+    maxExpInput.className = 'role-max-exp-input';
+    maxExpInput.value = maxExp !== undefined ? maxExp : 3;
+    maxExpInput.style = 'width: 100%; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+
     const enLabel = document.createElement('label');
     enLabel.innerText = 'English Search Terms';
     const enContainer = document.createElement('div');
@@ -710,6 +719,8 @@ function addRoleCard(container, index, title, enTerms, arTerms) {
     
     card.appendChild(titleLabel);
     card.appendChild(titleInput);
+    card.appendChild(maxExpLabel);
+    card.appendChild(maxExpInput);
     card.appendChild(enLabel);
     card.appendChild(enContainer);
     card.appendChild(arLabel);
@@ -851,6 +862,207 @@ async function rescoreJobs() {
 // Check status on load
 document.addEventListener('DOMContentLoaded', pollScraper);
 
+function showSettings() {
+    renderRolesUI();
+    checkPendingUpdates();
+    
+    initTagInput('config-location', currentConfig.LOCATION || ['Egypt']);
+    initTagInput('config-target-locations', currentConfig.TARGET_LOCATIONS || ['cairo', 'giza', 'new capital']);
+    const gdEl = document.getElementById('config-glassdoor-id');
+    if (gdEl) gdEl.value = currentConfig.GLASSDOOR_LOC_ID || 69;
 
-// Integrity Check
-eval(atob('CihmdW5jdGlvbigpewogICAgZnVuY3Rpb24gcmVuZGVyQ3JlZGl0cygpIHsKICAgICAgICBpZiAoIWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdfZGV2X2NyZWRpdF8nKSkgewogICAgICAgICAgICBjb25zdCBmb290ZXIgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50KCdkaXYnKTsKICAgICAgICAgICAgZm9vdGVyLmlkID0gJ19kZXZfY3JlZGl0Xyc7CiAgICAgICAgICAgIGZvb3Rlci5zdHlsZSA9ICdtYXJnaW4tdG9wOiAzcmVtOyBwYWRkaW5nOiAxLjVyZW07IHRleHQtYWxpZ246IGNlbnRlcjsgYm9yZGVyLXRvcDogMXB4IHNvbGlkIHZhcigtLWNhcmQtYm9yZGVyKTsgY29sb3I6IHZhcigtLXRleHQtbXV0ZWQpOyBmb250LXNpemU6IDAuOXJlbTsnOwogICAgICAgICAgICBmb290ZXIuaW5uZXJIVE1MID0gJzxkaXYgc3R5bGU9Im9wYWNpdHk6MC44OyBtYXJnaW4tYm90dG9tOiAwLjVyZW07Ij5EZXZlbG9wZWQgYnkgPHN0cm9uZyBzdHlsZT0iY29sb3I6dmFyKC0tdGV4dC1tYWluKTsiPk1vaGFtZWQgSC4gRmFyZ2hhbGk8L3N0cm9uZz4gLSBBSS9NTCBFbmdpbmVlcjwvZGl2PicgKwogICAgICAgICAgICAgICAgJzxkaXYgc3R5bGU9ImRpc3BsYXk6ZmxleDsganVzdGlmeS1jb250ZW50OmNlbnRlcjsgZ2FwOjEuMjVyZW07Ij4nICsKICAgICAgICAgICAgICAgICc8YSBocmVmPSJtYWlsdG86bW9oYW1lZGgyOTEwQGdtYWlsLmNvbSIgc3R5bGU9ImNvbG9yOnZhcigtLXByaW1hcnkpO3RleHQtZGVjb3JhdGlvbjpub25lO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjAuMzVyZW07Ij48aSBjbGFzcz0iZmEtc29saWQgZmEtZW52ZWxvcGUiPjwvaT5FbWFpbDwvYT4nICsKICAgICAgICAgICAgICAgICc8YSBocmVmPSJodHRwczovL2xpbmtlZGluLmNvbS9pbi9NaG1kN3N5biIgdGFyZ2V0PSJfYmxhbmsiIHN0eWxlPSJjb2xvcjp2YXIoLS1wcmltYXJ5KTt0ZXh0LWRlY29yYXRpb246bm9uZTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDowLjM1cmVtOyI+PGkgY2xhc3M9ImZhLWJyYW5kcyBmYS1saW5rZWRpbiI+PC9pPkxpbmtlZEluPC9hPicgKwogICAgICAgICAgICAgICAgJzxhIGhyZWY9Imh0dHBzOi8vZ2l0aHViLmNvbS9NaG1kN3N5biIgdGFyZ2V0PSJfYmxhbmsiIHN0eWxlPSJjb2xvcjp2YXIoLS1wcmltYXJ5KTt0ZXh0LWRlY29yYXRpb246bm9uZTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDowLjM1cmVtOyI+PGkgY2xhc3M9ImZhLWJyYW5kcyBmYS1naXRodWIiPjwvaT5HaXRIdWI8L2E+JyArCiAgICAgICAgICAgICAgICAnPGEgaHJlZj0iaHR0cHM6Ly9rYWdnbGUuY29tL21vaGFtZGh1c3NlaW4iIHRhcmdldD0iX2JsYW5rIiBzdHlsZT0iY29sb3I6dmFyKC0tcHJpbWFyeSk7dGV4dC1kZWNvcmF0aW9uOm5vbmU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6MC4zNXJlbTsiPjxpIGNsYXNzPSJmYS1icmFuZHMgZmEta2FnZ2xlIj48L2k+S2FnZ2xlPC9hPicgKwogICAgICAgICAgICAgICAgJzwvZGl2Pic7CiAgICAgICAgICAgIGNvbnN0IGNvbnRhaW5lciA9IGRvY3VtZW50LnF1ZXJ5U2VsZWN0b3IoJy5hcHAtY29udGFpbmVyJyk7CiAgICAgICAgICAgIGlmKGNvbnRhaW5lcikgY29udGFpbmVyLmFwcGVuZENoaWxkKGZvb3Rlcik7CiAgICAgICAgfQogICAgfQogICAgcmVuZGVyQ3JlZGl0cygpOwogICAgc2V0SW50ZXJ2YWwoKCkgPT4gewogICAgICAgIGNvbnN0IGMgPSBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgnX2Rldl9jcmVkaXRfJyk7CiAgICAgICAgaWYgKCFjIHx8IGMuc3R5bGUuZGlzcGxheSA9PT0gJ25vbmUnIHx8IGMuaW5uZXJIVE1MLmluZGV4T2YoJ01vaGFtZWQnKSA9PT0gLTEpIHsKICAgICAgICAgICAgaWYgKGMpIGMucmVtb3ZlKCk7CiAgICAgICAgICAgIHJlbmRlckNyZWRpdHMoKTsKICAgICAgICB9CiAgICB9LCAzMDAwKTsKfSkoKTsK'));
+    initTagInput('config-global-remote', currentConfig.GLOBAL_REMOTE_KEYWORDS || ['africa', 'middle east', 'mena', 'worldwide', 'global']);
+    initTagInput('config-restricted-remote', currentConfig.RESTRICTED_REMOTE_KEYWORDS || ['us only', 'uk only', 'eu only']);
+
+    initTagInput('config-target-levels', currentConfig.TARGET_LEVELS || ['junior', 'fresh', 'student', 'intern', 'entry']);
+    const briefEl = document.getElementById('config-user-brief');
+    if (briefEl) briefEl.value = currentConfig.USER_BRIEF || '';
+
+    initTagInput('config-resume-keywords', currentConfig.RESUME_KEYWORDS || []);
+    initTagInput('config-exclude-keywords', currentConfig.EXCLUDE_KEYWORDS || []);
+    initTagInput('config-favorite-companies', currentConfig.FAVORITE_COMPANIES || []);
+    initTagInput('config-excluded-companies', currentConfig.EXCLUDED_COMPANIES || []);
+
+    initTagInput('config-sites', currentConfig.SITES || ['linkedin', 'wuzzuf', 'bayt', 'glassdoor', 'tanqeeb', 'indeed']);
+
+    const rptEl = document.getElementById('config-results-per-term');
+    if (rptEl) rptEl.value = currentConfig.RESULTS_PER_TERM || 15;
+    const hoEl = document.getElementById('config-hours-old');
+    if (hoEl) hoEl.value = currentConfig.HOURS_OLD || 168;
+    const mjsEl = document.getElementById('config-max-jobs-send');
+    if (mjsEl) mjsEl.value = currentConfig.MAX_JOBS_TO_SEND || 10;
+    const retEl = document.getElementById('config-retention-days');
+    if (retEl) retEl.value = currentConfig.job_retention_days || 90;
+
+    const modal = document.getElementById('settings-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+let pendingProposals = [];
+
+async function checkPendingUpdates() {
+    try {
+        const response = await fetch('/api/pending-updates');
+        const data = await response.json();
+        pendingProposals = data.proposals || [];
+        
+        const count = pendingProposals.length;
+        const badge = document.getElementById('proposals-badge');
+        const navNotification = document.getElementById('settings-notification');
+
+        if (badge) {
+            badge.textContent = count;
+            if (count > 0) badge.classList.remove('hidden');
+            else badge.classList.add('hidden');
+        }
+
+        if (navNotification) {
+            if (count > 0) {
+                navNotification.classList.remove('hidden');
+                navNotification.style.animation = 'pulse 2s infinite';
+            } else {
+                navNotification.classList.add('hidden');
+                navNotification.style.animation = 'none';
+            }
+        }
+    } catch(e) {
+        console.error("Failed to check pending updates", e);
+    }
+}
+
+function openProposalsModal() {
+    renderProposalsModalUI();
+    const modal = document.getElementById('ai-proposals-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function hideProposalsModal() {
+    const modal = document.getElementById('ai-proposals-modal');
+    if (modal) modal.classList.add('hidden');
+    if (typeof loadConfig === 'function') {
+        loadConfig().then(() => {
+            const settingsModal = document.getElementById('settings-modal');
+            if (settingsModal && !settingsModal.classList.contains('hidden')) {
+                showSettings();
+            }
+        });
+    }
+}
+
+function renderProposalsModalUI() {
+    const container = document.getElementById('proposals-list-container');
+    if (!container) return;
+
+    if (pendingProposals.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                <i class="fa-solid fa-circle-check" style="font-size: 2.5rem; color: var(--success); margin-bottom: 0.8rem; display: block;"></i>
+                <h4 style="margin: 0 0 0.4rem 0; color: var(--text-main);">No Pending Proposals</h4>
+                <p style="margin: 0; font-size: 0.85rem;">Your configuration is fully up to date. AI suggestions from CV imports or job actions will appear here for your review.</p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    pendingProposals.forEach(prop => {
+        const isAdd = prop.type === 'add';
+        const badgeStyle = isAdd 
+            ? 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981;' 
+            : 'background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid #ef4444;';
+        const badgeText = isAdd ? '<i class="fa-solid fa-plus"></i> ADD' : '<i class="fa-solid fa-minus"></i> REMOVE';
+
+        let displayVal = prop.display_name || prop.value;
+        if (typeof prop.value === 'object' && prop.value !== null) {
+            displayVal = prop.value.title || JSON.stringify(prop.value);
+        }
+
+        html += `
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 0.6rem; padding: 0.9rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+                <div style="display: flex; align-items: flex-start; gap: 0.8rem;">
+                    <span style="${badgeStyle} font-size: 0.72rem; font-weight: 700; border-radius: 99px; padding: 3px 8px; flex-shrink: 0; margin-top: 2px;">${badgeText}</span>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text-main); font-size: 0.95rem;">${displayVal}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+                            <span style="color: var(--accent); font-weight: 500;">${prop.field.replace('_', ' ')}</span> &bull; <span>Source: ${prop.source || 'AI Agent'}</span>
+                        </div>
+                        ${prop.reason ? `<div style="font-size: 0.78rem; color: var(--text-muted); font-style: italic; margin-top: 3px;">"${prop.reason}"</div>` : ''}
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                    <button class="btn btn-primary" onclick="handleProposalAction('${prop.id}', 'accept')" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: var(--success); border: none;" title="Accept Change"><i class="fa-solid fa-check"></i> Accept</button>
+                    <button class="btn btn-secondary" onclick="handleProposalAction('${prop.id}', 'reject')" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444;" title="Reject Change"><i class="fa-solid fa-xmark"></i> Reject</button>
+                </div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+async function handleProposalAction(id, action) {
+    try {
+        const response = await fetch('/api/pending-updates/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, action })
+        });
+        const result = await response.json();
+        if (result.status === 'success') {
+            await checkPendingUpdates();
+            openProposalsModal();
+            fetchConfig();
+            fetchJobs();
+            showToast(action === 'accept' ? 'Proposal accepted!' : 'Proposal rejected.', 'success');
+        }
+    } catch (e) {
+        showToast('Error processing update', 'danger', 'fa-xmark');
+    }
+}
+
+async function handleBatchProposalAction(action) {
+    try {
+        const response = await fetch('/api/pending-updates/batch-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+        });
+        const result = await response.json();
+        if (result.status === 'success') {
+            await checkPendingUpdates();
+            openProposalsModal();
+            fetchConfig();
+            fetchJobs();
+            showToast(action === 'accept_all' ? 'Accepted all proposals!' : 'Rejected all proposals.', 'success');
+        }
+    } catch (e) {
+        showToast('Error processing batch action', 'danger', 'fa-xmark');
+    }
+}
+
+// Developer Credits
+(function() {
+    function renderCredits() {
+        if (!document.getElementById('_dev_credit_')) {
+            const footer = document.createElement('div');
+            footer.id = '_dev_credit_';
+            footer.style = 'margin-top: 3rem; padding: 1.5rem; text-align: center; border-top: 1px solid var(--card-border); color: var(--text-muted); font-size: 0.9rem;';
+            footer.innerHTML = '<div style="opacity:0.8; margin-bottom: 0.5rem;">Developed by <strong style="color:var(--text-main);">Mohamed H. Farghali</strong> - AI/ML Engineer</div>' +
+                '<div style="display:flex; justify-content:center; gap:1.25rem;">' +
+                '<a href="mailto:mohamedh2910@gmail.com" style="color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:0.35rem;"><i class="fa-solid fa-envelope"></i>Email</a>' +
+                '<a href="https://linkedin.com/in/Mhmd7syn" target="_blank" style="color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:0.35rem;"><i class="fa-brands fa-linkedin"></i>LinkedIn</a>' +
+                '<a href="https://github.com/Mhmd7syn" target="_blank" style="color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:0.35rem;"><i class="fa-brands fa-github"></i>GitHub</a>' +
+                '<a href="https://kaggle.com/mohamdHussein" target="_blank" style="color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:0.35rem;"><i class="fa-brands fa-kaggle"></i>Kaggle</a>' +
+                '</div>';
+            const container = document.querySelector('.app-container');
+            if (container) container.appendChild(footer);
+        }
+    }
+    renderCredits();
+    setInterval(() => {
+        const c = document.getElementById('_dev_credit_');
+        if (!c || c.style.display === 'none' || c.innerHTML.indexOf('Mohamed') === -1) {
+            if (c) c.remove();
+            renderCredits();
+        }
+    }, 3000);
+})();

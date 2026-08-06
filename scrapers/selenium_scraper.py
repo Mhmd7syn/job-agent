@@ -25,5 +25,5 @@ def SeleniumSession():
         if driver:
             try:
                 driver.quit()
-            except:
+            except Exception:
                 pass

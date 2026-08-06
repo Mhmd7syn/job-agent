@@ -58,7 +58,7 @@ def extract_json_ld(html_content: str) -> dict | None:
                 continue
             try:
                 data = json.loads(script.string)
-            except Exception:
+            except json.JSONDecodeError:
                 continue
 
             # Handle both single objects and @graph arrays
@@ -130,8 +130,7 @@ def extract_json_ld(html_content: str) -> dict | None:
                 # Description: strip HTML tags from Schema.org description
                 desc_raw = item.get('description', '')
                 if desc_raw:
-                    from bs4 import BeautifulSoup as _BS
-                    desc_raw = _BS(desc_raw, 'html.parser').get_text(separator=' ', strip=True)
+                    desc_raw = BeautifulSoup(desc_raw, 'html.parser').get_text(separator=' ', strip=True)
 
                 if not title:
                     continue  # Skip malformed entries

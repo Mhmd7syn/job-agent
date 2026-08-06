@@ -1,3 +1,4 @@
+import sys
 import urllib.parse
 import pandas as pd
 import datetime
@@ -32,7 +33,7 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, d
         # wait for job cards or cloudflare bypass
         try:
             driver.wait_for_element('li', timeout=10)
-        except:
+        except Exception:
             pass
 
         from bs4 import BeautifulSoup

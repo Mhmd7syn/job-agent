@@ -1,3 +1,4 @@
+import sys
 import urllib.parse
 import pandas as pd
 import datetime
@@ -30,7 +31,7 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
         # Check for Cloudflare block visually or just wait for content
         try:
             driver.wait_for_element('div.job_seen_beacon, ul.jobsearch-ResultsList', timeout=10)
-        except:
+        except Exception:
             pass
             
         from bs4 import BeautifulSoup

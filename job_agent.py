@@ -7,7 +7,7 @@ from scrapers.selenium_scraper import SeleniumSession
 from core.config import (
     SITES, RESULTS_PER_TERM, HOURS_OLD, SEARCH_TERMS, LOCATION,
     EXCLUDE_KEYWORDS, EXCLUDED_COMPANIES, FAVORITE_COMPANIES,
-    RESUME_KEYWORDS, NICE_TO_HAVE_SKILLS, GLOBAL_REMOTE_KEYWORDS,
+    RESUME_KEYWORDS, GLOBAL_REMOTE_KEYWORDS,
     RESTRICTED_REMOTE_KEYWORDS, TARGET_LOCATIONS, TARGET_LEVELS,
     MAX_JOBS_TO_SEND, ARABIC_SEARCH_TERMS, SITES_FOR_ARABIC,
     ROLES
@@ -15,7 +15,6 @@ from core.config import (
 import pandas as pd
 import sys
 import time
-import html
 import glob
 import os
 import json
@@ -392,7 +391,7 @@ def main():
                 years = int(exp_match.group(1))
                 if years > max_exp_allowed:
                     score -= 50
-            except:
+            except ValueError:
                 pass
 
         # 3. Resume Match Scoring (High priority)
@@ -404,16 +403,6 @@ def main():
             matches = len(re.findall(pattern, desc))
             if matches > 0:
                 score += min(matches * 2, 8)  # Max +8 per skill in description
-
-        # 4. Nice-to-Have Skills (Medium priority)
-        for kw in NICE_TO_HAVE_SKILLS:
-            pattern = r'\b' + re.escape(kw) + r'\b'
-            if re.search(pattern, title):
-                score += 3
-
-            matches = len(re.findall(pattern, desc))
-            if matches > 0:
-                score += min(matches * 1, 3)  # Max +3 per skill in description
 
         # Score locations
         loc_val = str(row.get('location', '')).lower()
@@ -562,8 +551,8 @@ if __name__ == "__main__":
     try:
         with open(lock_path, "w", encoding="utf-8") as lf:
             lf.write(str(os.getpid()))
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"Could not create lock file: {e}")
     start_time = time.time()
     logging.info("Starting job agent run...")
     try:
@@ -645,6 +634,6 @@ if __name__ == "__main__":
         try:
             if os.path.exists(lock_path):
                 os.remove(lock_path)
-        except Exception:
-            pass
+        except OSError as e:
+            logging.warning(f"Could not remove lock file: {e}")
         allow_sleep()

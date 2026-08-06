@@ -1,9 +1,10 @@
+import logging
 import sqlite3
 import os
 import json
 import re
 import time
-from datetime import datetime, date
+from datetime import date
 import pandas as pd
 from core.database import DB_PATH, get_liked_jobs
 
@@ -35,7 +36,6 @@ def rescore_all_jobs():
         arabic_search_terms = config.get("ARABIC_SEARCH_TERMS", [])
         
     resume_keywords = config.get("RESUME_KEYWORDS", [])
-    nice_to_have_skills = config.get("NICE_TO_HAVE_SKILLS", [])
     exclude_keywords = config.get("EXCLUDE_KEYWORDS", [])
     excluded_companies = [c.lower() for c in config.get("EXCLUDED_COMPANIES", [])]
     favorite_companies = [c.lower() for c in config.get("FAVORITE_COMPANIES", [])]
@@ -51,7 +51,6 @@ def rescore_all_jobs():
     # Precompile regex patterns for performance
     exclude_patterns = [re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE) for kw in exclude_keywords if kw]
     resume_patterns = [re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE) for kw in resume_keywords if kw]
-    nice_patterns = [re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE) for kw in nice_to_have_skills if kw]
 
     # Liked jobs feedback loop
     liked_jobs = get_liked_jobs()
@@ -135,7 +134,7 @@ def rescore_all_jobs():
                 years = int(exp_match.group(1))
                 if years > max_exp_allowed:
                     score -= 50
-            except:
+            except ValueError:
                 pass
 
         # 3. Resume Match Scoring
@@ -146,13 +145,7 @@ def rescore_all_jobs():
             if matches > 0:
                 score += min(matches * 2, 8)
 
-        # 4. Nice-to-Have Skills
-        for pattern in nice_patterns:
-            if pattern.search(title):
-                score += 3
-            matches = len(pattern.findall(desc))
-            if matches > 0:
-                score += min(matches * 1, 3)
+        
 
         # Score locations
         loc_val = str(row.get('location', '')).lower()
@@ -185,8 +178,8 @@ def rescore_all_jobs():
                     hours_old_calc = days_old * 24
                     freshness_ratio = max(0.0, 1.0 - (hours_old_calc / hours_old_max))
                     score += int(15 * freshness_ratio)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug(f"Date parsing failed for value '{post_date}': {e}")
 
         return score
 

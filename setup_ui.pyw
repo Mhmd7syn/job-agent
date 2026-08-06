@@ -1,5 +1,6 @@
+import logging
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext
 import os
 import sys
 import subprocess
@@ -332,7 +333,7 @@ class SetupWizard(tk.Tk):
                 tmp_zip = os.path.join(PROJECT_ROOT, "repo_temp.zip")
                 
                 req = urllib.request.Request(zip_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) JobAgentInstaller/1.0'})
-                with urllib.request.urlopen(req) as response, open(tmp_zip, 'wb') as out_file:
+                with urllib.request.urlopen(req, timeout=30) as response, open(tmp_zip, 'wb') as out_file:
                     total_bytes = int(response.headers.get('Content-Length', 0))
                     if total_bytes <= 0:
                         total_bytes = 5_500_000
@@ -489,32 +490,110 @@ class SetupWizard(tk.Tk):
         tk.Label(cv_frame, text="✨ AI Smart CV Setup:", font=("Segoe UI", 10, "bold"), fg=ACCENT, bg=BG_CARD, anchor="w").pack(side=tk.LEFT)
         
         def import_cv():
-            from tkinter import filedialog, messagebox
+            from tkinter import filedialog, messagebox, Toplevel, BooleanVar, Checkbutton, Scrollbar
             file_path = filedialog.askopenfilename(title="Select CV / Resume File", filetypes=[("Resume Files", "*.pdf;*.docx;*.txt;*.md"), ("All Files", "*.*")])
             if file_path:
                 try:
                     if PROJECT_ROOT not in sys.path:
                         sys.path.append(PROJECT_ROOT)
-                    from core.cv_parser import parse_cv_with_ai
+                    from core.cv_parser import parse_cv_with_ai, generate_cv_proposals
+                    from core.config import load_config, save_config
+
                     api_key = self.gemini_key_var.get().strip() if hasattr(self, 'gemini_key_var') and self.gemini_key_var.get() else None
                     res = parse_cv_with_ai(file_path, api_key=api_key)
                     if "error" in res and res.get("status") != "success":
                         messagebox.showerror("CV Parsing Error", str(res["error"]))
-                    else:
+                        return
+
+                    current_cfg = load_config()
+                    proposals = generate_cv_proposals(res, current_cfg)
+
+                    if not proposals:
+                        messagebox.showinfo("CV Analysis", "No new changes or proposals needed; your settings already match your CV profile!")
+                        return
+
+                    # Open Review Proposals Dialog
+                    dialog = Toplevel(self.root)
+                    dialog.title("✨ Review AI CV Proposals")
+                    dialog.geometry("620x520")
+                    dialog.configure(bg=BG_DARK)
+                    dialog.transient(self.root)
+                    dialog.grab_set()
+
+                    tk.Label(dialog, text="Review & Approve AI Suggestions", font=("Segoe UI", 12, "bold"), fg=FG_TEXT, bg=BG_DARK).pack(anchor="w", padx=20, pady=(15, 5))
+                    tk.Label(dialog, text="AI analyzed your CV. Select which additions (+) or removals (-) to apply:", font=("Segoe UI", 9), fg="#94A3B8", bg=BG_DARK).pack(anchor="w", padx=20, pady=(0, 10))
+
+                    frame_container = tk.Frame(dialog, bg=BG_CARD, highlightbackground=BORDER_COL, highlightthickness=1)
+                    frame_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+
+                    canvas = tk.Canvas(frame_container, bg=BG_CARD, highlightthickness=0)
+                    scrollbar = Scrollbar(frame_container, orient="vertical", command=canvas.yview)
+                    scrollable_frame = tk.Frame(canvas, bg=BG_CARD)
+
+                    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+                    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+                    canvas.configure(yscrollcommand=scrollbar.set)
+
+                    canvas.pack(side="left", fill="both", expand=True)
+                    scrollbar.pack(side="right", fill="y")
+
+                    vars_map = []
+                    for prop in proposals:
+                        var = BooleanVar(value=True)
+                        vars_map.append((prop, var))
+
+                        row = tk.Frame(scrollable_frame, bg=BG_CARD, pady=6, padx=10)
+                        row.pack(fill=tk.X, expand=True)
+
+                        cb = Checkbutton(row, variable=var, bg=BG_CARD, activebackground=BG_CARD, selectcolor=BG_DARK)
+                        cb.pack(side=tk.LEFT, padx=(0, 5))
+
+                        is_add = prop.get("type") == "add"
+                        badge_fg = "#10B981" if is_add else "#EF4444"
+                        badge_txt = "[+ ADD]" if is_add else "[- REMOVE]"
+                        tk.Label(row, text=badge_txt, font=("Segoe UI", 9, "bold"), fg=badge_fg, bg=BG_CARD).pack(side=tk.LEFT, padx=(0, 8))
+
+                        disp_text = prop.get("display_name", str(prop.get("value")))
+                        tk.Label(row, text=disp_text, font=("Segoe UI", 9, "bold"), fg=FG_TEXT, bg=BG_CARD, anchor="w").pack(side=tk.LEFT)
+
+                    btn_bar = tk.Frame(dialog, bg=BG_DARK)
+                    btn_bar.pack(fill=tk.X, padx=20, pady=15)
+
+                    def apply_selected():
+                        selected = [p for p, v in vars_map if v.get()]
+                        if not selected:
+                            messagebox.showwarning("No Selection", "No proposals were selected.")
+                            return
+
+                        from core.config_tuner import apply_config_updates
+                        apply_config_updates(selected)
+
+                        # Refresh UI inputs
                         if "location" in res and res["location"]:
                             self.loc_var.set(res["location"])
                         if "target_levels" in res and res["target_levels"]:
                             self.levels_var.set(", ".join(res["target_levels"]))
-                        if "target_roles" in res and res["target_roles"]:
-                            terms = []
-                            for r in res["target_roles"]:
-                                terms.extend(r.get("english_terms", []))
-                            if terms:
-                                self.terms_var.set(", ".join(list(set(terms))))
                         if "user_brief" in res and res["user_brief"]:
                             self.brief_text_widget.delete("1.0", tk.END)
                             self.brief_text_widget.insert(tk.END, res["user_brief"])
-                        messagebox.showinfo("Success", "✨ CV successfully analyzed by AI! Your job search preferences and profile brief have been automatically tailored to your career experience.")
+
+                        dialog.destroy()
+                        messagebox.showinfo("Success", f"✨ Successfully applied {len(selected)} selected configuration updates!")
+
+                    def cancel_dialog():
+                        dialog.destroy()
+                        cfg = load_config()
+                        if cfg.get("LOCATION"):
+                            self.loc_var.set(", ".join(cfg.get("LOCATION", [])))
+                        if cfg.get("TARGET_LEVELS"):
+                            self.levels_var.set(", ".join(cfg.get("TARGET_LEVELS", [])))
+                        if cfg.get("USER_BRIEF"):
+                            self.brief_text_widget.delete("1.0", tk.END)
+                            self.brief_text_widget.insert(tk.END, cfg.get("USER_BRIEF", ""))
+
+                    self.create_button(btn_bar, "✔ Apply Selected Proposals", apply_selected, bg=ACCENT, hover_bg=ACCENT_HOV, px=14, py=6).pack(side=tk.RIGHT, padx=5)
+                    self.create_button(btn_bar, "Cancel", cancel_dialog, bg="#475569", hover_bg="#64748B", px=14, py=6).pack(side=tk.RIGHT, padx=5)
+
                 except Exception as e:
                     messagebox.showerror("Error", f"Could not analyze CV: {e}")
 
@@ -597,7 +676,7 @@ class SetupWizard(tk.Tk):
                     unique = [x for x in terms if not (x in seen or seen.add(x))]
                     self.terms_var.set(", ".join(unique[:3])) # Limit display length to simple defaults
         except Exception as e:
-            print("Notice loading defaults:", e)
+            logging.warning(f"Notice loading defaults: {e}")
 
     def save_config_and_next(self, next_screen):
         # Store brief content from text widget
