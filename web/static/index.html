@@ -34,6 +34,7 @@
             <span id="settings-notification" class="hidden" style="position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; background-color: var(--danger); border-radius: 50%; border: 2px solid var(--bg-main); box-shadow: 0 0 8px var(--danger);"></span>
         </button>
         <button class="btn btn-secondary" onclick="showSystemStatus()"><i class="fa-solid fa-server"></i>System Status</button>
+        <button class="btn btn-secondary" onclick="showCleanupModal()"><i class="fa-solid fa-broom"></i>Clean Old Jobs</button>
         <div class="stat-box" style="white-space: nowrap;">
             <i class="fa-solid fa-briefcase"></i>
             <span id="job-count">0</span> Pending Jobs
@@ -126,7 +127,7 @@
                     <div id="config-excluded-companies"></div>
 
                     <h3 style="margin: 1.5rem 0 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;">⚙️ Platforms & Scraping Rules</h3>
-                    <label>Active Job Sites (e.g., linkedin, wuzzuf, bayt, glassdoor, tanqeeb, indeed)</label>
+                    <label>Active Job Sites (e.g., linkedin, linkedin_posts, wuzzuf, bayt, glassdoor, tanqeeb, indeed)</label>
                     <div id="config-sites"></div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
@@ -198,6 +199,7 @@
                     <select id="site-filter">
                         <option value="all">All Sites</option>
                         <option value="linkedin">LinkedIn</option>
+                        <option value="linkedin_posts">LinkedIn Posts</option>
                         <option value="wuzzuf">Wuzzuf</option>
                         <option value="glassdoor">Glassdoor</option>
                         <option value="bayt">Bayt</option>
@@ -276,6 +278,31 @@
             </div>
             <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: flex-end; gap: 0.75rem; background: rgba(0,0,0,0.2);">
                 <button class="btn btn-secondary" onclick="hideProposalsModal()"><i class="fa-solid fa-xmark"></i> Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Cleanup Modal -->
+    <div id="cleanup-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 480px; padding: 2rem; text-align: center;">
+            <div style="font-size: 3rem; color: var(--danger); margin-bottom: 1rem;">
+                <i class="fa-solid fa-broom"></i>
+            </div>
+            <h2 style="margin-bottom: 0.75rem; color: var(--text-main);">Clean Up Old Jobs</h2>
+            <p style="color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.6; font-size: 0.95rem;">
+                Select a time period to bulk delete older jobs from your database:
+            </p>
+            <div style="margin-bottom: 1.8rem; text-align: left;">
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-main); font-weight: 500;">Delete jobs older than:</label>
+                <select id="cleanup-period-select" class="input-field" style="width: 100%; padding: 0.7rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.5rem; color: var(--text-main); font-size: 0.95rem; font-weight: 500;">
+                    <option value="1">1 Month (30 Days)</option>
+                    <option value="3" selected>3 Months (90 Days)</option>
+                    <option value="6">6 Months (180 Days)</option>
+                </select>
+            </div>
+            <div style="display: flex; justify-content: center; gap: 1rem;">
+                <button class="btn btn-secondary" onclick="hideCleanupModal()"><i class="fa-solid fa-xmark"></i> Cancel</button>
+                <button class="btn btn-delete" onclick="confirmCleanupOldJobs()"><i class="fa-solid fa-trash-can"></i> Delete Old Jobs</button>
             </div>
         </div>
     </div>

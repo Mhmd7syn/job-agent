@@ -8,8 +8,39 @@ import datetime
 import logging
 import random
 
-# Per-job description fetch removed: card-level text is sufficient for scoring
-# and avoids ~210 extra HTTP requests + 315 s of mandatory sleep per run.
+def fetch_wuzzuf_full_description(job_url, driver=None):
+    """Fetches the complete full job description and requirements from a Wuzzuf job detail page."""
+    if not job_url:
+        return ""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        resp = requests.get(job_url, headers=headers, timeout=6)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.content, 'html.parser')
+            sections = soup.find_all(['section', 'div'], class_=lambda c: c and any(k in str(c) for k in ['css-3fx252', 'css-1u1fu21', 'css-117ic1a', 'description', 'requirements']))
+            if sections:
+                full_text = "\n\n".join([sec.get_text(separator=' ', strip=True) for sec in sections if len(sec.get_text(strip=True)) > 20])
+                if len(full_text) > 80:
+                    return full_text
+            req_sec = soup.find('section', class_=lambda c: c and 'css-1v1k5x' in c) or soup.find('div', class_=lambda c: c and 'css-10p02e' in c)
+            if req_sec:
+                return req_sec.get_text(separator=' ', strip=True)
+    except Exception as e:
+        logging.debug(f"Wuzzuf requests fetch failed for {job_url}: {e}")
+
+    if driver:
+        try:
+            driver.uc_open_with_reconnect(job_url, 3)
+            soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
+            sections = soup.find_all(['section', 'div'], class_=lambda c: c and any(k in str(c) for k in ['css-3fx252', 'css-1u1fu21', 'css-117ic1a', 'description', 'requirements']))
+            if sections:
+                return "\n\n".join([sec.get_text(separator=' ', strip=True) for sec in sections if len(sec.get_text(strip=True)) > 20])
+        except Exception as e:
+            logging.debug(f"Wuzzuf driver fallback failed for {job_url}: {e}")
+
+    return ""
 
 def parse_wuzzuf_date_to_hours(date_str):
     date_str = date_str.lower()
@@ -92,7 +123,6 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
             job_type_tags = card.find_all('span', class_=lambda c: c and 'eoyjyou0' in c)
             all_tags = [t.text.strip() for t in job_type_tags]
 
-            # Wuzzuf mixes job-type and career-level in the same span tags — split them
             _JOB_TYPE_KWS = {'full time', 'part time', 'freelance', 'contract', 'remote', 'work from home', 'internship', 'student activity'}
             _CAREER_LEVEL_KWS = {'fresh graduate', 'junior', 'mid level', 'mid-level', 'senior', 'manager',
                                   'director', 'executive', 'student activity', 'entry level', 'entry-level',
@@ -103,8 +133,9 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
             job_type = ", ".join(type_tags) if type_tags else "Full Time"
             career_level = ", ".join(level_tags) if level_tags else "Not specified"
 
-            # Use card text as description (avoids per-job HTTP fetch)
-            description = card.get_text(separator=' ', strip=True)
+            card_desc = card.get_text(separator=' ', strip=True)
+            full_desc = fetch_wuzzuf_full_description(job_url, driver=driver)
+            description = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
 
             jobs.append({
                 'title': title,

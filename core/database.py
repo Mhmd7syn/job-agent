@@ -130,13 +130,33 @@ def is_job_seen(job_url: str) -> bool:
 # Initialize DB when module is loaded
 init_db()
 
+def delete_job_by_id(job_id: str) -> bool:
+    """Deletes a single job from the database by its ID."""
+    if not job_id:
+        return False
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def cleanup_old_jobs(days=90):
     from datetime import timedelta
     conn = sqlite3.connect(DB_PATH, timeout=15)
     cursor = conn.cursor()
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    cursor.execute("DELETE FROM jobs WHERE timestamp < ?", (cutoff,))
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    cursor.execute("DELETE FROM jobs WHERE timestamp < ? OR (date_posted != '' AND date_posted < ?)", (cutoff, cutoff_date))
     deleted_count = cursor.rowcount
     conn.commit()
     conn.close()
     return deleted_count
+
+
+def cleanup_old_jobs_by_months(months=3):
+    """Bulk deletes jobs older than the specified number of months (1, 3, 6)."""
+    days = months * 30
+    return cleanup_old_jobs(days=days)

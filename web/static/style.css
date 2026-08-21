@@ -292,6 +292,16 @@ header {
 }
 .btn-reject:hover { background: rgba(239, 68, 68, 0.2); }
 
+.btn-delete {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.btn-delete:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #ff4d4d;
+}
+
 .btn-view {
     background: var(--primary);
     color: white;

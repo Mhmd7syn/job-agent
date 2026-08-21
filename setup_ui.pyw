@@ -936,28 +936,39 @@ except Exception as e:
             days_str = ",".join(selected_days) if selected_days else "TUE,FRI"
             time_str = self.time_var.get().strip() or "05:00"
             vbs_path = os.path.join(PROJECT_ROOT, "scripts", "run_silent.vbs")
-            
+
             self.log(f"Configuring weekly task for {days_str} at {time_str}...")
-            sch_cmd = [
-                "schtasks", "/create", "/tn", "Weekly Job Agent",
-                "/tr", f'wscript.exe "{vbs_path}"',
-                "/sc", "weekly", "/d", days_str, "/st", time_str,
-                "/ru", os.getenv("USERNAME", "System"), "/rl", "HIGHEST", "/f"
-            ]
-            res = subprocess.run(sch_cmd, capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
-            if res.returncode != 0:
-                sch_cmd_no_admin = [
+
+            day_map = {
+                "MON": "Monday", "TUE": "Tuesday", "WED": "Wednesday",
+                "THU": "Thursday", "FRI": "Friday", "SAT": "Saturday", "SUN": "Sunday"
+            }
+            ps_days = ",".join([day_map.get(d.upper(), "Tuesday") for d in selected_days]) if selected_days else "Tuesday,Friday"
+
+            ps_script = (
+                f"$vbs = '{vbs_path}'; "
+                f"$workDir = '{PROJECT_ROOT}'; "
+                f"$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument \"`\"$vbs`\"\" -WorkingDirectory $workDir; "
+                f"$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek {ps_days} -At '{time_str}'; "
+                f"$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -WakeToRun -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 4); "
+                f"Register-ScheduledTask -TaskName 'Weekly Job Agent' -Action $action -Trigger $trigger -Settings $settings -Force"
+            )
+
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+            if res.returncode == 0:
+                self.log(f"✓ Task scheduled with Wake-to-Run & Missed-Run Recovery ({days_str} at {time_str}).")
+            else:
+                # Fallback to standard schtasks if PowerShell registration failed
+                sch_cmd = [
                     "schtasks", "/create", "/tn", "Weekly Job Agent",
                     "/tr", f'wscript.exe "{vbs_path}"',
                     "/sc", "weekly", "/d", days_str, "/st", time_str, "/f"
                 ]
-                res2 = subprocess.run(sch_cmd_no_admin, capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+                res2 = subprocess.run(sch_cmd, capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
                 if res2.returncode == 0:
                     self.log(f"✓ Task scheduled ({days_str} at {time_str}).")
                 else:
                     self.log(f"Task notice: {res2.stderr or res.stderr}")
-            else:
-                self.log(f"✓ Task scheduled with high privileges ({days_str} at {time_str}).")
 
             # Step: Desktop Shortcut
             self.log_queue.put(("progress", 95, "Creating Desktop Shortcut..."))

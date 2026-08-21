@@ -1,0 +1,56 @@
+[
+  {
+    "id": "prop_1237b42a",
+    "source": "Not_Related Job",
+    "field": "EXCLUDE_KEYWORDS",
+    "type": "add",
+    "value": "customer service",
+    "display_name": "Exclude: Customer Service",
+    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
+  },
+  {
+    "id": "prop_c51ec12c",
+    "source": "Not_Related Job",
+    "field": "EXCLUDE_KEYWORDS",
+    "type": "add",
+    "value": "customer support",
+    "display_name": "Exclude: Customer Support",
+    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
+  },
+  {
+    "id": "prop_7ab1ce28",
+    "source": "Not_Related Job",
+    "field": "EXCLUDE_KEYWORDS",
+    "type": "add",
+    "value": "customer care",
+    "display_name": "Exclude: Customer Care",
+    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
+  },
+  {
+    "id": "prop_f7c9da1e",
+    "source": "Not_Related Job",
+    "field": "EXCLUDE_KEYWORDS",
+    "type": "add",
+    "value": "call center",
+    "display_name": "Exclude: Call Center",
+    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
+  },
+  {
+    "id": "prop_eb89b811",
+    "source": "Not_Related Job",
+    "field": "EXCLUDE_KEYWORDS",
+    "type": "add",
+    "value": "contact center",
+    "display_name": "Exclude: Contact Center",
+    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
+  },
+  {
+    "id": "prop_58793b08",
+    "source": "Not_Related Job",
+    "field": "EXCLUDE_KEYWORDS",
+    "type": "add",
+    "value": "sales",
+    "display_name": "Exclude: Sales",
+    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
+  }
+]

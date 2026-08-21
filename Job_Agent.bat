@@ -9,6 +9,13 @@ if not exist ".git" goto LaunchApp
 git --version >nul 2>&1
 if not %errorlevel%==0 goto LaunchApp
 
+set "IS_DIRTY="
+for /f "tokens=*" %%i in ('git status --porcelain 2^>nul') do set "IS_DIRTY=1"
+if not "%IS_DIRTY%"=="" (
+    echo Local modifications detected. Skipping GitHub update to protect your local code.
+    goto LaunchApp
+)
+
 echo Checking for updates from GitHub...
 git fetch origin main:refs/remotes/origin/main >nul 2>&1
 set "NEW_COMMITS="

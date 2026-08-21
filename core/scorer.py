@@ -119,23 +119,60 @@ def rescore_all_jobs():
                 score += 3
 
         # Match Role-specific Rules & Experience Check
-        max_exp_allowed = 3
+        user_exp = 1
         for role in roles:
             role_terms = [t.lower() for t in role.get('english_terms', [])] + [t.lower() for t in role.get('arabic_terms', [])]
             if any(term in title for term in role_terms):
-                max_exp_allowed = role.get('max_years_experience', 3)
+                user_exp = role.get('years_experience', role.get('max_years_experience', 1))
                 break
         
-        exp_match = re.search(r'(\d+)(?:\+|-)?\s*years?(?:\s+of)?\s+experience', desc)
-        if not exp_match:
-            exp_match = re.search(r'experience.*?:.*?(?<!\w)(\d+)\+?', desc)
-        if exp_match:
-            try:
-                years = int(exp_match.group(1))
-                if years > max_exp_allowed:
-                    score -= 50
-            except ValueError:
-                pass
+        # Comprehensive experience parsing (English & Arabic)
+        extracted_exp = []
+        desc_lower = desc.lower()
+        title_lower = title.lower()
+        career_level_val = str(row.get('career_level', '')).lower() if 'career_level' in row else ''
+        text_to_check = f"{desc_lower} {career_level_val} {title_lower}"
+
+        # 1. Range pattern: "X-Y years of experience", "X to Y years" -> min years = X
+        for min_y, _ in re.findall(r'\b(\d+)\s*(?:-|–|\s+to\s+)\s*(\d+)\s*(?:years?|yrs?)', text_to_check):
+            try: extracted_exp.append(int(min_y))
+            except ValueError: pass
+
+        # 2. Broad single pattern: "5+ years", "5 yrs", "5+ years of experience", "5+ years in..."
+        for y in re.findall(r'\b(\d+)\+?\s*(?:years?|yrs?)\b', text_to_check):
+            try: extracted_exp.append(int(y))
+            except ValueError: pass
+
+        # 3. Minimum / At least pattern: "minimum 5 years", "at least 4 yrs"
+        for y in re.findall(r'\b(?:minimum|at\s+least|min\.?)\s*(\d+)\+?\s*(?:years?|yrs?)', text_to_check):
+            try: extracted_exp.append(int(y))
+            except ValueError: pass
+
+        # 4. Key-Value pattern: "Experience: 5 years", "Experience required: 5+ yrs"
+        for y in re.findall(r'\bexperience\s*(?:required|needed|level)?\s*[:\-]\s*(?:at\s+least\s+)?(\d+)', text_to_check):
+            try: extracted_exp.append(int(y))
+            except ValueError: pass
+
+        # 5. Arabic patterns: "خبرة لا تقل عن 5 سنوات", "خبرة من 4 إلى 6 سنوات", "5 سنوات خبرة"
+        for min_y, _ in re.findall(r'خبرة\s*(?:من\s+)?(\d+)\s*(?:إلى|-|–)\s*(\d+)\s*(?:سنوات|سنين|سنة)', text_to_check):
+            try: extracted_exp.append(int(min_y))
+            except ValueError: pass
+
+        for y1, y2 in re.findall(r'(?:خبرة\s*(?:لا\s*تقل\s*عن)?\s*(\d+)|(\d+)\s*(?:سنوات|سنين|سنة)\s*(?:من\s+)?خبرة)', text_to_check):
+            y = y1 or y2
+            if y:
+                try: extracted_exp.append(int(y))
+                except ValueError: pass
+
+        # Filter realistic required experience range (1 to 15 years)
+        extracted_exp = [x for x in extracted_exp if 1 <= x <= 15]
+
+        # Calculate relative experience penalty based on difference (min_required_years - user_exp)
+        if extracted_exp:
+            min_req_exp = min(extracted_exp)
+            diff = min_req_exp - user_exp
+            if diff > 0:
+                score -= diff * 25
 
         # 3. Resume Match Scoring
         for pattern in resume_patterns:

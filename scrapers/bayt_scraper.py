@@ -8,6 +8,40 @@ import random
 from core.llm_parser import extract_feed_posts_with_ai
 from core.database import is_job_seen
 
+def fetch_bayt_full_description(job_url, driver=None):
+    """Fetches the complete full job description and requirements from a Bayt job page."""
+    if not job_url or 'bayt.com/en/' not in job_url:
+        return ""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        resp = requests.get(job_url, headers=headers, timeout=6)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.content, 'html.parser')
+            desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['card-content', 't-break', 'job-description', 'is-space-bottom-large']))
+            if desc_div:
+                text = desc_div.get_text(separator='\n', strip=True)
+                if len(text) > 80:
+                    return text
+    except Exception as e:
+        logging.debug(f"Bayt requests fetch failed for {job_url}: {e}")
+
+    if driver:
+        try:
+            driver.uc_open_with_reconnect(job_url, 3)
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
+            desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['card-content', 't-break', 'job-description']))
+            if desc_div:
+                return desc_div.get_text(separator='\n', strip=True)
+        except Exception as e:
+            logging.debug(f"Bayt driver fallback failed for {job_url}: {e}")
+
+    return ""
+
 def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver=None):
     jobs = []
     query = search_term
@@ -92,14 +126,17 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver
                     job_url = job.get('job_url', '')
                     if not job_url:
                         job_url = url
-                    
+                    card_desc = job.get('description', '')
+                    full_desc = fetch_bayt_full_description(job_url, driver=driver) if job_url and job_url != url else ""
+                    final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+
                     jobs.append({
                         'title': job.get('title', 'Unknown'),
                         'company': job.get('company', 'Unknown'),
                         'location': job.get('location', location),
                         'job_url': job_url,
                         'job_type': 'Not specified',
-                        'description': job.get('description', ''),
+                        'description': final_desc,
                         'is_remote': 'remote' in search_term.lower() or 'remote' in str(job.get('location', '')).lower(),
                         'site': 'bayt',
                         'date_posted': job.get('date_posted') or datetime.datetime.now().date()

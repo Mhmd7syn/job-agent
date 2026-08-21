@@ -29,6 +29,26 @@ def fetch_with_retries(url, retries=3, timeout=15):
             time.sleep(2)
     return None
 
+def fetch_tanqeeb_full_description(job_url):
+    """Fetches the complete full job description and requirements from a Tanqeeb job page."""
+    if not job_url or 'egypt.tanqeeb.com/jobs/search' in job_url:
+        return ""
+    try:
+        response = fetch_with_retries(job_url, retries=2, timeout=8)
+        if response and response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            desc_div = (
+                soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['vacancy-desc', 'job-description', 'card-body', 'details-content'])) or
+                soup.find('section', class_=lambda c: c and 'description' in str(c))
+            )
+            if desc_div:
+                text = desc_div.get_text(separator='\n', strip=True)
+                if len(text) > 80:
+                    return text
+    except Exception as e:
+        logging.debug(f"Tanqeeb full desc fetch error for {job_url}: {e}")
+    return ""
+
 def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
     jobs = []
     query = search_term
@@ -149,19 +169,23 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                         if is_too_old:
                             too_old_count += 1
                             continue
-                            
+
                         if len(jobs) < results_wanted:
                             job_url = job.get('job_url', '')
                             if not job_url:
                                 job_url = url
                                 
+                            card_desc = job.get('description', '')
+                            full_desc = fetch_tanqeeb_full_description(job_url) if job_url and job_url != url else ""
+                            final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+
                             jobs.append({
                                 'title': job.get('title', 'Unknown'),
                                 'company': job.get('company', 'Unknown'),
                                 'location': job.get('location', location),
                                 'job_url': job_url,
                                 'job_type': job.get('job_type', 'Not specified'),
-                                'description': job.get('description', ''),
+                                'description': final_desc,
                                 'is_remote': 'remote' in search_term.lower() or 'remote' in str(job.get('location', '')).lower(),
                                 'site': 'tanqeeb',
                                 'date_posted': job_date or datetime.datetime.now().date()

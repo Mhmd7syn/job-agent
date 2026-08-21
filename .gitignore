@@ -35,3 +35,4 @@ data/
 # Generated screenshots / debug images
 *.png
 
+/__pycache__

@@ -221,7 +221,12 @@ function createJobCard(job) {
     div.innerHTML = `
         <div class="card-header">
             <h3 class="job-title" title="${job.title}">${job.title}</h3>
-            <span class="job-score" title="Relevance Score"><i class="fa-solid fa-star" style="color:var(--warning); margin-right:4px;"></i>${Math.round(job.relevance_score || 0)}</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                <span class="job-score" title="Relevance Score"><i class="fa-solid fa-star" style="color:var(--warning); margin-right:4px;"></i>${Math.round(job.relevance_score || 0)}</span>
+                <button class="btn btn-delete" onclick="deleteSingleJob('${job.job_id}')" title="Delete Job Permanently" style="padding: 0.35rem 0.6rem; font-size: 0.8rem; border-radius: 0.4rem;">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
         </div>
         <div class="job-company"><i class="fa-regular fa-building" style="margin-right:6px;"></i>${job.company || 'Unknown Company'}</div>
         
@@ -417,6 +422,11 @@ async function fetchConfig() {
             }
         }
 
+        const settingsModal = document.getElementById('settings-modal');
+        if (settingsModal && !settingsModal.classList.contains('hidden')) {
+            refreshSettingsUI();
+        }
+
     } catch (e) {
         console.error("Failed to load config", e);
     }
@@ -444,20 +454,9 @@ async function handleCVUpload(files) {
         const data = await res.json();
         
         if (data.status === 'success' || !data.error) {
-            showToast('CV Analyzed Successfully! Preferences auto-populated.', 'success', 'fa-check');
-            
-            if (data.resume_keywords) initTagInput('config-resume-keywords', data.resume_keywords);
-            if (data.target_levels) initTagInput('config-target-levels', data.target_levels);
-            if (data.user_brief) {
-                const briefEl = document.getElementById('config-user-brief');
-                if (briefEl) briefEl.value = data.user_brief;
-            }
-            if (data.location) initTagInput('config-location', [data.location]);
-
-            if (data.target_roles && data.target_roles.length > 0) {
-                currentConfig.ROLES = data.target_roles;
-                renderRolesUI();
-            }
+            showToast('CV Analyzed Successfully! Generated proposals for your review.', 'success', 'fa-check');
+            await checkPendingUpdates();
+            openProposalsModal();
         } else {
             showToast('Error analyzing CV: ' + (data.error || 'Unknown error'), 'danger', 'fa-xmark');
         }
@@ -472,9 +471,9 @@ async function handleCVUpload(files) {
     }
 }
 
-function showSettings() {
+function refreshSettingsUI() {
     renderRolesUI();
-    renderPendingUpdates();
+    checkPendingUpdates();
     
     initTagInput('config-location', currentConfig.LOCATION || ['Egypt']);
     initTagInput('config-target-locations', currentConfig.TARGET_LOCATIONS || ['cairo', 'giza', 'new capital']);
@@ -502,7 +501,10 @@ function showSettings() {
     if (mjsEl) mjsEl.value = currentConfig.MAX_JOBS_TO_SEND || 10;
     const retEl = document.getElementById('config-retention-days');
     if (retEl) retEl.value = currentConfig.job_retention_days || 90;
-    
+}
+
+function showSettings() {
+    refreshSettingsUI();
     document.getElementById('settings-modal').classList.remove('hidden');
 }
 
@@ -520,13 +522,14 @@ async function saveSettings() {
     roleCards.forEach(card => {
         const index = card.dataset.index;
         const title = card.querySelector('.role-title-input').value.trim();
-        const maxExpStr = card.querySelector('.role-max-exp-input').value;
-        const maxExp = maxExpStr ? parseInt(maxExpStr) : 3;
+        const maxExpStr = card.querySelector('.role-max-exp-input')?.value;
+        const maxExp = maxExpStr !== undefined && maxExpStr !== '' ? parseInt(maxExpStr) : 1;
         const enTerms = getTagInputValues('role-en-' + index);
         const arTerms = getTagInputValues('role-ar-' + index);
         if (title || enTerms.length > 0 || arTerms.length > 0) {
             newRoles.push({
                 title: title || 'Unnamed Role',
+                years_experience: maxExp,
                 max_years_experience: maxExp,
                 english_terms: enTerms,
                 arabic_terms: arTerms
@@ -668,13 +671,14 @@ function renderRolesUI() {
     roleIndexCounter = 0;
     
     roles.forEach((role) => {
-        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms, role.arabic_terms, role.max_years_experience);
+        const userExp = role.years_experience !== undefined ? role.years_experience : (role.max_years_experience !== undefined ? role.max_years_experience : 1);
+        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms, role.arabic_terms, userExp);
     });
 }
 
 function addRoleUI() {
     const container = document.getElementById('roles-container');
-    addRoleCard(container, roleIndexCounter++, 'New Role', [], [], 3);
+    addRoleCard(container, roleIndexCounter++, 'New Role', [], [], 1);
 }
 
 function addRoleCard(container, index, title, enTerms, arTerms, maxExp) {
@@ -699,12 +703,12 @@ function addRoleCard(container, index, title, enTerms, arTerms, maxExp) {
     titleInput.style = 'width: 100%; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
     
     const maxExpLabel = document.createElement('label');
-    maxExpLabel.innerText = 'Max Years Experience';
+    maxExpLabel.innerText = "Your Experience (Years)";
     const maxExpInput = document.createElement('input');
     maxExpInput.type = 'number';
     maxExpInput.min = '0';
     maxExpInput.className = 'role-max-exp-input';
-    maxExpInput.value = maxExp !== undefined ? maxExp : 3;
+    maxExpInput.value = maxExp !== undefined ? maxExp : 1;
     maxExpInput.style = 'width: 100%; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
 
     const enLabel = document.createElement('label');
@@ -862,41 +866,7 @@ async function rescoreJobs() {
 // Check status on load
 document.addEventListener('DOMContentLoaded', pollScraper);
 
-function showSettings() {
-    renderRolesUI();
-    checkPendingUpdates();
-    
-    initTagInput('config-location', currentConfig.LOCATION || ['Egypt']);
-    initTagInput('config-target-locations', currentConfig.TARGET_LOCATIONS || ['cairo', 'giza', 'new capital']);
-    const gdEl = document.getElementById('config-glassdoor-id');
-    if (gdEl) gdEl.value = currentConfig.GLASSDOOR_LOC_ID || 69;
 
-    initTagInput('config-global-remote', currentConfig.GLOBAL_REMOTE_KEYWORDS || ['africa', 'middle east', 'mena', 'worldwide', 'global']);
-    initTagInput('config-restricted-remote', currentConfig.RESTRICTED_REMOTE_KEYWORDS || ['us only', 'uk only', 'eu only']);
-
-    initTagInput('config-target-levels', currentConfig.TARGET_LEVELS || ['junior', 'fresh', 'student', 'intern', 'entry']);
-    const briefEl = document.getElementById('config-user-brief');
-    if (briefEl) briefEl.value = currentConfig.USER_BRIEF || '';
-
-    initTagInput('config-resume-keywords', currentConfig.RESUME_KEYWORDS || []);
-    initTagInput('config-exclude-keywords', currentConfig.EXCLUDE_KEYWORDS || []);
-    initTagInput('config-favorite-companies', currentConfig.FAVORITE_COMPANIES || []);
-    initTagInput('config-excluded-companies', currentConfig.EXCLUDED_COMPANIES || []);
-
-    initTagInput('config-sites', currentConfig.SITES || ['linkedin', 'wuzzuf', 'bayt', 'glassdoor', 'tanqeeb', 'indeed']);
-
-    const rptEl = document.getElementById('config-results-per-term');
-    if (rptEl) rptEl.value = currentConfig.RESULTS_PER_TERM || 15;
-    const hoEl = document.getElementById('config-hours-old');
-    if (hoEl) hoEl.value = currentConfig.HOURS_OLD || 168;
-    const mjsEl = document.getElementById('config-max-jobs-send');
-    if (mjsEl) mjsEl.value = currentConfig.MAX_JOBS_TO_SEND || 10;
-    const retEl = document.getElementById('config-retention-days');
-    if (retEl) retEl.value = currentConfig.job_retention_days || 90;
-
-    const modal = document.getElementById('settings-modal');
-    if (modal) modal.classList.remove('hidden');
-}
 
 let pendingProposals = [];
 
@@ -930,7 +900,8 @@ async function checkPendingUpdates() {
     }
 }
 
-function openProposalsModal() {
+async function openProposalsModal() {
+    await checkPendingUpdates();
     renderProposalsModalUI();
     const modal = document.getElementById('ai-proposals-modal');
     if (modal) modal.classList.remove('hidden');
@@ -947,6 +918,16 @@ function hideProposalsModal() {
             }
         });
     }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 function renderProposalsModalUI() {
@@ -967,6 +948,52 @@ function renderProposalsModalUI() {
     let html = '';
     pendingProposals.forEach(prop => {
         const isAdd = prop.type === 'add';
+        const isUserBrief = prop.field === 'USER_BRIEF';
+
+        if (isUserBrief) {
+            const briefContent = typeof prop.value === 'string' ? prop.value : (prop.value?.value || JSON.stringify(prop.value));
+            const currentBriefText = currentConfig.USER_BRIEF ? String(currentConfig.USER_BRIEF).trim() : '';
+
+            html += `
+                <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid var(--accent); border-radius: 0.6rem; padding: 1rem; display: flex; flex-direction: column; gap: 0.8rem;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 0.6rem;">
+                            <span style="background: rgba(59, 130, 246, 0.2); color: var(--accent); border: 1px solid var(--accent); font-size: 0.72rem; font-weight: 700; border-radius: 99px; padding: 3px 10px; flex-shrink: 0;">
+                                <i class="fa-solid fa-pen-to-square"></i> PROFILE BRIEF UPDATE
+                            </span>
+                            <span style="font-size: 0.82rem; color: var(--text-muted);">
+                                Source: <strong style="color: var(--text-main);">${escapeHtml(prop.source || 'AI Agent')}</strong>
+                            </span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                            <button class="btn btn-primary" onclick="handleProposalAction('${prop.id}', 'accept')" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; background: var(--success); border: none;" title="Accept New Brief">
+                                <i class="fa-solid fa-check"></i> Accept Brief
+                            </button>
+                            <button class="btn btn-secondary" onclick="handleProposalAction('${prop.id}', 'reject')" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444;" title="Reject New Brief">
+                                <i class="fa-solid fa-xmark"></i> Reject
+                            </button>
+                        </div>
+                    </div>
+
+                    ${prop.reason ? `<div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">"${escapeHtml(prop.reason)}"</div>` : ''}
+
+                    <div style="display: grid; grid-template-columns: ${currentBriefText ? '1fr 1fr' : '1fr'}; gap: 0.8rem; margin-top: 0.2rem;">
+                        ${currentBriefText ? `
+                            <div style="background: rgba(0, 0, 0, 0.25); padding: 0.8rem; border-radius: 0.5rem; border: 1px solid var(--card-border);">
+                                <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">Current Brief</div>
+                                <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.45; white-space: pre-wrap; max-height: 160px; overflow-y: auto;">${escapeHtml(currentBriefText)}</div>
+                            </div>
+                        ` : ''}
+                        <div style="background: rgba(16, 185, 129, 0.1); padding: 0.8rem; border-radius: 0.5rem; border: 1px solid rgba(16, 185, 129, 0.35);">
+                            <div style="font-size: 0.75rem; font-weight: 700; color: #10b981; text-transform: uppercase; margin-bottom: 0.4rem;">Proposed Brief</div>
+                            <div style="font-size: 0.85rem; color: var(--text-main); line-height: 1.45; white-space: pre-wrap; max-height: 160px; overflow-y: auto;">${escapeHtml(briefContent)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
         const badgeStyle = isAdd 
             ? 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981;' 
             : 'background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid #ef4444;';
@@ -1009,8 +1036,9 @@ async function handleProposalAction(id, action) {
         const result = await response.json();
         if (result.status === 'success') {
             await checkPendingUpdates();
-            openProposalsModal();
-            fetchConfig();
+            renderProposalsModalUI();
+            await fetchConfig();
+            refreshSettingsUI();
             fetchJobs();
             showToast(action === 'accept' ? 'Proposal accepted!' : 'Proposal rejected.', 'success');
         }
@@ -1029,13 +1057,80 @@ async function handleBatchProposalAction(action) {
         const result = await response.json();
         if (result.status === 'success') {
             await checkPendingUpdates();
-            openProposalsModal();
-            fetchConfig();
+            renderProposalsModalUI();
+            await fetchConfig();
+            refreshSettingsUI();
             fetchJobs();
             showToast(action === 'accept_all' ? 'Accepted all proposals!' : 'Rejected all proposals.', 'success');
         }
     } catch (e) {
         showToast('Error processing batch action', 'danger', 'fa-xmark');
+    }
+}
+
+// Alias plural name for HTML onclick binding safety
+const handleBatchProposalsAction = handleBatchProposalAction;
+
+async function deleteSingleJob(jobId) {
+    if (!confirm('Are you sure you want to delete this job permanently?')) {
+        return;
+    }
+    
+    const card = document.getElementById(`job-${jobId}`);
+    if (card) {
+        card.style.animation = 'fadeOut 0.3s ease forwards';
+        setTimeout(() => {
+            card.remove();
+            updateJobCount();
+        }, 300);
+    }
+    
+    allJobs = allJobs.filter(j => j.job_id !== jobId);
+    filteredJobsList = filteredJobsList.filter(j => j.job_id !== jobId);
+
+    try {
+        const response = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.status === 'success') {
+            showToast('Job permanently deleted', 'danger', 'fa-trash-can');
+        } else {
+            showToast('Failed to delete job', 'danger', 'fa-circle-xmark');
+            fetchJobs();
+        }
+    } catch (err) {
+        console.error('Error deleting job:', err);
+        showToast('Error deleting job', 'danger', 'fa-circle-xmark');
+        fetchJobs();
+    }
+}
+
+function showCleanupModal() {
+    document.getElementById('cleanup-modal').classList.remove('hidden');
+}
+
+function hideCleanupModal() {
+    document.getElementById('cleanup-modal').classList.add('hidden');
+}
+
+async function confirmCleanupOldJobs() {
+    const periodSelect = document.getElementById('cleanup-period-select');
+    const period = parseInt(periodSelect.value) || 3;
+    hideCleanupModal();
+
+    showToast(`Cleaning jobs older than ${period} month(s)...`, 'info', 'fa-spinner fa-spin');
+
+    try {
+        const response = await fetch(`/api/jobs/cleanup?months=${period}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.status === 'success') {
+            showToast(`Successfully deleted ${data.deleted_count} old job(s)!`, 'success', 'fa-broom');
+            fetchJobs();
+        } else {
+            showToast('Failed to cleanup old jobs', 'danger', 'fa-circle-xmark');
+        }
+    } catch (err) {
+        console.error('Error cleaning up jobs:', err);
+        showToast('Error cleaning up jobs', 'danger', 'fa-circle-xmark');
     }
 }
 

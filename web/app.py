@@ -16,7 +16,10 @@ from datetime import datetime
 # Add the parent directory to sys.path so we can import core modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.database import get_jobs_by_status, update_job_status, get_job_by_id, toggle_job_applied
+from core.database import (
+    get_jobs_by_status, update_job_status, get_job_by_id, toggle_job_applied,
+    delete_job_by_id, cleanup_old_jobs_by_months
+)
 from core.config_tuner import analyze_job_and_tune_config
 from core.cv_parser import parse_cv_with_ai
 from core.scorer import rescore_all_jobs
@@ -162,6 +165,52 @@ def update_job(job_id: str, action: str, background_tasks: BackgroundTasks):
     return {"status": "success", "job_id": job_id, "action": action}
 
 
+@app.delete("/api/jobs/cleanup")
+def cleanup_old_jobs_endpoint(months: int = 3):
+    """Bulk deletes jobs older than specified period in months (1, 3, or 6)."""
+    if months not in [1, 3, 6, 12]:
+        months = 3
+    deleted_count = cleanup_old_jobs_by_months(months=months)
+    return {"status": "success", "deleted_count": deleted_count, "months": months}
+
+
+@app.delete("/api/jobs/{job_id}")
+def delete_single_job_endpoint(job_id: str):
+    """Permanently deletes a single job by its ID."""
+    success = delete_job_by_id(job_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return {"status": "success", "job_id": job_id}
+
+
+def is_process_running(pid: int) -> bool:
+    """Verifies if a process with given PID is currently active on OS."""
+    if not pid or pid <= 0:
+        return False
+    if os.name == 'nt':
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            SYNCHRONIZE = 0x0010
+            PROCESS_QUERY_INFORMATION = 0x0400
+            handle = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE, False, pid)
+            if handle:
+                exit_code = ctypes.c_ulong()
+                if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    kernel32.CloseHandle(handle)
+                    return exit_code.value == 259  # STILL_ACTIVE
+                kernel32.CloseHandle(handle)
+        except Exception:
+            pass
+        return False
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+
 scraper_process = None
 
 @app.post("/api/run-scraper")
@@ -170,6 +219,22 @@ def run_scraper():
     if scraper_process and scraper_process.poll() is None:
         return {"status": "already_running"}
     
+    lock_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", ".scraper.lock")
+    if os.path.exists(lock_path):
+        lock_pid = None
+        try:
+            with open(lock_path, "r", encoding="utf-8") as lf:
+                lock_pid = int(lf.read().strip())
+        except Exception:
+            pass
+        if lock_pid and is_process_running(lock_pid):
+            return {"status": "already_running"}
+        else:
+            try:
+                os.remove(lock_path)
+            except OSError:
+                pass
+
     script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "job_agent.py")
     python_exe = sys.executable
     
@@ -196,10 +261,22 @@ def scraper_status():
         try:
             lock_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", ".scraper.lock")
             if os.path.exists(lock_path):
-                if (time.time() - os.path.getmtime(lock_path)) < 2700:
+                lock_pid = None
+                try:
+                    with open(lock_path, "r", encoding="utf-8") as lf:
+                        lock_pid = int(lf.read().strip())
+                except Exception:
+                    pass
+
+                if lock_pid and is_process_running(lock_pid):
+                    is_running = True
+                elif lock_pid is None and (time.time() - os.path.getmtime(lock_path)) < 2700:
                     is_running = True
                 else:
-                    os.remove(lock_path)
+                    try:
+                        os.remove(lock_path)
+                    except OSError:
+                        pass
         except Exception:
             pass
         

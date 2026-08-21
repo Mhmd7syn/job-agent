@@ -176,24 +176,40 @@ class LinkedInSession:
 
 _POST_EXTRACTOR_JS = r'''() => {
     let result = "";
-    let isAuthorLink = (href) => href && (href.includes('/in/') || href.includes('/company/'));
-    let menuBtns = document.querySelectorAll(
-        'button[aria-label*="Control Menu"], button[aria-label*="control menu" i], ' +
-        '.feed-shared-control-menu__trigger, .artdeco-dropdown__trigger'
-    );
-    let posts = Array.from(menuBtns).map(btn =>
-        btn.closest('li.reusable-search__result-container') ||
-        btn.closest('.feed-shared-update-v2') ||
-        btn.closest('.search-entity') ||
-        btn.closest('li') ||
-        btn.parentElement?.parentElement?.parentElement
-    ).filter(Boolean);
+    
+    // Find post container elements on LinkedIn content search results
+    let posts = Array.from(document.querySelectorAll(
+        'li.reusable-search__result-container, ' +
+        'div.feed-shared-update-v2, ' +
+        'div[data-urn*="activity"], ' +
+        'div[data-id*="activity"], ' +
+        'div.search-results-container .artdeco-card, ' +
+        'div.search-entity'
+    ));
+
+    // Fallback: search for elements containing activity URNs or control menus
+    if (posts.length === 0) {
+        let menuBtns = document.querySelectorAll(
+            'button[aria-label*="Control Menu"], button[aria-label*="control menu" i], ' +
+            '.feed-shared-control-menu__trigger, .artdeco-dropdown__trigger'
+        );
+        posts = Array.from(menuBtns).map(btn =>
+            btn.closest('li.reusable-search__result-container') ||
+            btn.closest('.feed-shared-update-v2') ||
+            btn.closest('.search-entity') ||
+            btn.closest('li') ||
+            btn.parentElement?.parentElement?.parentElement
+        ).filter(Boolean);
+    }
+    
     posts = Array.from(new Set(posts));
 
     if (posts.length === 0) { return document.body.innerText; }
 
     for (let post of posts) {
         let postUrl = "";
+        
+        // 1. Direct anchor href search for activity/post URL
         for (let a of post.querySelectorAll('a')) {
             if (a.href) {
                 if (a.href.includes('/feed/update/urn:li:') || a.href.includes('/posts/') || a.href.includes('-activity-')) {
@@ -202,28 +218,40 @@ _POST_EXTRACTOR_JS = r'''() => {
                 }
             }
         }
+        
+        // 2. data-urn or data-id attribute extraction
         if (!postUrl) {
-            let dataUrn = post.getAttribute('data-urn') || post.querySelector('[data-urn]')?.getAttribute('data-urn');
+            let dataUrn = post.getAttribute('data-urn') || post.getAttribute('data-id') || post.querySelector('[data-urn]')?.getAttribute('data-urn') || post.querySelector('[data-id]')?.getAttribute('data-id');
             if (dataUrn) {
-                let match = dataUrn.match(/activity:(\d+)/) || dataUrn.match(/ugcPost:(\d+)/) || dataUrn.match(/share:(\d+)/);
+                let match = dataUrn.match(/(?:activity|ugcPost|share)[:\-]?(\d{18,20})/);
                 if (match) {
                     postUrl = "https://www.linkedin.com/feed/update/urn:li:activity:" + match[1];
                 }
             }
         }
+        
+        // 3. outerHTML regex extraction for activity ID
         if (!postUrl) {
-            let outerMatch = post.outerHTML.match(/(?:urn:li:)?(?:activity|ugcPost|share)[:-](\d{18,20})/);
+            let outerMatch = post.outerHTML.match(/(?:urn:li:)?(?:activity|ugcPost|share)[:\-]?(\d{18,20})/);
             if (outerMatch) {
                 postUrl = "https://www.linkedin.com/feed/update/urn:li:activity:" + outerMatch[1];
+            }
+        }
+        
+        // 4. Fallback to post author profile/company URL
+        if (!postUrl) {
+            let authorLink = post.querySelector('a[href*="/in/"], a[href*="/company/"]');
+            if (authorLink && authorLink.href) {
+                postUrl = authorLink.href.split('?')[0];
             }
         }
         
         let text = post.innerText;
         if (text && text.trim().length > 20) {
             if (postUrl) {
-                result += "Post URL: " + postUrl + "\\n";
+                result += "Post URL: " + postUrl + "\n";
             }
-            result += "Post Text:\\n" + text + "\\n\\n---END OF POST---\\n\\n";
+            result += "Post Text:\n" + text + "\n\n---END OF POST---\n\n";
         }
     }
     return result || document.body.innerText;
@@ -280,7 +308,13 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
     encoded_loc = urllib.parse.quote(location)
     url = f"https://www.linkedin.com/jobs/search/?keywords={encoded_term}&location={encoded_loc}&sortBy=DD"
     if hours_old:
-        url += f"&f_TPR=r{hours_old * 3600}"
+        if hours_old <= 24:
+            tpr_val = 86400
+        elif hours_old <= 168:
+            tpr_val = 604800
+        else:
+            tpr_val = 2592000
+        url += f"&f_TPR=r{tpr_val}"
 
     logging.info(f"🔍 Searching LinkedIn Jobs (Playwright): {term} in {location}")
     try:

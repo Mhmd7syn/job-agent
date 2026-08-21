@@ -9,6 +9,27 @@ from core.llm_parser import extract_feed_posts_with_ai
 from core.config import GLASSDOOR_LOC_ID
 from core.database import is_job_seen
 
+def fetch_glassdoor_full_description(driver, job_url):
+    """Fetches the complete full job description and requirements from a Glassdoor job page."""
+    if not driver or not job_url or 'glassdoor.com/Job/jobs.htm' in job_url:
+        return ""
+    try:
+        driver.uc_open_with_reconnect(job_url, 3)
+        try:
+            driver.wait_for_element('div.jobDescriptionContent, div[class*="JobDetails_jobDescription"]', timeout=6)
+        except Exception:
+            pass
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
+        desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['jobDescriptionContent', 'JobDetails_jobDescription', 'desc']))
+        if desc_div:
+            text = desc_div.get_text(separator='\n', strip=True)
+            if len(text) > 80:
+                return text
+    except Exception as e:
+        logging.debug(f"Glassdoor full desc fetch error for {job_url}: {e}")
+    return ""
+
 def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, driver=None):
     jobs = []
     
@@ -82,13 +103,17 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, d
                     if not job_url:
                         job_url = url
                     
+                    card_desc = job.get('description', '')
+                    full_desc = fetch_glassdoor_full_description(driver, job_url) if job_url and job_url != url else ""
+                    final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+
                     jobs.append({
                         'title': job.get('title', 'Unknown'),
                         'company': job.get('company', 'Unknown'),
                         'location': job.get('location', location),
                         'job_url': job_url,
                         'job_type': job.get('job_type', 'Not specified'),
-                        'description': job.get('description', ''),
+                        'description': final_desc,
                         'is_remote': 'remote' in search_term.lower() or 'remote' in str(job.get('location', '')).lower(),
                         'site': 'glassdoor',
                         'date_posted': job.get('date_posted') or datetime.datetime.now().date()
