@@ -130,21 +130,17 @@
                     <label>Active Job Sites (e.g., linkedin, linkedin_posts, wuzzuf, bayt, glassdoor, tanqeeb, indeed)</label>
                     <div id="config-sites"></div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
+                        <div>
+                            <label title="Minimum resume skills a job must match to be kept (default: 2)">Min Matched Skills</label>
+                            <input type="number" id="config-min-matched-skills" min="1" max="10" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
+                        </div>
                         <div>
                             <label>Results Per Search Term</label>
                             <input type="number" id="config-results-per-term" min="1" max="100" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
                         </div>
                         <div>
-                            <label>Max Job Age (Hours, e.g. 168 = 7 days)</label>
-                            <input type="number" id="config-hours-old" min="1" max="8760" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
-                        </div>
-                        <div>
-                            <label>Max Top Jobs to Report</label>
-                            <input type="number" id="config-max-jobs-send" min="1" max="100" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
-                        </div>
-                        <div>
-                            <label>Job Retention Days (Auto-delete old jobs)</label>
+                            <label>Job Retention Days</label>
                             <input type="number" id="config-retention-days" min="1" max="365" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
                         </div>
                     </div>

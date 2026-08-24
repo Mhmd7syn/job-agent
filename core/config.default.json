@@ -96,5 +96,6 @@
     "uk only",
     "eu only"
   ],
-  "GLASSDOOR_LOC_ID": 69
+  "GLASSDOOR_LOC_ID": 69,
+  "MIN_MATCHED_SKILLS": 2
 }

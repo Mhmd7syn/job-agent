@@ -93,10 +93,10 @@ class SetupWizard(tk.Tk):
             'MON': tk.BooleanVar(value=False),
             'TUE': tk.BooleanVar(value=True),
             'WED': tk.BooleanVar(value=False),
-            'THU': tk.BooleanVar(value=False),
-            'FRI': tk.BooleanVar(value=True),
+            'THU': tk.BooleanVar(value=True),
+            'FRI': tk.BooleanVar(value=False),
             'SAT': tk.BooleanVar(value=False),
-            'SUN': tk.BooleanVar(value=False)
+            'SUN': tk.BooleanVar(value=True)
         }
         self.time_var = tk.StringVar(value="05:00")
         self.shortcut_var = tk.BooleanVar(value=True)
@@ -773,7 +773,7 @@ class SetupWizard(tk.Tk):
         sub.pack(fill=tk.X, pady=(0, 15))
 
         _, sched_card = self.create_card(self.container, title="📅 Weekly Background Schedule", padx=20, pady=15)
-        tk.Label(sched_card, text="Select active days for background scraping (Default: Tuesday & Friday):", font=("Segoe UI", 10), fg=FG_TEXT, bg=BG_CARD, anchor="w").pack(fill=tk.X, pady=(0, 10))
+        tk.Label(sched_card, text="Select active days for background scraping (Default: Sunday, Tuesday & Thursday):", font=("Segoe UI", 10), fg=FG_TEXT, bg=BG_CARD, anchor="w").pack(fill=tk.X, pady=(0, 10))
         
         days_frame = tk.Frame(sched_card, bg=BG_CARD)
         days_frame.pack(fill=tk.X, pady=5)

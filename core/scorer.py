@@ -4,9 +4,8 @@ import os
 import json
 import re
 import time
-from datetime import date
-import pandas as pd
-from core.database import DB_PATH, get_liked_jobs
+from datetime import date, datetime
+from core.database import DB_PATH
 
 def load_latest_config():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,11 +18,19 @@ def load_latest_config():
     with open(target_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def rescore_all_jobs():
-    t0 = time.time()
-    config = load_latest_config()
-    
-    # Extract config parameters
+def calculate_score(row, config=None):
+    if config is None:
+        config = load_latest_config()
+
+    title = str(row.get('title', '')).lower()
+    desc = str(row.get('description', '')).lower()
+    company = str(row.get('company', '')).lower()
+    job_type_val = str(row.get('job_type', '')).lower()
+    career_level_val = str(row.get('career_level', '')).lower() if 'career_level' in row else ''
+    loc_val = str(row.get('location', '')).lower()
+    is_remote_col = row.get('is_remote', False)
+    is_remote = (is_remote_col is True or str(is_remote_col).lower() == 'true' or 'remote' in loc_val or 'remote' in title)
+
     roles = config.get("ROLES", [])
     search_terms = []
     arabic_search_terms = []
@@ -34,213 +41,164 @@ def rescore_all_jobs():
         search_terms = config.get("SEARCH_TERMS", [])
     if not arabic_search_terms:
         arabic_search_terms = config.get("ARABIC_SEARCH_TERMS", [])
-        
+
     resume_keywords = config.get("RESUME_KEYWORDS", [])
     exclude_keywords = config.get("EXCLUDE_KEYWORDS", [])
     excluded_companies = [c.lower() for c in config.get("EXCLUDED_COMPANIES", [])]
     favorite_companies = [c.lower() for c in config.get("FAVORITE_COMPANIES", [])]
-    
-    location_rules = [l.lower() for l in config.get("LOCATION", ["Egypt"])]
     target_locations = [l.lower() for l in config.get("TARGET_LOCATIONS", ["cairo", "giza", "maadi", "nasr city", "new cairo"])]
     target_levels = [l.lower() for l in config.get("TARGET_LEVELS", ["junior", "fresh", "student", "intern", "entry"])]
-    hours_old_max = config.get("HOURS_OLD", 168)
-    
+    restricted_remote_keywords = [k.lower() for k in config.get("RESTRICTED_REMOTE_KEYWORDS", ['us only', 'uk only', 'eu only', 'united states', 'us applicants', 'us citizen', 'us citizenship'])]
     global_remote_keywords = [k.lower() for k in config.get("GLOBAL_REMOTE_KEYWORDS", ['africa', 'middle east', 'mena', 'worldwide', 'global'])]
-    restricted_remote_keywords = [k.lower() for k in config.get("RESTRICTED_REMOTE_KEYWORDS", ['us only', 'uk only', 'eu only'])]
 
-    # Precompile regex patterns for performance
-    exclude_patterns = [re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE) for kw in exclude_keywords if kw]
-    resume_patterns = [re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE) for kw in resume_keywords if kw]
+    score = 0
 
-    # Liked jobs feedback loop
-    liked_jobs = get_liked_jobs()
-    liked_companies = {str(j['company']).lower() for j in liked_jobs if j.get('company')}
-    liked_titles_words = set()
-    for j in liked_jobs:
-        if j.get('title'):
-            for word in re.findall(r'\b\w+\b', str(j['title']).lower()):
-                if len(word) > 3:
-                    liked_titles_words.add(word)
+    # 1. Negative Filtering: Excluded Companies
+    if any(comp in company for comp in excluded_companies):
+        return -100
 
-    # Helper filters
-    allow_remote = any('remote' in loc_item for loc_item in location_rules)
-    title_keywords = {t.lower() for t in search_terms} | {
-        'data', 'ai', 'machine learning', 'python', 'analyst', 'engineer',
-        'instructor', 'trainer', 'computer vision', 'nlp', 'scientist', 'ml',
-        'deep learning', 'analytics', 'intelligence', 'developer'
-    } | {t for t in arabic_search_terms}
+    # 2. Negative Filtering: Excluded Keywords
+    for kw in exclude_keywords:
+        if not kw:
+            continue
+        pat = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
+        if pat.search(title):
+            score -= 50
+        elif pat.search(job_type_val) or pat.search(career_level_val):
+            score -= 40
+        elif pat.search(desc):
+            score -= 15
 
-    def calculate_score(row):
-        title = str(row.get('title', '')).lower()
-        desc = str(row.get('description', '')).lower()
-        company = str(row.get('company', '')).lower()
-        job_type_val = str(row.get('job_type', '')).lower()
-        
-        # 0. Smart Feedback Loop (Boost from previously Liked Jobs)
-        score = 0
-        if company and company in liked_companies:
+    # 3. Positive Matching: Search Terms / Roles
+    has_term_match = False
+    for term in search_terms:
+        term_lower = term.lower()
+        if term_lower in title:
             score += 20
-        title_words = set(re.findall(r'\b\w+\b', title))
-        shared_words = title_words.intersection(liked_titles_words)
-        if shared_words:
-            score += len(shared_words) * 3
-
-        # 1. Negative Filtering
-        career_level_val = str(row.get('career_level', '')).lower() if 'career_level' in row else ''
-        for pattern in exclude_patterns:
-            if pattern.search(title):
-                score -= 50
-            elif pattern.search(job_type_val) or pattern.search(career_level_val):
-                score -= 40
-            elif pattern.search(desc):
-                score -= 10
-
-        # Instant drop for spammy companies
-        if any(comp in company for comp in excluded_companies):
-            return -100
-
-        # 2. Company Whitelist Boost
-        if any(comp in company for comp in favorite_companies):
-            score += 15
-
-        for term in search_terms:
-            term_lower = term.lower()
-            if term_lower in title:
-                score += 10
-            elif term_lower in desc:
-                score += 3
-
-        raw_title = str(row.get('title', ''))
-        raw_desc = str(row.get('description', ''))
-        for term in arabic_search_terms:
-            if term in raw_title:
-                score += 10
-            elif term in raw_desc:
-                score += 3
-
-        # Match Role-specific Rules & Experience Check
-        user_exp = 1
-        for role in roles:
-            role_terms = [t.lower() for t in role.get('english_terms', [])] + [t.lower() for t in role.get('arabic_terms', [])]
-            if any(term in title for term in role_terms):
-                user_exp = role.get('years_experience', role.get('max_years_experience', 1))
-                break
-        
-        # Comprehensive experience parsing (English & Arabic)
-        extracted_exp = []
-        desc_lower = desc.lower()
-        title_lower = title.lower()
-        career_level_val = str(row.get('career_level', '')).lower() if 'career_level' in row else ''
-        text_to_check = f"{desc_lower} {career_level_val} {title_lower}"
-
-        # 1. Range pattern: "X-Y years of experience", "X to Y years" -> min years = X
-        for min_y, _ in re.findall(r'\b(\d+)\s*(?:-|–|\s+to\s+)\s*(\d+)\s*(?:years?|yrs?)', text_to_check):
-            try: extracted_exp.append(int(min_y))
-            except ValueError: pass
-
-        # 2. Broad single pattern: "5+ years", "5 yrs", "5+ years of experience", "5+ years in..."
-        for y in re.findall(r'\b(\d+)\+?\s*(?:years?|yrs?)\b', text_to_check):
-            try: extracted_exp.append(int(y))
-            except ValueError: pass
-
-        # 3. Minimum / At least pattern: "minimum 5 years", "at least 4 yrs"
-        for y in re.findall(r'\b(?:minimum|at\s+least|min\.?)\s*(\d+)\+?\s*(?:years?|yrs?)', text_to_check):
-            try: extracted_exp.append(int(y))
-            except ValueError: pass
-
-        # 4. Key-Value pattern: "Experience: 5 years", "Experience required: 5+ yrs"
-        for y in re.findall(r'\bexperience\s*(?:required|needed|level)?\s*[:\-]\s*(?:at\s+least\s+)?(\d+)', text_to_check):
-            try: extracted_exp.append(int(y))
-            except ValueError: pass
-
-        # 5. Arabic patterns: "خبرة لا تقل عن 5 سنوات", "خبرة من 4 إلى 6 سنوات", "5 سنوات خبرة"
-        for min_y, _ in re.findall(r'خبرة\s*(?:من\s+)?(\d+)\s*(?:إلى|-|–)\s*(\d+)\s*(?:سنوات|سنين|سنة)', text_to_check):
-            try: extracted_exp.append(int(min_y))
-            except ValueError: pass
-
-        for y1, y2 in re.findall(r'(?:خبرة\s*(?:لا\s*تقل\s*عن)?\s*(\d+)|(\d+)\s*(?:سنوات|سنين|سنة)\s*(?:من\s+)?خبرة)', text_to_check):
-            y = y1 or y2
-            if y:
-                try: extracted_exp.append(int(y))
-                except ValueError: pass
-
-        # Filter realistic required experience range (1 to 15 years)
-        extracted_exp = [x for x in extracted_exp if 1 <= x <= 15]
-
-        # Calculate relative experience penalty based on difference (min_required_years - user_exp)
-        if extracted_exp:
-            min_req_exp = min(extracted_exp)
-            diff = min_req_exp - user_exp
-            if diff > 0:
-                score -= diff * 25
-
-        # 3. Resume Match Scoring
-        for pattern in resume_patterns:
-            if pattern.search(title):
-                score += 5
-            matches = len(pattern.findall(desc))
-            if matches > 0:
-                score += min(matches * 2, 8)
-
-        
-
-        # Score locations
-        loc_val = str(row.get('location', '')).lower()
-        is_remote_col = row.get('is_remote', False)
-        if allow_remote and ((is_remote_col is True or str(is_remote_col).lower() == 'true') or ('remote' in loc_val) or ('remote' in title)):
+            has_term_match = True
+            break
+        elif term_lower in desc:
             score += 5
-            title_desc = title + " " + desc
-            if any(r in title_desc for r in global_remote_keywords):
-                score += 5
-            if any(r in title_desc for r in restricted_remote_keywords):
-                score -= 30
+            has_term_match = True
+            break
 
-        if any(target in loc_val for target in target_locations):
+    raw_title = str(row.get('title', ''))
+    raw_desc = str(row.get('description', ''))
+    for term in arabic_search_terms:
+        if term in raw_title:
+            score += 20
+            has_term_match = True
+            break
+        elif term in raw_desc:
+            score += 5
+            has_term_match = True
+            break
+
+    # 4. Positive Matching: Resume Skills (Awarded strictly once per unique keyword)
+    matched_skills = 0
+    for kw in resume_keywords:
+        if not kw:
+            continue
+        pat = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
+        if pat.search(title):
+            score += 8
+            matched_skills += 1
+        elif pat.search(desc):
+            score += 3
+            matched_skills += 1
+
+    # Zero baseline: If a job matches fewer than MIN_MATCHED_SKILLS (default 2) resume skills, it is unrelated (score = 0)
+    min_skills = config.get("MIN_MATCHED_SKILLS", 2)
+    if matched_skills < min_skills:
+        return 0
+
+    # 5. Experience Penalty (Smooth Relative formula)
+    user_exp = 1
+    for role in roles:
+        role_terms = [t.lower() for t in role.get('english_terms', [])] + [t.lower() for t in role.get('arabic_terms', [])]
+        if any(term in title for term in role_terms):
+            user_exp = role.get('years_experience', role.get('max_years_experience', 1))
+            break
+
+    extracted_exp = []
+    text_to_check = f"{desc} {career_level_val} {title}"
+    for min_y, _ in re.findall(r'\b(\d+)\s*(?:-|–|\s+to\s+)\s*(\d+)\s*(?:years?|yrs?)', text_to_check):
+        try: extracted_exp.append(int(min_y))
+        except ValueError: pass
+    for y in re.findall(r'\b(\d+)\+?\s*(?:years?|yrs?)\b', text_to_check):
+        try: extracted_exp.append(int(y))
+        except ValueError: pass
+    for y in re.findall(r'\b(?:minimum|at\s+least|min\.?)\s*(\d+)\+?\s*(?:years?|yrs?)', text_to_check):
+        try: extracted_exp.append(int(y))
+        except ValueError: pass
+    for min_y, _ in re.findall(r'خبرة\s*(?:من\s+)?(\d+)\s*(?:إلى|-|–)\s*(\d+)\s*(?:سنوات|سنين|سنة)', text_to_check):
+        try: extracted_exp.append(int(min_y))
+        except ValueError: pass
+    for y1, y2 in re.findall(r'(?:خبرة\s*(?:لا\s*تقل\s*عن)?\s*(\d+)|(\d+)\s*(?:سنوات|سنين|سنة)\s*(?:من\s+)?خبرة)', text_to_check):
+        y = y1 or y2
+        if y:
+            try: extracted_exp.append(int(y))
+            except ValueError: pass
+
+    extracted_exp = [x for x in extracted_exp if 1 <= x <= 15]
+    if extracted_exp:
+        min_req_exp = min(extracted_exp)
+        diff = min_req_exp - user_exp
+        if diff > 0:
+            score -= diff * 30
+
+    # 6. Target Level Boost (Checked on structured title/job_type/career_level only)
+    level_scope = f"{title} {job_type_val} {career_level_val}"
+    for lvl in target_levels:
+        if not lvl:
+            continue
+        lvl_pat = re.compile(r'\b' + re.escape(lvl) + r'\b', re.IGNORECASE)
+        if lvl_pat.search(level_scope):
+            score += 15
+            break
+
+    # 7. Favorite Companies Boost
+    if any(comp in company for comp in favorite_companies):
+        score += 15
+
+    # 8. Target Location & Remote Eligibility
+    if any(target in loc_val for target in target_locations):
+        score += 5
+
+    if is_remote:
+        score += 5
+        full_loc_desc = f"{loc_val} {title} {desc}"
+        if any(r in full_loc_desc for r in restricted_remote_keywords):
+            score -= 100
+        elif any(g in full_loc_desc for g in global_remote_keywords):
             score += 5
 
-        # Score levels
-        if any(level in title or level in job_type_val or level in desc for level in target_levels):
-            score += 15
+    # 9. Dynamic Daily Freshness Decay Boost (New jobs have priority, updated daily)
+    post_date_raw = row.get('date_posted')
+    if post_date_raw:
+        try:
+            if hasattr(post_date_raw, 'date'):
+                p_date = post_date_raw.date()
+            else:
+                p_date = datetime.strptime(str(post_date_raw)[:10], "%Y-%m-%d").date()
+            days_old = (date.today() - p_date).days
+            if days_old >= 0:
+                freshness_boost = max(0, 15 - days_old)
+                if freshness_boost > 0:
+                    score += freshness_boost
+        except Exception as e:
+            logging.debug(f"Date parsing failed for '{post_date_raw}': {e}")
 
-        # Recency Boost (Never penalize older jobs, only boost fresh ones)
-        post_date = row.get('date_posted')
-        if pd.notna(post_date) and str(post_date).strip():
-            try:
-                if hasattr(post_date, 'date'):
-                    p_date = post_date.date()
-                else:
-                    p_date = pd.to_datetime(post_date).date()
-                days_old = (date.today() - p_date).days
-                if hours_old_max > 0 and days_old * 24 <= hours_old_max:
-                    hours_old_calc = days_old * 24
-                    freshness_ratio = max(0.0, 1.0 - (hours_old_calc / hours_old_max))
-                    score += int(15 * freshness_ratio)
-            except Exception as e:
-                logging.debug(f"Date parsing failed for value '{post_date}': {e}")
+    return int(score)
 
-        return score
+def is_valid_job(row, score):
+    """A job is valid if its final relevance score is greater than zero."""
+    return score > 0
 
-    def is_valid_job(row, score):
-        if score <= 0:
-            return False
-        loc_val = str(row.get('location', '')).lower()
-        is_remote = row.get('is_remote', False)
-        geo_ok = False
-        if is_remote is True or str(is_remote).lower() == 'true' or 'remote' in loc_val:
-            geo_ok = True
-        elif any(t in loc_val for t in target_locations) or 'egypt' in loc_val:
-            geo_ok = True
-        elif loc_val in ('', 'nan', 'not specified', 'unknown', 'none'):
-            geo_ok = True
-        if not geo_ok:
-            return False
-            
-        title = str(row.get('title', '')).lower()
-        if not any(kw in title for kw in title_keywords):
-            return False
-        return True
+def rescore_all_jobs():
+    t0 = time.time()
+    config = load_latest_config()
 
-    # Process database records
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -253,11 +211,11 @@ def rescore_all_jobs():
     
     for row in rows:
         job_dict = dict(row)
-        new_score = calculate_score(job_dict)
+        new_score = calculate_score(job_dict, config=config)
         job_id = job_dict['job_id']
         status = job_dict.get('status', 'pending')
         
-        # We only prune/remove jobs that are still 'pending' and no longer valid or have score <= 0
+        # Prune pending jobs that are not relevant (score <= 0)
         if status == 'pending' and not is_valid_job(job_dict, new_score):
             jobs_to_delete.append((job_id,))
         else:
@@ -272,6 +230,7 @@ def rescore_all_jobs():
     conn.close()
     
     duration = round(time.time() - t0, 3)
+    logging.info(f"Rescored {len(jobs_to_update)} jobs, pruned {len(jobs_to_delete)} jobs in {duration}s")
     return {
         "status": "success",
         "rescored": len(jobs_to_update),

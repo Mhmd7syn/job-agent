@@ -241,20 +241,26 @@ def evaluate_run_with_ai(logs_text, csv_text, user_brief=""):
     if not client:
         return "No Gemini API Key found. Cannot evaluate."
         
-    for attempt in range(5):
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
-            return response.text
-        except Exception as e:
-            if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060"]):
-                wait_time = 30 * (attempt + 1)
-                logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting {wait_time}s before retry {attempt+1}/5...)")
-                time.sleep(wait_time)
-                continue
-            return f"Error during AI evaluation: {str(e)}"
-            
-    return "Error: Exceeded retries for AI evaluation."
+    models_to_try = ['gemini-2.5-flash', 'gemini-flash-lite-latest']
+    last_error = None
+
+    for model_name in models_to_try:
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+                if response and response.text:
+                    return response.text
+            except Exception as e:
+                last_error = e
+                if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060", "UNAVAILABLE"]):
+                    wait_time = 5 * (attempt + 1)
+                    logging.warning(f"    (AI evaluation issue with {model_name} ({str(e)[:25]}...). Waiting {wait_time}s before retry {attempt+1}/3...)")
+                    time.sleep(wait_time)
+                    continue
+                break
+                
+    return f"Error during AI evaluation: {last_error or 'Exceeded retries'}"
 

@@ -1,56 +1,20 @@
 [
   {
-    "id": "prop_1237b42a",
-    "source": "Not_Related Job",
-    "field": "EXCLUDE_KEYWORDS",
+    "id": "prop_c0d1fb74",
+    "source": "Run Evaluation",
+    "field": "SITES",
     "type": "add",
-    "value": "customer service",
-    "display_name": "Exclude: Customer Service",
-    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
+    "value": "akhtaboot",
+    "display_name": "Enable Site: Akhtaboot",
+    "reason": "From run evaluation - Suggested enabling scraper site"
   },
   {
-    "id": "prop_c51ec12c",
+    "id": "prop_503d114a",
     "source": "Not_Related Job",
-    "field": "EXCLUDE_KEYWORDS",
+    "field": "EXCLUDED_COMPANIES",
     "type": "add",
-    "value": "customer support",
-    "display_name": "Exclude: Customer Support",
-    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
-  },
-  {
-    "id": "prop_7ab1ce28",
-    "source": "Not_Related Job",
-    "field": "EXCLUDE_KEYWORDS",
-    "type": "add",
-    "value": "customer care",
-    "display_name": "Exclude: Customer Care",
-    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
-  },
-  {
-    "id": "prop_f7c9da1e",
-    "source": "Not_Related Job",
-    "field": "EXCLUDE_KEYWORDS",
-    "type": "add",
-    "value": "call center",
-    "display_name": "Exclude: Call Center",
-    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
-  },
-  {
-    "id": "prop_eb89b811",
-    "source": "Not_Related Job",
-    "field": "EXCLUDE_KEYWORDS",
-    "type": "add",
-    "value": "contact center",
-    "display_name": "Exclude: Contact Center",
-    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
-  },
-  {
-    "id": "prop_58793b08",
-    "source": "Not_Related Job",
-    "field": "EXCLUDE_KEYWORDS",
-    "type": "add",
-    "value": "sales",
-    "display_name": "Exclude: Sales",
-    "reason": "From job 'Customer Service - Vodafone UK - Cairo' - New negative keyword"
+    "value": "wpromote",
+    "display_name": "Excluded Company: Wpromote",
+    "reason": "From job 'Junior Data Scientist' - Irrelevant or spam company"
   }
 ]

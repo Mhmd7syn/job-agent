@@ -96,7 +96,7 @@ All preferences can be set from the dashboard. For advanced manual tuning, two f
 
 **`core/config.json` — Keywords & Roles**
 - `ROLES`: Target job titles with English/Arabic search terms and max years of experience.
-- `RESUME_KEYWORDS` & `NICE_TO_HAVE_SKILLS`: Skills that boost a job's relevance score.
+- `RESUME_KEYWORDS`: Skills that boost a job's relevance score.
 - `EXCLUDE_KEYWORDS` & `EXCLUDED_COMPANIES`: Terms and companies to completely filter out.
 - `FAVORITE_COMPANIES`: Companies whose jobs receive a relevance boost.
 

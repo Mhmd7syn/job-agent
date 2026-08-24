@@ -86,3 +86,4 @@ RESTRICTED_REMOTE_KEYWORDS = _config_data.get("RESTRICTED_REMOTE_KEYWORDS", ['us
 
 # Scraper Specific Configurations
 GLASSDOOR_LOC_ID = _config_data.get("GLASSDOOR_LOC_ID", 69)
+MIN_MATCHED_SKILLS = _config_data.get("MIN_MATCHED_SKILLS", 2)

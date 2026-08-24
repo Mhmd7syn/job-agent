@@ -493,12 +493,10 @@ function refreshSettingsUI() {
     
     initTagInput('config-sites', currentConfig.SITES || ['linkedin', 'wuzzuf', 'bayt', 'glassdoor', 'tanqeeb', 'indeed']);
     
+    const minSkillsEl = document.getElementById('config-min-matched-skills');
+    if (minSkillsEl) minSkillsEl.value = currentConfig.MIN_MATCHED_SKILLS !== undefined ? currentConfig.MIN_MATCHED_SKILLS : 2;
     const rptEl = document.getElementById('config-results-per-term');
     if (rptEl) rptEl.value = currentConfig.RESULTS_PER_TERM || 15;
-    const hoEl = document.getElementById('config-hours-old');
-    if (hoEl) hoEl.value = currentConfig.HOURS_OLD || 168;
-    const mjsEl = document.getElementById('config-max-jobs-send');
-    if (mjsEl) mjsEl.value = currentConfig.MAX_JOBS_TO_SEND || 10;
     const retEl = document.getElementById('config-retention-days');
     if (retEl) retEl.value = currentConfig.job_retention_days || 90;
 }
@@ -552,9 +550,11 @@ async function saveSettings() {
     newConfig.EXCLUDED_COMPANIES = getTagInputValues('config-excluded-companies');
     
     newConfig.SITES = getTagInputValues('config-sites');
+    const minSkillsVal = parseInt(document.getElementById('config-min-matched-skills')?.value);
+    newConfig.MIN_MATCHED_SKILLS = !isNaN(minSkillsVal) ? minSkillsVal : 2;
     newConfig.RESULTS_PER_TERM = parseInt(document.getElementById('config-results-per-term').value) || 15;
-    newConfig.HOURS_OLD = parseInt(document.getElementById('config-hours-old').value) || 168;
-    newConfig.MAX_JOBS_TO_SEND = parseInt(document.getElementById('config-max-jobs-send').value) || 10;
+    newConfig.HOURS_OLD = currentConfig.HOURS_OLD || 168;
+    newConfig.MAX_JOBS_TO_SEND = currentConfig.MAX_JOBS_TO_SEND || 10;
     newConfig.job_retention_days = parseInt(document.getElementById('config-retention-days').value) || 90;
 
     try {
