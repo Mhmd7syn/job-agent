@@ -1,11 +1,13 @@
+import os
 import sys
 import urllib.parse
 import pandas as pd
 import datetime
 import logging
-import random
+import re
+from bs4 import BeautifulSoup
 
-from core.llm_parser import extract_feed_posts_with_ai
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 
 def fetch_indeed_full_description(driver, job_url):
@@ -77,7 +79,7 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
                 logging.info(f"✅ Indeed (JobSpy): Extracted {len(jobs)} jobs with full descriptions.")
                 return pd.DataFrame(jobs)
     except Exception as spy_err:
-        logging.warning(f"⚠️ JobSpy Indeed extraction issue: {spy_err}. Falling back to SeleniumBase...")
+        logging.debug(f"JobSpy unavailable: {spy_err}. Using browser fallback.")
 
     # 2. Fallback Method: SeleniumBase Browser
     url = f"https://www.indeed.com/jobs?q={urllib.parse.quote(search_term)}&l={urllib.parse.quote(location)}&sort=date"
@@ -106,76 +108,49 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
         html_content = driver.get_page_source()
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        content_text = ""
-        # Extract job cards
+        # Direct BeautifulSoup parsing without LLM
         job_cards = soup.find_all('div', class_='job_seen_beacon')
+        if not job_cards:
+            job_cards = soup.find_all(['div', 'li'], class_=lambda c: c and any(k in str(c) for k in ['result', 'jobsearch-ResultsTable', 'cardOutline']))
+
         for card in job_cards:
-            a_tag = card.find('a', id=lambda x: x and x.startswith('job_'))
-            if a_tag:
-                href = a_tag.get('href', '')
-                if href.startswith('/'):
-                    href = "https://www.indeed.com" + href
-                if is_job_seen(href):
-                    logging.debug(f"    ⏭️ Skipping known job (cached): {href}")
-                    continue
-                text = card.get_text(separator=" ", strip=True)
-                if len(text) > 10:
-                    content_text += f"Job Link: {href}\nJob Info: {text}\n\n"
-                    
-        # Fallback if specific classes didn't match
-        if not content_text.strip():
-            for a in soup.find_all('a'):
-                href = a.get('href', '')
-                if '/rc/clk' in href or 'vjk=' in href:
-                    if href.startswith('/'):
-                        href = "https://www.indeed.com" + href
-                    if is_job_seen(href):
-                        logging.debug(f"    ⏭️ Skipping known job (cached): {href}")
-                        continue
-                    text = a.get_text(separator=" ", strip=True)
-                    content_text += f"Job Link: {href}\nJob Info: {text}\n\n"
+            if len(jobs) >= results_wanted:
+                break
+            a_tag = card.find('a', id=lambda x: x and x.startswith('job_')) or card.find('a', href=lambda h: h and ('/rc/clk' in h or 'vjk=' in h or '/viewjob' in h))
+            if not a_tag:
+                continue
 
-        if not content_text.strip():
-            return pd.DataFrame()
+            href = a_tag.get('href', '')
+            if href.startswith('/'):
+                href = "https://www.indeed.com" + href
 
-        ai_data = extract_feed_posts_with_ai(content_text[:20000])
-        
-        if ai_data and not ai_data.get("error"):
-            jobs_list = ai_data.get("jobs", [])
-            cutoff = None
-            if hours_old:
-                cutoff = (datetime.datetime.now() - datetime.timedelta(hours=hours_old)).date()
-            for job in jobs_list:
-                if job.get("is_job") and len(jobs) < results_wanted:
-                    raw_date = job.get('date_posted')
-                    if cutoff and raw_date:
-                        try:
-                            job_date = datetime.datetime.strptime(raw_date, "%Y-%m-%d").date()
-                            if job_date < cutoff:
-                                continue
-                        except Exception:
-                            pass
-                    job_url = job.get('job_url', '')
-                    if not job_url:
-                        job_url = url
-                    
-                    card_desc = job.get('description', '')
-                    full_desc = fetch_indeed_full_description(driver, job_url) if job_url and job_url != url else ""
-                    final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+            if is_job_seen(href):
+                continue
 
-                    jobs.append({
-                        'title': job.get('title', 'Unknown'),
-                        'company': job.get('company', 'Unknown'),
-                        'location': job.get('location', location),
-                        'job_url': job_url,
-                        'job_type': job.get('job_type', 'Not specified'),
-                        'description': final_desc,
-                        'is_remote': 'remote' in search_term.lower() or 'remote' in str(job.get('location', '')).lower(),
-                        'site': 'indeed',
-                        'date_posted': job.get('date_posted') or datetime.datetime.now().date()
-                    })
-        else:
-            logging.warning(f"⚠️ Indeed AI Parsing Error: {ai_data.get('error') if ai_data else 'Unknown'}")
+            title = a_tag.text.strip()
+            if not title:
+                continue
+
+            comp_elem = card.find(['span', 'div'], class_=lambda c: c and any(k in str(c).lower() for k in ['companyname', 'company_location', 'company']))
+            company = comp_elem.text.strip() if comp_elem else "Unknown"
+
+            loc_elem = card.find('div', class_=lambda c: c and any(k in str(c).lower() for k in ['companylocation', 'company_location', 'location']))
+            loc_val = loc_elem.text.strip() if loc_elem else location
+
+            desc_elem = card.find('div', class_=lambda c: c and any(k in str(c) for k in ['job-snippet', 'underShelfFooter', 'css-9446fg']))
+            card_desc = desc_elem.text.strip() if desc_elem else card.get_text(separator=' ', strip=True)
+
+            jobs.append({
+                'title': title,
+                'company': company,
+                'location': loc_val,
+                'job_url': href,
+                'job_type': 'Not specified',
+                'description': card_desc,
+                'is_remote': 'remote' in search_term.lower() or 'remote' in str(loc_val).lower(),
+                'site': 'indeed',
+                'date_posted': datetime.datetime.now().date()
+            })
             
     except Exception as e:
         logging.error(f"⚠️ Indeed Scraper Error: {e}")

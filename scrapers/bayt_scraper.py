@@ -1,24 +1,26 @@
+import os
 import sys
 import urllib.parse
 import pandas as pd
 import datetime
 import logging
-import random
+import re
+from bs4 import BeautifulSoup
 
-from core.llm_parser import extract_feed_posts_with_ai
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 
-def fetch_bayt_full_description(job_url, driver=None):
-    """Fetches the complete full job description and requirements from a Bayt job page."""
+def fetch_bayt_full_description(job_url):
+    """Fetches the complete full job description and requirements via lightweight HTTP."""
     if not job_url or 'bayt.com/en/' not in job_url:
         return ""
     try:
-        import requests
-        from bs4 import BeautifulSoup
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        resp = requests.get(job_url, headers=headers, timeout=6)
+        from curl_cffi import requests as c_requests
+        resp = c_requests.get(
+            job_url,
+            impersonate="chrome120",
+            timeout=5
+        )
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.content, 'html.parser')
             desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['card-content', 't-break', 'job-description', 'is-space-bottom-large']))
@@ -27,18 +29,7 @@ def fetch_bayt_full_description(job_url, driver=None):
                 if len(text) > 80:
                     return text
     except Exception as e:
-        logging.debug(f"Bayt requests fetch failed for {job_url}: {e}")
-
-    if driver:
-        try:
-            driver.uc_open_with_reconnect(job_url, 3)
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
-            desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['card-content', 't-break', 'job-description']))
-            if desc_div:
-                return desc_div.get_text(separator='\n', strip=True)
-        except Exception as e:
-            logging.debug(f"Bayt driver fallback failed for {job_url}: {e}")
+        logging.debug(f"Bayt HTTP fetch failed for {job_url}: {e}")
 
     return ""
 
@@ -58,94 +49,101 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver
             interval = 1
         url += f"&filters[jb_last_modification_date_interval][]={interval}"
     
-    if driver is None:
-        logging.error("Bayt scraper requires a SeleniumBase driver.")
+    html_content = None
+    # 1. Try fast curl_cffi HTTP request first
+    try:
+        from curl_cffi import requests as c_requests
+        resp = c_requests.get(url, impersonate="chrome120", timeout=8)
+        if resp.status_code == 200 and len(resp.text) > 10000 and "has-pointer-d" in resp.text:
+            html_content = resp.text
+    except Exception as e:
+        logging.debug(f"Bayt fast HTTP fetch failed: {e}")
+
+    # 2. Fallback to driver if Cloudflare challenge is presented
+    if not html_content and driver is not None:
+        try:
+            driver.uc_open_with_reconnect(url, 4)
+            try:
+                driver.uc_gui_click_captcha()
+            except Exception:
+                pass
+            try:
+                driver.wait_for_element('li.has-pointer-d', timeout=8)
+            except Exception:
+                pass
+            html_content = driver.get_page_source()
+        except Exception as e:
+            logging.error(f"⚠️ Bayt driver error: {e}")
+
+    if not html_content:
         return pd.DataFrame()
 
     try:
-        driver.uc_open_with_reconnect(url, 4)
-        try:
-            driver.uc_gui_click_captcha()
-        except Exception:
-            pass
-        
-        try:
-            driver.wait_for_element('li.has-pointer-d', timeout=10)
-        except Exception:
-            pass
-
-        from bs4 import BeautifulSoup
-        html_content = driver.get_page_source()
         soup = BeautifulSoup(html_content, 'html.parser')
-        
-        content_text = ""
-        # Extract job cards
         job_cards = soup.find_all('li', class_='has-pointer-d')
+        cutoff = (datetime.datetime.now() - datetime.timedelta(hours=hours_old)).date() if hours_old else None
+
         for card in job_cards:
+            if len(jobs) >= results_wanted:
+                break
+                
             title_elem = card.find('h2')
-            if title_elem and title_elem.find('a'):
-                a_tag = title_elem.find('a')
-                href = a_tag.get('href', '')
-                if href.startswith('/'):
-                    href = "https://www.bayt.com" + href
-                title = a_tag.text.strip()
-                content_text += f"Job Link: {href}\nTitle: {title}\n"
+            if not title_elem or not title_elem.find('a'):
+                continue
                 
-                # Try to get company and location
-                company_elem = card.find('b', class_='p10r')
-                if company_elem:
-                    content_text += f"Company: {company_elem.text.strip()}\n"
+            a_tag = title_elem.find('a')
+            href = a_tag.get('href', '')
+            if href.startswith('/'):
+                href = "https://www.bayt.com" + href
                 
-                desc_elem = card.find('div', class_='t-small')
-                if desc_elem:
-                    content_text += f"Description: {desc_elem.text.strip()}\n"
-                    
-                content_text += "\n"
+            if is_job_seen(href):
+                continue
+                
+            title = a_tag.text.strip()
+            if not title:
+                continue
 
-        if not content_text.strip():
-            return pd.DataFrame()
+            company_elem = card.find('b', class_='p10r')
+            company = company_elem.text.strip() if company_elem else "Unknown"
 
-        ai_data = extract_feed_posts_with_ai(content_text[:20000])
-        
-        if ai_data and not ai_data.get("error"):
-            jobs_list = ai_data.get("jobs", [])
-            # Apply hours_old cutoff that was previously ignored
-            cutoff = None
-            if hours_old:
-                cutoff = (datetime.datetime.now() - datetime.timedelta(hours=hours_old)).date()
-            for job in jobs_list:
-                if job.get("is_job") and len(jobs) < results_wanted:
-                    raw_date = job.get('date_posted')
-                    if cutoff and raw_date:
-                        try:
-                            job_date = datetime.datetime.strptime(raw_date, "%Y-%m-%d").date()
-                            if job_date < cutoff:
-                                continue
-                        except Exception:
-                            pass
-                    job_url = job.get('job_url', '')
-                    if not job_url:
-                        job_url = url
-                    card_desc = job.get('description', '')
-                    full_desc = fetch_bayt_full_description(job_url, driver=driver) if job_url and job_url != url else ""
-                    final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+            loc_elem = card.find('span', class_='t-mute')
+            loc_val = loc_elem.text.strip() if loc_elem else location
 
-                    jobs.append({
-                        'title': job.get('title', 'Unknown'),
-                        'company': job.get('company', 'Unknown'),
-                        'location': job.get('location', location),
-                        'job_url': job_url,
-                        'job_type': 'Not specified',
-                        'description': final_desc,
-                        'is_remote': 'remote' in search_term.lower() or 'remote' in str(job.get('location', '')).lower(),
-                        'site': 'bayt',
-                        'date_posted': job.get('date_posted') or datetime.datetime.now().date()
-                    })
-        else:
-            logging.warning(f"⚠️ Bayt AI Parsing Error: {ai_data.get('error') if ai_data else 'Unknown'}")
+            desc_elem = card.find('div', class_='t-small')
+            card_desc = desc_elem.text.strip() if desc_elem else ""
+
+            # Parse date
+            job_date = datetime.datetime.now().date()
+            date_elem = card.find('div', class_='t-mute') or card.find('span', class_='t-mute')
+            if date_elem:
+                raw_d = date_elem.text.lower()
+                m_days = re.search(r'(\d+)\s+day', raw_d)
+                if m_days:
+                    job_date = (datetime.datetime.now() - datetime.timedelta(days=int(m_days.group(1)))).date()
+                elif 'yesterday' in raw_d or 'أمس' in raw_d:
+                    job_date = (datetime.datetime.now() - datetime.timedelta(days=1)).date()
+
+            if cutoff and job_date < cutoff:
+                continue
+
+            # Non-blocking description fetch
+            full_desc = fetch_bayt_full_description(href)
+            final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+
+            jobs.append({
+                'title': title,
+                'company': company,
+                'location': loc_val,
+                'job_url': href,
+                'job_type': 'Not specified',
+                'description': final_desc,
+                'is_remote': 'remote' in search_term.lower() or 'remote' in str(loc_val).lower(),
+                'site': 'bayt',
+                'date_posted': job_date
+            })
             
     except Exception as e:
-        logging.error(f"⚠️ Bayt Scraper Error: {e}")
+        logging.error(f"⚠️ Bayt parsing error: {e}")
             
     return pd.DataFrame(jobs)
 

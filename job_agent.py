@@ -1,5 +1,5 @@
 from core.database import save_job, get_jobs_by_status, get_liked_jobs, cleanup_old_jobs
-from core.scorer import calculate_score, is_valid_job
+from core.scorer import calculate_score, is_valid_job, load_latest_config
 from scrapers.glassdoor_scraper import scrape_glassdoor
 from scrapers.bayt_scraper import scrape_bayt
 from scrapers.tanqeeb_scraper import scrape_tanqeeb
@@ -23,6 +23,7 @@ import datetime
 import logging
 import ctypes
 import atexit
+import contextlib
 
 # Configure logging to save to file with timestamps, but print to terminal cleanly
 # Ensure output directory exists before creating the log file handler
@@ -30,7 +31,94 @@ _OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
 os.makedirs(_OUTPUT_DIR, exist_ok=True)
 
 CHECKPOINT_FILE = os.path.join(_OUTPUT_DIR, ".scan_checkpoint.json")
-CHECKPOINT_TTL_HOURS = 12
+PROGRESS_FILE = os.path.join(_OUTPUT_DIR, ".scraper_progress.json")
+CHECKPOINT_TTL_HOURS = 24
+
+
+def format_duration(seconds):
+    """Format seconds into a human readable string (e.g. '2m 15s' or '1h 05m')."""
+    seconds = int(max(0, seconds))
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h}h {m:02d}m {s:02d}s"
+    elif m > 0:
+        return f"{m}m {s:02d}s"
+    else:
+        return f"{s}s"
+
+
+def write_progress(current_step, total_steps, task, jobs_found=0, is_running=True, start_time=None):
+    """Atomically writes current scraping progress and estimated remaining time to .scraper_progress.json."""
+    try:
+        now = time.time()
+        elapsed_sec = (now - start_time) if start_time else 0
+        
+        if total_steps > 0:
+            percent = min(100, int((current_step / total_steps) * 100))
+        else:
+            percent = 0
+
+        if current_step > 0 and start_time and total_steps > current_step:
+            avg_sec = elapsed_sec / current_step
+            remaining_steps = total_steps - current_step
+            eta_sec = remaining_steps * avg_sec
+            eta_str = f"~{format_duration(eta_sec)}"
+        elif current_step >= total_steps and total_steps > 0:
+            eta_sec = 0
+            eta_str = "Finishing..."
+        else:
+            eta_sec = 0
+            eta_str = "Calculating..."
+
+        data = {
+            "is_running": is_running,
+            "percent": percent,
+            "current_step": current_step,
+            "total_steps": total_steps,
+            "task": task,
+            "elapsed_seconds": int(elapsed_sec),
+            "elapsed_str": format_duration(elapsed_sec),
+            "eta_seconds": int(eta_sec),
+            "eta_str": eta_str,
+            "jobs_found": jobs_found,
+            "timestamp": now
+        }
+        tmp_file = PROGRESS_FILE + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_file, PROGRESS_FILE)
+    except Exception as e:
+        logging.warning(f"Failed to write scraper progress: {e}")
+
+
+def cleanup_progress():
+    """Marks progress as complete/idle when scraper finishes or exits."""
+    try:
+        if os.path.exists(PROGRESS_FILE):
+            with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            data["is_running"] = False
+            data["percent"] = 100
+            data["task"] = "Completed"
+            data["eta_str"] = "Done"
+            tmp_file = PROGRESS_FILE + ".tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp_file, PROGRESS_FILE)
+    except Exception:
+        pass
+
+
+def is_sb_driver_alive(driver):
+    """Verifies that the SeleniumBase driver session is active and responsive."""
+    if driver is None:
+        return False
+    try:
+        _ = driver.current_url
+        return True
+    except Exception:
+        return False
 
 
 class ScanCheckpoint:
@@ -53,7 +141,7 @@ class ScanCheckpoint:
                     self.is_resumed = True
                     logging.info(f"🔄 Resuming previous scan session '{self.session_id}' ({len(self.completed_tasks)} task(s) already completed).")
                 else:
-                    logging.info("🧹 Expired scan checkpoint found (>12h old). Starting a fresh scan session.")
+                    logging.info(f"🧹 Expired scan checkpoint found (>{CHECKPOINT_TTL_HOURS}h old). Starting a fresh scan session.")
                     self._clear()
             except Exception as e:
                 logging.warning(f"⚠️ Failed to read checkpoint file: {e}. Starting fresh.")
@@ -170,7 +258,7 @@ if sys.stdout is not None and getattr(sys.stdout, 'encoding', None) and sys.stdo
         pass
 
 
-def main():
+def main(run_start_time=None):
 
     import concurrent.futures
     import re
@@ -179,7 +267,16 @@ def main():
     jobs_list = []
     sites_lower = {s.lower() for s in SITES}  # Pre-computed set for O(1) lookups
 
+    run_start_time = run_start_time or time.time()
     checkpoint = ScanCheckpoint()
+
+    arabic_sites_active = {s.lower() for s in SITES_FOR_ARABIC} & sites_lower
+    total_arabic = (len(ARABIC_SEARCH_TERMS) * len(LOCATION)) if (ARABIC_SEARCH_TERMS and arabic_sites_active) else 0
+    total_steps = (len(SEARCH_TERMS) * len(LOCATION)) + total_arabic
+    current_step = [0]
+    total_jobs_saved = [0]
+
+    write_progress(0, total_steps, "Initializing job search...", 0, is_running=True, start_time=run_start_time)
 
     def _make_job_id(title, company):
         t = re.sub(r'[^\w\s]', ' ', str(title).lower())
@@ -196,12 +293,17 @@ def main():
     def fix_job_type(row):
         job_type = str(row.get('job_type', '')).lower()
         title_desc = str(row.get('title', '')).lower() + ' ' + str(row.get('description', '')).lower()
+        combined = f"{job_type} {title_desc}"
+        if any(kw in combined for kw in ['scholarship', 'fellowship', 'منحة', 'منح', 'grant']):
+            return 'Scholarship'
         if job_type in ['nan', 'not specified', '']:
             if any(kw in title_desc for kw in ['intern', 'internship', 'trainee', 'working student']):
                 return 'Internship'
-            elif any(kw in title_desc for kw in ['part time', 'part-time']):
+            elif any(kw in title_desc for kw in ['part time', 'part-time', 'دوام جزئي']):
                 return 'Part-time'
-            elif any(kw in title_desc for kw in ['full time', 'full-time']):
+            elif any(kw in title_desc for kw in ['contract', 'freelance', 'عقد', 'حر']):
+                return 'Contract'
+            elif any(kw in title_desc for kw in ['full time', 'full-time', 'دوام كامل', 'permanent']):
                 return 'Full-time'
             return 'Not specified'
         return str(row.get('job_type', 'Not specified')).title()
@@ -247,8 +349,17 @@ def main():
         batch_df['job_type'] = batch_df.apply(fix_job_type, axis=1)
         batch_df['company'] = batch_df.apply(fix_company, axis=1)
 
-        batch_df['relevance_score'] = batch_df.apply(lambda r: calculate_score(r.to_dict()), axis=1)
-        batch_df = batch_df[batch_df['relevance_score'] > 0]
+        _config_cache = load_latest_config()
+        batch_df['base_score'] = batch_df.apply(lambda r: calculate_score(r.to_dict(), config=_config_cache, apply_date_penalty=False), axis=1)
+        is_schol_mask = (batch_df['job_type'] == 'Scholarship') | (batch_df.get('is_scholarship', False) == True)
+        batch_df = batch_df[(batch_df['base_score'] > 0) | is_schol_mask]
+
+        if batch_df.empty:
+            return None
+
+        batch_df['relevance_score'] = batch_df.apply(lambda r: calculate_score(r.to_dict(), config=_config_cache, apply_date_penalty=True), axis=1)
+        is_schol_mask = (batch_df['job_type'] == 'Scholarship') | (batch_df.get('is_scholarship', False) == True)
+        batch_df = batch_df[(batch_df['relevance_score'] > 0) | is_schol_mask]
 
         if batch_df.empty:
             return None
@@ -295,13 +406,23 @@ def main():
             search_loc = "worldwide"
 
         futures = []
-        # Use ThreadPoolExecutor to run non-Playwright scrapers in the background
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # Fast HTTP scrapers can run concurrently in ThreadPool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             if 'tanqeeb' in sites_lower:
                 futures.append(executor.submit(retry_scraper, scrape_tanqeeb, term, loc, RESULTS_PER_TERM, HOURS_OLD))
 
-            # Run SeleniumBase/Playwright tasks in the main thread
-            if sb_driver is not None:
+            if 'bayt' in sites_lower:
+                futures.append(executor.submit(retry_scraper, scrape_bayt, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+
+            if 'linkedin' in sites_lower and li_page is None:
+                try:
+                    from scrapers.playwright_scraper import scrape_linkedin_guest_api
+                    futures.append(executor.submit(retry_scraper, scrape_linkedin_guest_api, term, search_loc, RESULTS_PER_TERM, HOURS_OLD))
+                except ImportError:
+                    pass
+
+            # Browser-based scrapers run on main thread if sb_driver is alive
+            if is_sb_driver_alive(sb_driver):
                 # Wuzzuf
                 if 'wuzzuf' in sites_lower:
                     try:
@@ -309,16 +430,7 @@ def main():
                         if res is not None and not res.empty:
                             local_jobs_list.append(res)
                     except Exception as e:
-                        logging.error(f"⚠️ Playwright wuzzuf scraper failed for '{term}' in '{loc}': {e}")
-                
-                # Bayt
-                if 'bayt' in sites_lower:
-                    try:
-                        res = retry_scraper(scrape_bayt, term, loc, RESULTS_PER_TERM, HOURS_OLD, sb_driver)
-                        if res is not None and not res.empty:
-                            local_jobs_list.append(res)
-                    except Exception as e:
-                        logging.error(f"⚠️ Playwright bayt scraper failed for '{term}' in '{loc}': {e}")
+                        logging.error(f"⚠️ Wuzzuf scraper failed for '{term}' in '{loc}': {e}")
                 
                 # Glassdoor
                 if 'glassdoor' in sites_lower:
@@ -327,7 +439,7 @@ def main():
                         if res is not None and not res.empty:
                             local_jobs_list.append(res)
                     except Exception as e:
-                        logging.error(f"⚠️ Playwright glassdoor scraper failed for '{term}' in '{loc}': {e}")
+                        logging.error(f"⚠️ Glassdoor scraper failed for '{term}' in '{loc}': {e}")
                 
                 # Indeed
                 if 'indeed' in sites_lower:
@@ -339,7 +451,9 @@ def main():
                     except ImportError:
                         pass
                     except Exception as e:
-                        logging.error(f"⚠️ Playwright indeed scraper failed for '{term}' in '{loc}': {e}")
+                        logging.error(f"⚠️ Indeed scraper failed for '{term}' in '{loc}': {e}")
+            elif sb_driver is not None and not is_sb_driver_alive(sb_driver):
+                logging.warning(f"⚠️ SeleniumBase browser is disconnected/closed. Skipping browser-based scrapers for '{term}'.")
 
             if li_page is not None:
                 if 'linkedin' in sites_lower and scrape_linkedin_jobs_playwright:
@@ -370,12 +484,14 @@ def main():
 
         return local_jobs_list
 
-    total_iterations = len(SEARCH_TERMS) * len(LOCATION)
-
     def _scrape_all(li_page=None, sb_driver=None):
-        with tqdm(total=total_iterations, desc="Scraping Jobs", unit="search") as pbar:
+        total_main_searches = len(SEARCH_TERMS) * len(LOCATION)
+        with tqdm(total=total_main_searches, desc="Scraping Jobs", unit="search") as pbar:
             for term in SEARCH_TERMS:
                 for loc in LOCATION:
+                    current_step[0] += 1
+                    task_label = f"Searching '{term}' in '{loc}'"
+                    write_progress(current_step[0], total_steps, task_label, total_jobs_saved[0], is_running=True, start_time=run_start_time)
                     task_key = f"main:{term}|{loc}"
                     if checkpoint.is_completed(task_key):
                         logging.info(f"⏭️ Skipping completed search '{term}' in '{loc}' (restored from checkpoint)")
@@ -387,6 +503,8 @@ def main():
                             saved_df = save_jobs_to_db(local_results)
                             if saved_df is not None and not saved_df.empty:
                                 jobs_list.append(saved_df)
+                                total_jobs_saved[0] += len(saved_df)
+                                write_progress(current_step[0], total_steps, f"Found {len(saved_df)} jobs for '{term}' in '{loc}'", total_jobs_saved[0], is_running=True, start_time=run_start_time)
                         checkpoint.mark_completed(task_key)
                     except Exception as e:
                         logging.error(f"⚠️ Error in term/loc loop '{term}' in {loc}: {e}")
@@ -394,12 +512,14 @@ def main():
 
     # --- Arabic terms pass (restricted to SITES_FOR_ARABIC) ---
     def _arabic_pass(li_page=None, sb_driver=None):
-        arabic_sites_active = {s.lower() for s in SITES_FOR_ARABIC} & sites_lower
         if not ARABIC_SEARCH_TERMS or not arabic_sites_active:
             return
-        with tqdm(total=len(ARABIC_SEARCH_TERMS) * len(LOCATION), desc="Scraping (Arabic)", unit="search") as pbar:
+        with tqdm(total=total_arabic, desc="Scraping (Arabic)", unit="search") as pbar:
             for term in ARABIC_SEARCH_TERMS:
                 for loc in LOCATION:
+                    current_step[0] += 1
+                    task_label = f"Searching Arabic '{term}' in '{loc}'"
+                    write_progress(current_step[0], total_steps, task_label, total_jobs_saved[0], is_running=True, start_time=run_start_time)
                     task_key = f"arabic:{term}|{loc}"
                     if checkpoint.is_completed(task_key):
                         logging.info(f"⏭️ Skipping completed Arabic search '{term}' in '{loc}' (restored from checkpoint)")
@@ -407,36 +527,57 @@ def main():
                         continue
                     try:
                         arabic_results = []
-                        if 'wuzzuf' in arabic_sites_active:
+                        if 'wuzzuf' in arabic_sites_active and is_sb_driver_alive(sb_driver):
                             res = retry_scraper(scrape_wuzzuf, term, loc, RESULTS_PER_TERM, HOURS_OLD, sb_driver)
                             if res is not None and not res.empty:
                                 arabic_results.append(res)
-                        if 'linkedin' in arabic_sites_active and scrape_linkedin_jobs_playwright and li_page is not None:
-                            res = retry_scraper(scrape_linkedin_jobs_playwright, term,
-                                                loc, RESULTS_PER_TERM, HOURS_OLD, li_page)
-                            if res is not None and not res.empty:
-                                arabic_results.append(res)
+                        if 'linkedin' in arabic_sites_active:
+                            if li_page is not None and scrape_linkedin_jobs_playwright:
+                                res = retry_scraper(scrape_linkedin_jobs_playwright, term,
+                                                    loc, RESULTS_PER_TERM, HOURS_OLD, li_page)
+                                if res is not None and not res.empty:
+                                    arabic_results.append(res)
+                            else:
+                                try:
+                                    from scrapers.playwright_scraper import scrape_linkedin_guest_api
+                                    res = retry_scraper(scrape_linkedin_guest_api, term, loc, RESULTS_PER_TERM, HOURS_OLD)
+                                    if res is not None and not res.empty:
+                                        arabic_results.append(res)
+                                except ImportError:
+                                    pass
                         if arabic_results:
                             saved_df = save_jobs_to_db(arabic_results)
                             if saved_df is not None and not saved_df.empty:
                                 jobs_list.append(saved_df)
+                                total_jobs_saved[0] += len(saved_df)
+                                write_progress(current_step[0], total_steps, f"Found {len(saved_df)} Arabic jobs for '{term}'", total_jobs_saved[0], is_running=True, start_time=run_start_time)
                         checkpoint.mark_completed(task_key)
                     except Exception as e:
                         logging.error(f"⚠️ Arabic/error '{term}': {e}")
                     pbar.update(1)
 
-    # Reuse a single LinkedIn browser session for the entire run (main + Arabic passes)
-    if LinkedInSession and 'linkedin' in sites_lower:
-        with SeleniumSession() as sb_driver:
-            with LinkedInSession() as li_page:
-                _scrape_all(li_page, sb_driver)
-                _arabic_pass(li_page, sb_driver)
-    else:
-        _scrape_all()
-        _arabic_pass()
+    # Run browser sessions conditionally only if browser-dependent sites are active
+    browser_sites = {'wuzzuf', 'glassdoor', 'indeed'}
+    needs_sb = bool(browser_sites & sites_lower)
+
+    sb_ctx = SeleniumSession() if needs_sb else contextlib.nullcontext(None)
+    with sb_ctx as sb_driver:
+        if LinkedInSession and 'linkedin' in sites_lower:
+            try:
+                with LinkedInSession() as li_page:
+                    _scrape_all(li_page, sb_driver)
+                    _arabic_pass(li_page, sb_driver)
+            except Exception as e:
+                logging.warning(f"⚠️ LinkedIn browser session failed to start: {e}. Falling back to guest API mode.")
+                _scrape_all(None, sb_driver)
+                _arabic_pass(None, sb_driver)
+        else:
+            _scrape_all(None, sb_driver)
+            _arabic_pass(None, sb_driver)
 
     # Clear checkpoint file now that full run finished cleanly
     checkpoint.clear()
+    write_progress(total_steps, total_steps, "Search complete. Saving results...", total_jobs_saved[0], is_running=True, start_time=run_start_time)
 
     if jobs_list:
         cleaned_jobs_list = [df.dropna(axis=1, how='all') for df in jobs_list if df is not None and not df.empty]
@@ -473,11 +614,14 @@ def main():
             retention_days = c_data.get('job_retention_days', 90)
         deleted = cleanup_old_jobs(days=retention_days)
         logging.info(f"🧹 Cleaned up {deleted} jobs older than {retention_days} days from the database.")
+        from core.scorer import rescore_all_jobs
+        rescore_all_jobs()
     except Exception as e:
-        logging.error(f"⚠️ Failed to clean up old jobs from database: {e}")
+        logging.error(f"⚠️ Failed to clean up or rescore old jobs from database: {e}")
 
 
 def cleanup_lock():
+    cleanup_progress()
     lock_path = os.path.join(_OUTPUT_DIR, ".scraper.lock")
     try:
         if os.path.exists(lock_path):
@@ -523,7 +667,7 @@ if __name__ == "__main__":
     start_time = time.time()
     logging.info("Starting job agent run...")
     try:
-        main()
+        main(run_start_time=start_time)
     except Exception as e:
         logging.error(f"Job agent failed with error: {e}", exc_info=True)
     finally:

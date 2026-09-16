@@ -299,6 +299,95 @@ def _do_scrape_linkedin_posts(page, keyword):
         return ""
 
 
+def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None):
+    """High-speed zero-browser LinkedIn scraper using the public Guest API."""
+    import datetime
+    jobs = []
+    try:
+        from curl_cffi import requests as c_requests
+        from bs4 import BeautifulSoup
+        encoded_term = urllib.parse.quote(term)
+        encoded_loc = urllib.parse.quote(location)
+        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={encoded_term}&location={encoded_loc}&start=0"
+        if hours_old:
+            if hours_old <= 24:
+                url += "&f_TPR=r86400"
+            elif hours_old <= 168:
+                url += "&f_TPR=r604800"
+            else:
+                url += "&f_TPR=r2592000"
+
+        r = c_requests.get(url, impersonate="chrome120", timeout=8)
+        if r.status_code != 200 or not r.text:
+            return pd.DataFrame()
+
+        soup = BeautifulSoup(r.text, 'html.parser')
+        cards = soup.find_all('li')
+        if not cards:
+            return pd.DataFrame()
+
+        for card in cards:
+            if len(jobs) >= results_wanted:
+                break
+            a_tag = card.find('a', class_='base-card__full-link')
+            if not a_tag or not a_tag.get('href'):
+                continue
+            clean_url = a_tag['href'].split('?')[0]
+            if is_job_seen(clean_url):
+                continue
+
+            t_elem = card.find('h3', class_='base-search-card__title')
+            comp_elem = card.find('h4', class_='base-search-card__subtitle')
+            loc_elem = card.find('span', class_='job-search-card__location')
+            time_tag = card.find('time')
+
+            title = t_elem.text.strip() if t_elem else "Unknown"
+            company = comp_elem.text.strip() if comp_elem else "Unknown"
+            loc_val = loc_elem.text.strip() if loc_elem else location
+
+            job_date = datetime.date.today()
+            if time_tag and time_tag.get('datetime'):
+                try:
+                    job_date = datetime.datetime.strptime(time_tag['datetime'][:10], "%Y-%m-%d").date()
+                except Exception:
+                    pass
+
+            # Fast fetch full description via job detail endpoint
+            description = ""
+            m_id = re.search(r'(\d{8,12})', clean_url)
+            if m_id:
+                try:
+                    detail_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{m_id.group(1)}"
+                    dr = c_requests.get(detail_url, impersonate="chrome120", timeout=5)
+                    if dr.status_code == 200 and dr.text:
+                        dsoup = BeautifulSoup(dr.text, 'html.parser')
+                        dtext = dsoup.find('div', class_='show-more-less-html__markup')
+                        if dtext:
+                            description = dtext.get_text(separator='\n', strip=True)
+                except Exception:
+                    pass
+
+            jobs.append({
+                'title': title,
+                'company': company,
+                'location': loc_val,
+                'job_url': clean_url,
+                'description': description,
+                'site': 'linkedin',
+                'is_remote': 'remote' in str(loc_val).lower() or 'remote' in location.lower(),
+                'date_posted': job_date,
+                'job_type': 'Not specified'
+            })
+
+        if jobs:
+            logging.info(f"⚡ LinkedIn Guest API extracted {len(jobs)} jobs in < 2s.")
+            return pd.DataFrame(jobs)
+    except Exception as e:
+        logging.debug(f"LinkedIn guest API failed: {e}")
+
+    return pd.DataFrame(jobs)
+
+
 def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=None):
     """Job-scraping logic using an existing page object."""
     import datetime
@@ -365,31 +454,34 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                     except Exception:
                         pass
 
-                page_html = page.evaluate("document.documentElement.innerHTML")
-                # Try JSON-LD zero-token fast-path first
-                ai_data = extract_json_ld(page_html)
-                if ai_data:
-                    logging.debug(f"    ⚡ JSON-LD fast-path used for {job_url}")
-                else:
-                    page_text = page.evaluate("document.body.innerText")
-                    ai_data = extract_job_page_with_ai(page_text[:10000])
+                # Direct DOM extraction (sub-millisecond, zero LLM tokens)
+                title = page.evaluate("() => document.querySelector('.jobs-unified-top-card__job-title, .top-card-layout__title, h1')?.innerText.trim() || ''")
+                company = page.evaluate("() => document.querySelector('.jobs-unified-top-card__company-name, .topcard__org-name-link, .job-details-jobs-unified-top-card__company-name')?.innerText.trim() || ''")
+                loc_val = page.evaluate("() => document.querySelector('.jobs-unified-top-card__bullet, .topcard__flavor--bullet, .job-details-jobs-unified-top-card__bullet')?.innerText.trim() || ''")
+                desc = page.evaluate("() => document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerText.trim() || ''")
 
-                if ai_data and not ai_data.get("error"):
-                    title = ai_data.get('title', 'Unknown')
-                    if title not in ("Unknown", "Not specified"):
-                        jobs.append({
-                            'title': title,
-                            'company': ai_data.get('company', 'Unknown'),
-                            'location': ai_data.get('location', location),
-                            'job_url': job_url,
-                            'description': ai_data.get('description', ''),
-                            'site': 'linkedin',
-                            'is_remote': 'remote' in str(ai_data.get('location', '')).lower() or 'remote' in location.lower(),
-                            'date_posted': ai_data.get('date_posted') or datetime.date.today(),
-                            'job_type': 'Not specified'
-                        })
-                else:
-                    logging.warning(f"⚠️ AI Parsing failed for {job_url}: {ai_data.get('error') if ai_data else 'Unknown'}")
+                if not title:
+                    # Fallback to JSON-LD if available
+                    page_html = page.evaluate("document.documentElement.innerHTML")
+                    json_ld = extract_json_ld(page_html)
+                    if json_ld:
+                        title = json_ld.get('title', '')
+                        company = json_ld.get('company', company)
+                        loc_val = json_ld.get('location', loc_val)
+                        desc = json_ld.get('description', desc)
+
+                if title and title not in ("Unknown", "Not specified"):
+                    jobs.append({
+                        'title': title,
+                        'company': company or 'Unknown',
+                        'location': loc_val or location,
+                        'job_url': job_url,
+                        'description': desc,
+                        'site': 'linkedin',
+                        'is_remote': 'remote' in str(loc_val).lower() or 'remote' in location.lower(),
+                        'date_posted': datetime.date.today(),
+                        'job_type': 'Not specified'
+                    })
 
             except Exception as e:
                 logging.error(f"⚠️ Failed to parse job {job_url}: {e}")
@@ -433,10 +525,14 @@ def scrape_linkedin_posts_playwright(keyword, page=None):
 
 def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=None, page=None):
     """Scrape LinkedIn Jobs.
-
-    Pass `page` from a LinkedInSession to reuse the browser.
-    Falls back to creating its own browser if called standalone.
+    
+    Tries the high-speed Guest API first (< 2s, zero browser overhead).
+    Falls back to Playwright if needed.
     """
+    guest_df = scrape_linkedin_guest_api(term, location, results_wanted, hours_old)
+    if guest_df is not None and not guest_df.empty:
+        return guest_df
+
     if page is not None:
         return _do_scrape_linkedin_jobs(page, term, location, results_wanted, hours_old)
 

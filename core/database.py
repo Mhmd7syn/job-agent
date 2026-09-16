@@ -34,6 +34,9 @@ def init_db():
     # Migrate any old 'applied' status
     cursor.execute("UPDATE jobs SET is_applied = 1, status = 'liked' WHERE status = 'applied'")
     
+    # Add index on job_url for high-speed deduplication checks
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_url ON jobs(job_url)")
+    
     conn.commit()
     conn.close()
 
@@ -72,13 +75,100 @@ def save_job(job_dict):
     conn.commit()
     conn.close()
 
+def save_or_update_job(job_dict, force_pending=True):
+    """
+    Saves a job or updates it if it already exists (by job_id or job_url).
+    Returns a tuple (saved_job_dict, is_new).
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    job_id = job_dict.get('job_id', '')
+    job_url = job_dict.get('job_url', '')
+
+    # Check if job exists by job_id or job_url
+    cursor.execute("SELECT * FROM jobs WHERE job_id = ? OR (job_url != '' AND job_url = ?) LIMIT 1", (job_id, job_url))
+    existing = cursor.fetchone()
+    
+    if existing:
+        existing_dict = dict(existing)
+        target_id = existing_dict['job_id']
+        if job_dict.get('status'):
+            status = job_dict['status']
+        elif force_pending:
+            status = 'pending'
+        else:
+            status = existing_dict.get('status', 'pending')
+
+        # Preserve is_applied unless specified
+        is_applied = job_dict.get('is_applied', existing_dict.get('is_applied', 0))
+        
+        cursor.execute("""
+            UPDATE jobs
+            SET title = ?, company = ?, location = ?, job_url = ?, job_type = ?, 
+                date_posted = ?, site = ?, relevance_score = ?, description = ?, status = ?, timestamp = ?, is_applied = ?
+            WHERE job_id = ?
+        """, (
+            job_dict.get('title') or existing_dict.get('title', ''),
+            job_dict.get('company') or existing_dict.get('company', ''),
+            job_dict.get('location') or existing_dict.get('location', ''),
+            job_url or existing_dict.get('job_url', ''),
+            job_dict.get('job_type') or existing_dict.get('job_type', ''),
+            str(job_dict.get('date_posted') or existing_dict.get('date_posted', '')),
+            job_dict.get('site') or existing_dict.get('site', ''),
+            job_dict.get('relevance_score', existing_dict.get('relevance_score', 0)),
+            job_dict.get('description') or existing_dict.get('description', ''),
+            status,
+            now,
+            is_applied,
+            target_id
+        ))
+        conn.commit()
+        cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (target_id,))
+        updated = dict(cursor.fetchone())
+        conn.close()
+        return updated, False
+    else:
+        status = job_dict.get('status', 'pending')
+        is_applied = job_dict.get('is_applied', 0)
+        cursor.execute("""
+            INSERT INTO jobs 
+            (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp, is_applied)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            job_id,
+            job_dict.get('title', ''),
+            job_dict.get('company', ''),
+            job_dict.get('location', ''),
+            job_url,
+            job_dict.get('job_type', ''),
+            str(job_dict.get('date_posted', '')),
+            job_dict.get('site', ''),
+            job_dict.get('relevance_score', 0),
+            job_dict.get('description', ''),
+            status,
+            now,
+            is_applied
+        ))
+        conn.commit()
+        cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
+        inserted = dict(cursor.fetchone())
+        conn.close()
+        return inserted, True
+
 def get_jobs_by_status(status_list):
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
     placeholders = ','.join('?' for _ in status_list)
-    cursor.execute(f"SELECT * FROM jobs WHERE status IN ({placeholders}) ORDER BY relevance_score DESC, date_posted DESC", status_list)
+    cursor.execute(f"""
+        SELECT * FROM jobs 
+        WHERE status IN ({placeholders})
+          AND (status != 'pending' OR relevance_score > 0 OR job_type = 'Scholarship' OR is_applied = 1)
+        ORDER BY relevance_score DESC, date_posted DESC
+    """, status_list)
     rows = cursor.fetchall()
     conn.close()
     
@@ -126,6 +216,21 @@ def is_job_seen(job_url: str) -> bool:
         return found
     except Exception:
         return False
+
+def get_job_by_url(job_url: str):
+    """Returns the existing job dictionary if job_url matches, else None."""
+    if not job_url:
+        return None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM jobs WHERE job_url = ? LIMIT 1", (job_url,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception:
+        return None
 
 # Initialize DB when module is loaded
 init_db()

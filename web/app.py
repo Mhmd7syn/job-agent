@@ -18,11 +18,17 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.database import (
     get_jobs_by_status, update_job_status, get_job_by_id, toggle_job_applied,
-    delete_job_by_id, cleanup_old_jobs_by_months
+    delete_job_by_id, save_or_update_job
 )
 from core.config_tuner import analyze_job_and_tune_config
 from core.cv_parser import parse_cv_with_ai
 from core.scorer import rescore_all_jobs
+from scrapers.link_scraper import scrape_job_from_url
+import core.config as app_config
+from core.telegram_bot import (
+    sync_queued_telegram_jobs, stop_bot_thread, is_bot_running, get_latest_chat_id_from_telegram,
+    get_and_clear_new_telegram_jobs
+)
 
 app = FastAPI(title="Job Dashboard")
 
@@ -34,11 +40,80 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 def read_root():
     return FileResponse(os.path.join(static_dir, "index.html"))
 
+_last_rescore_date = None
+
+@app.on_event("startup")
+def on_startup():
+    global _last_rescore_date
+    try:
+        rescore_all_jobs()
+        _last_rescore_date = datetime.now().strftime("%Y-%m-%d")
+    except Exception as e:
+        logging.error(f"Failed to rescore jobs on startup: {e}")
+
+@app.on_event("shutdown")
+def on_shutdown():
+    try:
+        stop_bot_thread()
+    except Exception as e:
+        logging.error(f"Error stopping Telegram Bot: {e}")
+
 @app.get("/api/jobs")
-def get_jobs():
+def get_jobs(background_tasks: BackgroundTasks):
     """Returns all jobs so the frontend can filter them by status."""
+    global _last_rescore_date
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    if _last_rescore_date != today_str:
+        background_tasks.add_task(rescore_all_jobs)
+        _last_rescore_date = today_str
     jobs = get_jobs_by_status(['pending', 'liked', 'not_related'])
     return {"jobs": jobs}
+
+class AddJobByUrlRequest(BaseModel):
+    url: str = Field(default="")
+    scraper_type: str = Field(default="auto")
+    raw_text: str = Field(default="")
+    is_scholarship: bool = Field(default=False)
+
+@app.post("/api/jobs/add-by-url")
+def add_job_by_url_endpoint(req: AddJobByUrlRequest):
+    url = (req.url or "").strip()
+    raw_text = (req.raw_text or "").strip()
+    if not url and not raw_text:
+        raise HTTPException(status_code=400, detail="Please provide a job URL or job post text.")
+
+    try:
+        job_dict = scrape_job_from_url(
+            url=url,
+            scraper_type=req.scraper_type,
+            raw_text=raw_text,
+            is_scholarship=req.is_scholarship
+        )
+        is_scholarship = req.is_scholarship or job_dict.get('job_type') == 'Scholarship'
+        score = job_dict.get('relevance_score', 0)
+
+        # If job scores 0 or less and is not a scholarship, prune it immediately
+        if not is_scholarship and score <= 0:
+            delete_job_by_id(job_dict.get("job_id"))
+            return {
+                "status": "pruned",
+                "score": score,
+                "title": job_dict.get("title"),
+                "company": job_dict.get("company"),
+                "detail": f"Job '{job_dict.get('title')}' at '{job_dict.get('company')}' scored 0% (outside target career criteria or location) and was pruned."
+            }
+
+        saved_job, is_new = save_or_update_job(job_dict, force_pending=True)
+        return {
+            "status": "success",
+            "is_new": is_new,
+            "job": saved_job
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error adding job by URL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to scrape job: {str(e)}")
 
 @app.get("/api/config")
 def get_config():
@@ -50,26 +125,123 @@ def get_config():
         return {"error": str(e)}
 
 @app.post("/api/config")
-async def update_config(request: Request):
+async def update_config(request: Request, background_tasks: BackgroundTasks):
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'core', 'config.json')
     try:
         new_config = await request.json()
         new_config["last_reviewed_date"] = datetime.now().strftime("%Y-%m-%d")
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(new_config, f, indent=2, ensure_ascii=False)
+        
+        # Automatically rescore all jobs in the background with updated preferences
+        background_tasks.add_task(rescore_all_jobs)
+
         return {"status": "success", "last_reviewed_date": new_config["last_reviewed_date"]}
     except Exception as e:
         logging.error(f"Error updating config: {e}")
-        return {"error": "Failed to update config"}
+class TelegramConfigRequest(BaseModel):
+    bot_token: str = Field(default="")
+    chat_id: str = Field(default="")
 
-@app.post("/api/rerank-jobs")
-def rerank_jobs_endpoint():
-    try:
-        result = rescore_all_jobs()
-        return result
-    except Exception as e:
-        logging.error(f"Rescore failed: {e}")
-        return {"error": "Rescore failed", "status": "error"}
+@app.get("/api/telegram/status")
+def get_telegram_status():
+    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or ""
+    masked_token = (token[:6] + "..." + token[-4:]) if len(token) > 10 else ""
+    return {
+        "is_configured": bool(token),
+        "is_running": bool(token),
+        "masked_token": masked_token,
+        "chat_id": getattr(app_config, "TELEGRAM_CHAT_ID", "") or ""
+    }
+
+@app.post("/api/telegram/detect-chat")
+def detect_telegram_chat(req: TelegramConfigRequest):
+    token = req.bot_token.strip() or getattr(app_config, "TELEGRAM_BOT_TOKEN", "") or ""
+    if not token:
+        raise HTTPException(status_code=400, detail="Please enter your Telegram Bot Token first.")
+
+    # Check for recent message, checking updates directly from Telegram API
+    info = None
+    for _ in range(4):
+        info = get_latest_chat_id_from_telegram(token)
+        if info and info.get("chat_id"):
+            break
+        time.sleep(0.5)
+
+    if not info or not info.get("chat_id"):
+        return {
+            "status": "not_found",
+            "message": "No recent message found yet. Please send any message (like 'hello' or '/start') to your bot in Telegram from your phone, then click Auto-Detect!"
+        }
+    return {
+        "status": "success",
+        "chat_id": info["chat_id"],
+        "username": info.get("username", ""),
+        "last_message": info.get("text", "")
+    }
+
+@app.post("/api/telegram/config")
+def save_telegram_config(req: TelegramConfigRequest):
+    new_token = req.bot_token.strip()
+    new_chat_id = req.chat_id.strip()
+
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+    updated_token = False
+    updated_chat = False
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("TELEGRAM_BOT_TOKEN"):
+            new_lines.append(f'TELEGRAM_BOT_TOKEN="{new_token}"\n')
+            updated_token = True
+        elif stripped.startswith("TELEGRAM_CHAT_ID"):
+            new_lines.append(f'TELEGRAM_CHAT_ID="{new_chat_id}"\n')
+            updated_chat = True
+        else:
+            new_lines.append(line)
+
+    if not updated_token:
+        new_lines.append(f'TELEGRAM_BOT_TOKEN="{new_token}"\n')
+    if not updated_chat:
+        new_lines.append(f'TELEGRAM_CHAT_ID="{new_chat_id}"\n')
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+    app_config.TELEGRAM_BOT_TOKEN = new_token
+    app_config.TELEGRAM_CHAT_ID = new_chat_id
+
+    # Stop any old lingering threads if any
+    stop_bot_thread()
+
+    return {
+        "status": "success",
+        "is_running": bool(new_token),
+        "chat_id": new_chat_id
+    }
+
+@app.get("/api/telegram/sync")
+def sync_telegram_endpoint():
+    """Triggered on app launch or GUI reload to sync queued jobs in one shot."""
+    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or ""
+    chat_id = getattr(app_config, "TELEGRAM_CHAT_ID", None) or ""
+    if not token:
+        return {"status": "not_configured", "count": 0, "jobs": [], "duplicates": 0}
+    return sync_queued_telegram_jobs(token, chat_id)
+
+@app.get("/api/telegram/check-new-jobs")
+def check_new_telegram_jobs():
+    """Alias for backwards compatibility with existing frontend calls."""
+    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or ""
+    chat_id = getattr(app_config, "TELEGRAM_CHAT_ID", None) or ""
+    if not token:
+        return {"count": 0, "jobs": [], "duplicates": 0}
+    return sync_queued_telegram_jobs(token, chat_id)
 
 from core.cv_parser import parse_cv_with_ai, generate_cv_proposals
 from core.config_tuner import _get_alert_path, save_proposals, apply_config_updates
@@ -165,15 +337,6 @@ def update_job(job_id: str, action: str, background_tasks: BackgroundTasks):
     return {"status": "success", "job_id": job_id, "action": action}
 
 
-@app.delete("/api/jobs/cleanup")
-def cleanup_old_jobs_endpoint(months: int = 3):
-    """Bulk deletes jobs older than specified period in months (1, 3, or 6)."""
-    if months not in [1, 3, 6, 12]:
-        months = 3
-    deleted_count = cleanup_old_jobs_by_months(months=months)
-    return {"status": "success", "deleted_count": deleted_count, "months": months}
-
-
 @app.delete("/api/jobs/{job_id}")
 def delete_single_job_endpoint(job_id: str):
     """Permanently deletes a single job by its ID."""
@@ -184,22 +347,31 @@ def delete_single_job_endpoint(job_id: str):
 
 
 def is_process_running(pid: int) -> bool:
-    """Verifies if a process with given PID is currently active on OS."""
+    """Verifies if a python scraper process with given PID is currently active on OS."""
     if not pid or pid <= 0:
         return False
     if os.name == 'nt':
         try:
             import ctypes
+            import ctypes.wintypes
             kernel32 = ctypes.windll.kernel32
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
             SYNCHRONIZE = 0x0010
-            PROCESS_QUERY_INFORMATION = 0x0400
-            handle = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE, False, pid)
+            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, False, pid)
             if handle:
                 exit_code = ctypes.c_ulong()
+                is_active = False
                 if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
-                    kernel32.CloseHandle(handle)
-                    return exit_code.value == 259  # STILL_ACTIVE
+                    is_active = (exit_code.value == 259)  # STILL_ACTIVE
+                if is_active:
+                    buf = ctypes.create_unicode_buffer(1024)
+                    size = ctypes.wintypes.DWORD(len(buf))
+                    if kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                        exe_name = buf.value.lower()
+                        kernel32.CloseHandle(handle)
+                        return "python" in exe_name
                 kernel32.CloseHandle(handle)
+                return False
         except Exception:
             pass
         return False
@@ -289,7 +461,18 @@ def scraper_status():
     except Exception:
         pass
 
-    return {"is_running": is_running, "last_run": last_run_str}
+    progress_data = None
+    try:
+        progress_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", ".scraper_progress.json")
+        if os.path.exists(progress_path):
+            with open(progress_path, "r", encoding="utf-8") as pf:
+                progress_data = json.load(pf)
+            if not is_running and progress_data:
+                progress_data["is_running"] = False
+    except Exception:
+        pass
+
+    return {"is_running": is_running, "last_run": last_run_str, "progress": progress_data}
 
 @app.get("/api/pending-updates")
 def get_pending_updates():
@@ -333,7 +516,7 @@ class ProposalActionRequest(BaseModel):
     keyword: str = Field(default="")
 
 @app.post("/api/pending-updates/action")
-def resolve_pending_update(data: ProposalActionRequest):
+def resolve_pending_update(data: ProposalActionRequest, background_tasks: BackgroundTasks):
     alert_path = _get_alert_path()
     if not os.path.exists(alert_path):
         return {"status": "success"}
@@ -362,6 +545,7 @@ def resolve_pending_update(data: ProposalActionRequest):
 
         if target_proposal and data.action == "accept":
             apply_config_updates([target_proposal])
+            background_tasks.add_task(rescore_all_jobs)
 
         with open(alert_path, 'w', encoding='utf-8') as f:
             json.dump(remaining_proposals, f, indent=2, ensure_ascii=False)
@@ -375,7 +559,7 @@ class BatchProposalActionRequest(BaseModel):
     action: str = Field(description="'accept_all' or 'reject_all'")
 
 @app.post("/api/pending-updates/batch-action")
-def batch_resolve_pending_updates(data: BatchProposalActionRequest):
+def batch_resolve_pending_updates(data: BatchProposalActionRequest, background_tasks: BackgroundTasks):
     alert_path = _get_alert_path()
     if not os.path.exists(alert_path):
         return {"status": "success"}
@@ -388,6 +572,7 @@ def batch_resolve_pending_updates(data: BatchProposalActionRequest):
 
         if data.action == "accept_all" and proposals:
             apply_config_updates(proposals)
+            background_tasks.add_task(rescore_all_jobs)
 
         # Clear all pending proposals
         with open(alert_path, 'w', encoding='utf-8') as f:

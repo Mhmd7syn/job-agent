@@ -94,7 +94,21 @@
   "RESTRICTED_REMOTE_KEYWORDS": [
     "us only",
     "uk only",
-    "eu only"
+    "eu only",
+    "united states",
+    "us applicants",
+    "us citizen",
+    "us citizenship",
+    "remote in",
+    "u.s.",
+    "us based",
+    "usa",
+    "india",
+    "bangalore",
+    "indonesia",
+    "canada",
+    "latam",
+    "brazil"
   ],
   "GLASSDOOR_LOC_ID": 69,
   "MIN_MATCHED_SKILLS": 2

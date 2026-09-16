@@ -1,3 +1,5 @@
+import os
+import sys
 import requests
 import urllib.parse
 from bs4 import BeautifulSoup
@@ -8,15 +10,20 @@ import datetime
 import logging
 import random
 
-def fetch_wuzzuf_full_description(job_url, driver=None):
-    """Fetches the complete full job description and requirements from a Wuzzuf job detail page."""
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.database import is_job_seen
+
+def fetch_wuzzuf_full_description(job_url):
+    """Fetches the complete full job description and requirements via fast HTTP."""
     if not job_url:
         return ""
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        resp = requests.get(job_url, headers=headers, timeout=6)
+        from curl_cffi import requests as c_requests
+        resp = c_requests.get(
+            job_url,
+            impersonate="chrome120",
+            timeout=5
+        )
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.content, 'html.parser')
             sections = soup.find_all(['section', 'div'], class_=lambda c: c and any(k in str(c) for k in ['css-3fx252', 'css-1u1fu21', 'css-117ic1a', 'description', 'requirements']))
@@ -28,17 +35,7 @@ def fetch_wuzzuf_full_description(job_url, driver=None):
             if req_sec:
                 return req_sec.get_text(separator=' ', strip=True)
     except Exception as e:
-        logging.debug(f"Wuzzuf requests fetch failed for {job_url}: {e}")
-
-    if driver:
-        try:
-            driver.uc_open_with_reconnect(job_url, 3)
-            soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
-            sections = soup.find_all(['section', 'div'], class_=lambda c: c and any(k in str(c) for k in ['css-3fx252', 'css-1u1fu21', 'css-117ic1a', 'description', 'requirements']))
-            if sections:
-                return "\n\n".join([sec.get_text(separator=' ', strip=True) for sec in sections if len(sec.get_text(strip=True)) > 20])
-        except Exception as e:
-            logging.debug(f"Wuzzuf driver fallback failed for {job_url}: {e}")
+        logging.debug(f"Wuzzuf HTTP fetch failed for {job_url}: {e}")
 
     return ""
 
@@ -114,6 +111,9 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
             title = title_tag.a.text.strip()
             job_url = "https://wuzzuf.net" + title_tag.a['href']
             
+            if is_job_seen(job_url):
+                continue
+
             company_tag = card.find('a', class_='css-ipsyv7')
             company = company_tag.text.replace('-', '').strip() if company_tag else "Unknown"
             
@@ -134,7 +134,7 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
             career_level = ", ".join(level_tags) if level_tags else "Not specified"
 
             card_desc = card.get_text(separator=' ', strip=True)
-            full_desc = fetch_wuzzuf_full_description(job_url, driver=driver)
+            full_desc = fetch_wuzzuf_full_description(job_url)
             description = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
 
             jobs.append({

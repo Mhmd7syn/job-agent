@@ -28,13 +28,17 @@
             </button>
             <span id="last-run-text" style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">Last Run: Checking...</span>
         </div>
-        <button class="btn btn-secondary" id="rescore-btn" onclick="rescoreJobs()"><i class="fa-solid fa-wand-magic-sparkles" id="rescore-icon"></i><i class="fa-solid fa-spinner fa-spin hidden" id="rescore-spinner"></i><span id="rescore-text">Rescore Jobs</span></button>
+        <button class="btn btn-primary" id="add-job-link-btn" onclick="showAddJobModal()" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <i class="fa-solid fa-plus"></i><span>Add Job Link</span>
+        </button>
+        <button class="btn btn-secondary" id="refresh-btn" onclick="refreshDashboard()" title="Refresh dashboard & sync mobile jobs (Shortcut: F5 or Ctrl+R)" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <i class="fa-solid fa-arrows-rotate" id="refresh-icon"></i><span>Refresh</span>
+        </button>
         <button class="btn btn-secondary" onclick="showSettings()" style="position: relative;">
             <i class="fa-solid fa-gear"></i>Settings
             <span id="settings-notification" class="hidden" style="position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; background-color: var(--danger); border-radius: 50%; border: 2px solid var(--bg-main); box-shadow: 0 0 8px var(--danger);"></span>
         </button>
         <button class="btn btn-secondary" onclick="showSystemStatus()"><i class="fa-solid fa-server"></i>System Status</button>
-        <button class="btn btn-secondary" onclick="showCleanupModal()"><i class="fa-solid fa-broom"></i>Clean Old Jobs</button>
         <div class="stat-box" style="white-space: nowrap;">
             <i class="fa-solid fa-briefcase"></i>
             <span id="job-count">0</span> Pending Jobs
@@ -144,6 +148,30 @@
                             <input type="number" id="config-retention-days" min="1" max="365" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
                         </div>
                     </div>
+
+                    <h3 style="margin: 1.8rem 0 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem;"><i class="fa-brands fa-telegram" style="color: #229ED9; margin-right: 0.5rem;"></i>📱 Telegram Mobile Sync</h3>
+                    <div style="background: rgba(34, 158, 217, 0.08); border: 1px solid rgba(34, 158, 217, 0.25); border-radius: 0.75rem; padding: 1.2rem; margin-bottom: 1rem;">
+                        <p style="margin-top: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                            Send job links or post descriptions directly from your phone on Telegram while scrolling. When you open Job Agent, it automatically pulls and saves them into your database!
+                        </p>
+                        <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+                            <div>
+                                <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem;">Telegram Bot Token (from @BotFather)</label>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <input type="password" id="telegram-bot-token" placeholder="Paste bot token (e.g. 123456:ABC-DEF...)" class="input-field" style="flex: 1; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
+                                    <button type="button" class="btn btn-secondary" onclick="toggleTokenVisibility()" id="toggle-token-btn" style="padding: 0.5rem 0.8rem;" title="Show/Hide Token"><i class="fa-solid fa-eye" id="token-eye-icon"></i></button>
+                                </div>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem;">Your Telegram Chat ID (For Security)</label>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <input type="text" id="telegram-chat-id" placeholder="Your numeric Chat ID" class="input-field" style="flex: 1; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
+                                    <button type="button" class="btn btn-secondary" onclick="detectTelegramChatId()" id="detect-chat-btn" style="white-space: nowrap; font-size: 0.85rem;"><i class="fa-solid fa-satellite-dish"></i> Auto-Detect</button>
+                                </div>
+                            </div>
+                            <div id="telegram-status-badge" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer" style="padding: 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.2);">
                     <span id="last-reviewed-text" style="color: var(--text-muted); font-size: 0.85rem;"></span>
@@ -161,6 +189,28 @@
         </div>
 
         <main>
+            <!-- Live Scraper Progress Bar & ETA -->
+            <div id="scraper-progress-container" class="scraper-progress-card hidden">
+                <div class="progress-header">
+                    <div class="progress-title-group">
+                        <span class="pulse-indicator"></span>
+                        <strong id="progress-task">Job search running...</strong>
+                    </div>
+                    <div class="progress-stats-group">
+                        <span id="progress-count-badge" class="progress-badge"><i class="fa-solid fa-briefcase"></i> <span id="progress-jobs-found">0</span> new jobs</span>
+                        <span id="progress-eta-badge" class="progress-badge eta-badge"><i class="fa-solid fa-clock"></i> ETA: <span id="progress-eta">Calculating...</span></span>
+                        <span id="progress-percent" class="progress-percent">0%</span>
+                    </div>
+                </div>
+                <div class="progress-track">
+                    <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="progress-footer">
+                    <span id="progress-details" class="progress-details">Step 0 of 0</span>
+                    <span id="progress-elapsed" class="progress-elapsed">Elapsed: 0s</span>
+                </div>
+            </div>
+
             <div class="controls-bar">
                 <div class="search-box">
                     <i class="fa-solid fa-magnifying-glass"></i>
@@ -185,6 +235,7 @@
                         <option value="Part-time">Part-time</option>
                         <option value="Contract">Contract / Freelance</option>
                         <option value="Internship">Internship</option>
+                        <option value="Scholarship">🎓 Scholarship / Fellowship</option>
                     </select>
                     <select id="setup-filter">
                         <option value="all" selected>All Setups</option>
@@ -232,19 +283,71 @@
         </main>
     </div>
 
-    <!-- Rerank Confirmation Modal -->
-    <div id="rerank-modal" class="modal hidden">
-        <div class="modal-content" style="max-width: 480px; padding: 2rem; text-align: center;">
-            <div style="font-size: 3rem; color: var(--accent); margin-bottom: 1rem;">
-                <i class="fa-solid fa-wand-magic-sparkles"></i>
+    <!-- Add Job Link Modal -->
+    <div id="add-job-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 580px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-link" style="color: var(--primary);"></i> Add Job by Link</h2>
+                <button class="close-btn" onclick="hideAddJobModal()"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <h2 style="margin-bottom: 0.75rem; color: var(--text-main);">Rerank Current Jobs?</h2>
-            <p style="color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.6; font-size: 0.95rem;">
-                You just updated your preferences! Would you like to instantly rescore and re-rank all jobs currently in your dashboard?
-            </p>
-            <div style="display: flex; justify-content: center; gap: 1rem;">
-                <button class="btn btn-secondary" onclick="hideRerankModal()"><i class="fa-solid fa-clock"></i> Later</button>
-                <button class="btn btn-primary" onclick="confirmRerankFromModal()"><i class="fa-solid fa-wand-magic-sparkles"></i> Yes, Rescore Now</button>
+            <div class="modal-body" style="padding: 1.5rem;">
+                <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.25rem;">
+                    Paste any job posting or hiring post link. The system will scrape its details, calculate your match score, and add it to your dashboard.
+                </p>
+
+                <div style="margin-bottom: 1.25rem;">
+                    <label style="display: block; margin-bottom: 0.4rem; font-size: 0.9rem; color: var(--text-main); font-weight: 500;">
+                        Job or Post URL <span style="color: var(--danger);">*</span>
+                    </label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="url" id="add-job-url" class="input-field" placeholder="https://www.linkedin.com/jobs/view/... or wuzzuf, bayt, etc." style="flex-grow: 1; padding: 0.65rem 0.9rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.5rem; color: var(--text-main); font-size: 0.9rem;" oninput="onAddJobUrlInput(this.value)">
+                        <button type="button" class="btn btn-secondary" onclick="pasteClipboardToUrl()" title="Paste from clipboard" style="padding: 0.65rem 1rem; font-size: 0.85rem; flex-shrink: 0;">
+                            <i class="fa-solid fa-paste"></i> Paste
+                        </button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 1.25rem;">
+                    <label style="display: block; margin-bottom: 0.4rem; font-size: 0.9rem; color: var(--text-main); font-weight: 500;">
+                        Link Scraper Engine
+                    </label>
+                    <select id="add-job-scraper-type" class="input-field" style="width: 100%; padding: 0.65rem 0.9rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.5rem; color: var(--text-main); font-size: 0.9rem; font-weight: 500;">
+                        <option value="auto" selected>✨ Auto Detect (Recommended)</option>
+                        <option value="linkedin_job">🔗 LinkedIn Job Posting</option>
+                        <option value="linkedin_post">📝 LinkedIn Post / Feed Update</option>
+                        <option value="wuzzuf">🌐 Wuzzuf Job</option>
+                        <option value="tanqeeb">🌐 Tanqeeb Job</option>
+                        <option value="bayt">🌐 Bayt Job</option>
+                        <option value="generic">🌍 Universal / Other Career Website (ATS)</option>
+                    </select>
+                </div>
+
+                <details style="margin-bottom: 1.25rem; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 0.75rem 1rem;">
+                    <summary style="cursor: pointer; color: var(--text-muted); font-size: 0.85rem; user-select: none; font-weight: 500;">
+                        <i class="fa-solid fa-file-lines" style="margin-right: 0.35rem;"></i> Or paste post / job text directly (Optional)
+                    </summary>
+                    <p style="margin: 0.5rem 0; font-size: 0.8rem; color: var(--text-muted);">
+                        Use this if the LinkedIn post or job link is inside a private group or behind a login wall.
+                    </p>
+                    <textarea id="add-job-raw-text" rows="4" class="input-field" placeholder="Paste the text of the job post here..." style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-family: inherit; font-size: 0.85rem; line-height: 1.4;"></textarea>
+                </details>
+
+                <div style="margin-bottom: 1.25rem;">
+                    <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; color: var(--text-main); font-size: 0.9rem; background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.25); border-radius: 0.5rem; padding: 0.65rem 0.9rem;">
+                        <input type="checkbox" id="add-job-is-scholarship" style="cursor: pointer; width: 1.15rem; height: 1.15rem; accent-color: var(--accent);">
+                        <span style="font-weight: 500;"><i class="fa-solid fa-graduation-cap" style="color: #a78bfa; margin-right: 0.35rem;"></i> Mark as Scholarship / Fellowship</span>
+                    </label>
+                </div>
+
+                <div id="add-job-status" class="hidden" style="padding: 0.75rem 1rem; border-radius: 0.5rem; font-size: 0.9rem; margin-bottom: 0.5rem;"></div>
+            </div>
+            <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: flex-end; gap: 0.75rem; background: rgba(0,0,0,0.2);">
+                <button class="btn btn-secondary" onclick="hideAddJobModal()"><i class="fa-solid fa-xmark"></i> Cancel</button>
+                <button class="btn btn-primary" id="add-job-submit-btn" onclick="submitAddJob()">
+                    <i class="fa-solid fa-download" id="add-job-btn-icon"></i>
+                    <i class="fa-solid fa-spinner fa-spin hidden" id="add-job-btn-spinner"></i>
+                    <span id="add-job-btn-text">Scrape & Add Job</span>
+                </button>
             </div>
         </div>
     </div>
@@ -278,27 +381,28 @@
         </div>
     </div>
 
-    <!-- Bulk Cleanup Modal -->
-    <div id="cleanup-modal" class="modal hidden">
-        <div class="modal-content" style="max-width: 480px; padding: 2rem; text-align: center;">
-            <div style="font-size: 3rem; color: var(--danger); margin-bottom: 1rem;">
-                <i class="fa-solid fa-broom"></i>
+    <!-- View Job Text Modal (for manual jobs with no URL) -->
+    <div id="job-text-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-file-lines" style="color: var(--primary);"></i> Job Post Text</h2>
+                <button class="close-btn" onclick="hideJobTextModal()"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <h2 style="margin-bottom: 0.75rem; color: var(--text-main);">Clean Up Old Jobs</h2>
-            <p style="color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.6; font-size: 0.95rem;">
-                Select a time period to bulk delete older jobs from your database:
-            </p>
-            <div style="margin-bottom: 1.8rem; text-align: left;">
-                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-main); font-weight: 500;">Delete jobs older than:</label>
-                <select id="cleanup-period-select" class="input-field" style="width: 100%; padding: 0.7rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.5rem; color: var(--text-main); font-size: 0.95rem; font-weight: 500;">
-                    <option value="1">1 Month (30 Days)</option>
-                    <option value="3" selected>3 Months (90 Days)</option>
-                    <option value="6">6 Months (180 Days)</option>
-                </select>
+            <div class="modal-body" style="padding: 1.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.75rem;">
+                    <div>
+                        <h3 id="job-text-title" style="margin: 0; font-size: 1.15rem; color: var(--text-main);"></h3>
+                        <div id="job-text-company" style="font-size: 0.95rem; color: var(--text-muted); margin-top: 0.2rem;"></div>
+                    </div>
+                    <span style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); color: #93c5fd; font-size: 0.8rem; font-weight: 600; padding: 0.3rem 0.65rem; border-radius: 9999px; white-space: nowrap;">
+                        <i class="fa-solid fa-user-pen" style="margin-right: 4px;"></i>Added by Me
+                    </span>
+                </div>
+                <div id="job-text-content" style="background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 1rem; max-height: 420px; overflow-y: auto; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.6; color: var(--text-main); font-family: inherit;"></div>
             </div>
-            <div style="display: flex; justify-content: center; gap: 1rem;">
-                <button class="btn btn-secondary" onclick="hideCleanupModal()"><i class="fa-solid fa-xmark"></i> Cancel</button>
-                <button class="btn btn-delete" onclick="confirmCleanupOldJobs()"><i class="fa-solid fa-trash-can"></i> Delete Old Jobs</button>
+            <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
+                <button class="btn btn-secondary" onclick="copyCurrentJobText()"><i class="fa-solid fa-copy"></i> Copy Text</button>
+                <button class="btn btn-primary" onclick="hideJobTextModal()"><i class="fa-solid fa-check"></i> Close</button>
             </div>
         </div>
     </div>

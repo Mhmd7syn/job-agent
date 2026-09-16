@@ -229,6 +229,85 @@ header {
     color: var(--primary);
 }
 
+.tag.tag-scholarship {
+    background: rgba(139, 92, 246, 0.18);
+    border-color: rgba(139, 92, 246, 0.45);
+    color: #ddd6fe;
+    font-weight: 600;
+}
+
+.tag.tag-scholarship i {
+    color: #a78bfa;
+}
+
+.tag.tag-manual {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.35);
+    color: #93c5fd;
+    font-weight: 600;
+}
+
+.tag.tag-manual i {
+    color: var(--primary);
+}
+
+.manual-job-banner {
+    margin-top: 0.65rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--card-border);
+    border-radius: 0.5rem;
+    padding: 0.65rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+.manual-job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.manual-job-body {
+    max-height: 110px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    line-height: 1.45;
+    color: var(--text-main);
+    font-size: 0.825rem;
+    padding-right: 4px;
+}
+
+.btn-copy-mini {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--card-border);
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-copy-mini:hover {
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.btn-view-text {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--primary);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.btn-view-text:hover {
+    background: rgba(59, 130, 246, 0.25);
+}
+
 .job-date {
     font-size: 0.875rem;
     color: var(--text-muted);
@@ -630,4 +709,106 @@ header {
     0% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.3); opacity: 0.7; box-shadow: 0 0 12px var(--danger); }
     100% { transform: scale(1); opacity: 1; }
+}
+
+/* Scraper Live Progress Card & Bar */
+.scraper-progress-card {
+    background: var(--card-bg);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: 1rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 0 20px rgba(59, 130, 246, 0.15);
+    backdrop-filter: blur(12px);
+    transition: all 0.3s ease;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 0.85rem;
+}
+
+.progress-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.pulse-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--primary);
+    box-shadow: 0 0 8px var(--primary);
+    animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes pulse-dot {
+    0% { transform: scale(0.9); opacity: 0.7; }
+    50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 12px var(--primary); }
+    100% { transform: scale(0.9); opacity: 0.7; }
+}
+
+.progress-stats-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.progress-badge {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--card-border);
+    padding: 0.3rem 0.65rem;
+    border-radius: 2rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.eta-badge {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.3);
+    color: #93c5fd;
+    font-weight: 500;
+}
+
+.progress-percent {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--primary);
+    min-width: 3rem;
+    text-align: right;
+}
+
+.progress-track {
+    width: 100%;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 99px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary) 0%, #8b5cf6 100%);
+    border-radius: 99px;
+    transition: width 0.4s ease;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
+.progress-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
 }

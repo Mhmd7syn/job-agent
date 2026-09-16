@@ -4,10 +4,21 @@ let currentJobsPage = 1;
 const JOBS_PER_PAGE = 30;
 let filteredJobsList = [];
 
+function escapeHtml(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchJobs();
     fetchConfig();
     checkPendingUpdates();
+    pollScraper();
     
     document.getElementById('search-input').addEventListener('input', applyFiltersAndSort);
     document.getElementById('show-not-related').addEventListener('change', applyFiltersAndSort);
@@ -17,7 +28,60 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('setup-filter').addEventListener('change', applyFiltersAndSort);
     document.getElementById('site-filter').addEventListener('change', applyFiltersAndSort);
     document.getElementById('sort-filter').addEventListener('change', applyFiltersAndSort);
+
+    // Global keyboard shortcuts for pywebview desktop window (F5 or Ctrl+R / Cmd+R, Esc)
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideJobTextModal();
+        }
+        if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r')) {
+            e.preventDefault();
+            refreshDashboard();
+        }
+    });
+
+    // Sync queued mobile jobs on GUI launch or refresh
+    setTimeout(() => syncTelegramJobsOnLaunch(false), 600);
 });
+
+async function refreshDashboard() {
+    const refreshIcon = document.getElementById('refresh-icon');
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshIcon) refreshIcon.classList.add('fa-spin');
+    if (refreshBtn) refreshBtn.disabled = true;
+
+    try {
+        const addedNewJobs = await syncTelegramJobsOnLaunch(true);
+        await fetchJobs();
+        await checkPendingUpdates();
+        if (!addedNewJobs) {
+            showToast('Dashboard refreshed!', 'info', 'fa-arrows-rotate', 2000);
+        }
+    } catch (err) {
+        console.error('Refresh error:', err);
+        showToast('Refresh failed', 'danger', 'fa-triangle-exclamation');
+    } finally {
+        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
+}
+
+async function syncTelegramJobsOnLaunch(isManual = false) {
+    try {
+        const res = await fetch('/api/telegram/sync');
+        if (!res.ok) return false;
+        const data = await res.json();
+        if (data && data.count > 0) {
+            const jobWord = data.count === 1 ? 'job' : 'jobs';
+            showToast(`📥 ${data.count} new ${jobWord} added by Telegram bot!`, 'success', 'fa-paper-plane', 6000);
+            fetchJobs(); // Refresh grid and update job count!
+            return true;
+        }
+    } catch (e) {
+        // Silent on launch
+    }
+    return false;
+}
 
 async function fetchJobs() {
     const loader = document.getElementById('loader');
@@ -57,11 +121,19 @@ function applyFiltersAndSort() {
     let filtered = allJobs.filter(job => {
         const titleMatch = (job.title || '').toLowerCase().includes(searchTerm);
         const companyMatch = (job.company || '').toLowerCase().includes(searchTerm);
-        if (searchTerm && !titleMatch && !companyMatch) return false;
+        const descMatch = (job.description || '').toLowerCase().includes(searchTerm);
+        if (searchTerm && !titleMatch && !companyMatch && !descMatch) return false;
 
         // If not showing not_related, filter them out
         if (!showNotRelated) {
             if (job.status === 'not_related') return false;
+        }
+
+        // Never display pending jobs with score <= 0 unless scholarship or applied
+        const isScholarship = (job.job_type || '').toLowerCase() === 'scholarship';
+        const isApplied = job.is_applied === 1;
+        if (job.status === 'pending' && !isScholarship && !isApplied && (job.relevance_score || 0) <= 0) {
+            return false;
         }
 
         if (appliedFilter === 'applied' && job.is_applied !== 1) return false;
@@ -111,7 +183,9 @@ function applyFiltersAndSort() {
         if (b.status === 'liked' && a.status !== 'liked') return 1;
 
         if (sortFilter === 'score') {
-            return (b.relevance_score || 0) - (a.relevance_score || 0);
+            const scoreDiff = (b.relevance_score || 0) - (a.relevance_score || 0);
+            if (scoreDiff !== 0) return scoreDiff;
+            return new Date(b.date_posted || 0) - new Date(a.date_posted || 0);
         } else if (sortFilter === 'date_new') {
             return new Date(b.date_posted || 0) - new Date(a.date_posted || 0);
         } else if (sortFilter === 'date_old') {
@@ -197,6 +271,12 @@ function createJobCard(job) {
         `<button class="btn btn-apply" onclick="toggleApplied('${job.job_id}')" style="background-color: var(--success);"><i class="fa-solid fa-check"></i>Applied</button>` :
         `<button class="btn btn-apply" onclick="toggleApplied('${job.job_id}')"><i class="fa-solid fa-check"></i>Mark Applied</button>`;
 
+    const hasLink = Boolean(job.job_url && String(job.job_url).trim() && job.job_url !== 'nan' && (String(job.job_url).startsWith('http://') || String(job.job_url).startsWith('https://')));
+
+    const viewBtnHtml = hasLink ?
+        `<a href="${job.job_url}" target="_blank" class="btn btn-view"><i class="fa-solid fa-arrow-up-right-from-square"></i>View Job</a>` :
+        `<button type="button" class="btn btn-view btn-view-text" onclick="openJobTextModal('${job.job_id}')" title="View the job post text you added"><i class="fa-solid fa-file-lines"></i>View Post Text</button>`;
+
     let actionsHtml = '';
     if (job.status === 'not_related') {
         actionsHtml = `
@@ -204,7 +284,7 @@ function createJobCard(job) {
                 <i class="fa-solid fa-circle-xmark" style="margin-right: 6px;"></i>Not Related (Click to Undo)
             </div>
             ${applyBtnHtml}
-            <a href="${job.job_url}" target="_blank" class="btn btn-view"><i class="fa-solid fa-arrow-up-right-from-square"></i>View Job</a>
+            ${viewBtnHtml}
         `;
     } else {
         actionsHtml = `
@@ -214,9 +294,27 @@ function createJobCard(job) {
             }
             <button class="btn btn-reject" onclick="handleAction('${job.job_id}', 'not_related')"><i class="fa-solid fa-xmark"></i>Not Related</button>
             ${applyBtnHtml}
-            <a href="${job.job_url}" target="_blank" class="btn btn-view"><i class="fa-solid fa-arrow-up-right-from-square"></i>View Job</a>
+            ${viewBtnHtml}
         `;
     }
+
+    const isScholarship = (job.job_type || '').toLowerCase() === 'scholarship';
+    const typeTagIcon = isScholarship ? 'fa-solid fa-graduation-cap' : 'fa-solid fa-clock';
+    const typeTagClass = isScholarship ? 'tag tag-scholarship' : 'tag';
+
+    const siteTagHtml = hasLink ?
+        `<div class="tag"><i class="fa-solid fa-globe"></i>${job.site || 'Web'}</div>` :
+        `<div class="tag tag-manual" title="Added manually by you (not scraped from job boards)"><i class="fa-solid fa-user-pen"></i>Added by Me</div>`;
+
+    const jobTextSnippet = (!hasLink && job.description) ? `
+        <div class="manual-job-banner">
+            <div class="manual-job-header">
+                <span><i class="fa-solid fa-file-lines" style="color: var(--primary); margin-right: 5px;"></i><strong>Job Post Text:</strong></span>
+                <button type="button" class="btn-copy-mini" onclick="event.stopPropagation(); copyJobTextById('${job.job_id}')" title="Copy text"><i class="fa-regular fa-copy"></i> Copy</button>
+            </div>
+            <div class="manual-job-body">${escapeHtml(job.description)}</div>
+        </div>
+    ` : '';
 
     div.innerHTML = `
         <div class="card-header">
@@ -232,9 +330,11 @@ function createJobCard(job) {
         
         <div class="tags">
             <div class="tag"><i class="fa-solid fa-location-dot"></i>${job.location || 'Remote'}</div>
-            <div class="tag"><i class="fa-solid fa-clock"></i>${job.job_type || 'Full-time'}</div>
-            <div class="tag"><i class="fa-solid fa-globe"></i>${job.site || 'Web'}</div>
+            <div class="${typeTagClass}"><i class="${typeTagIcon}"></i>${job.job_type || 'Full-time'}</div>
+            ${siteTagHtml}
         </div>
+
+        ${jobTextSnippet}
         
         <div class="job-date"><i class="fa-regular fa-calendar" style="margin-right:6px;"></i>${dateStr}</div>
         
@@ -499,6 +599,87 @@ function refreshSettingsUI() {
     if (rptEl) rptEl.value = currentConfig.RESULTS_PER_TERM || 15;
     const retEl = document.getElementById('config-retention-days');
     if (retEl) retEl.value = currentConfig.job_retention_days || 90;
+
+    loadTelegramStatusUI();
+}
+
+async function loadTelegramStatusUI() {
+    const tokenInput = document.getElementById('telegram-bot-token');
+    const chatIdInput = document.getElementById('telegram-chat-id');
+    const badge = document.getElementById('telegram-status-badge');
+    if (!badge) return;
+
+    try {
+        const res = await fetch('/api/telegram/status');
+        const data = await res.json();
+        if (data.is_configured) {
+            if (tokenInput && !tokenInput.value) {
+                tokenInput.placeholder = `Configured (${data.masked_token}) - Enter new token to change`;
+            }
+            if (chatIdInput && !chatIdInput.value) {
+                chatIdInput.value = data.chat_id || '';
+            }
+            const statusText = data.is_configured
+                ? '<span style="color: var(--success);"><i class="fa-solid fa-circle-check"></i> Mobile Sync is active (queued jobs pull on app launch / refresh).</span>'
+                : '<span style="color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> Not configured yet. Paste your bot token above to link your phone.</span>';
+            badge.innerHTML = statusText;
+        } else {
+            badge.innerHTML = '<span style="color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> Not configured yet. Paste your bot token above to link your phone.</span>';
+        }
+    } catch (e) {
+        console.error('Failed to load Telegram status:', e);
+    }
+}
+
+function toggleTokenVisibility() {
+    const input = document.getElementById('telegram-bot-token');
+    const icon = document.getElementById('token-eye-icon');
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) {
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        }
+    } else {
+        input.type = 'password';
+        if (icon) {
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    }
+}
+
+async function detectTelegramChatId() {
+    const tokenInput = document.getElementById('telegram-bot-token');
+    const chatIdInput = document.getElementById('telegram-chat-id');
+    const detectBtn = document.getElementById('detect-chat-btn');
+    const token = tokenInput ? tokenInput.value.trim() : '';
+
+    const origHtml = detectBtn.innerHTML;
+    detectBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Detecting...';
+    detectBtn.disabled = true;
+
+    try {
+        const res = await fetch('/api/telegram/detect-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bot_token: token, chat_id: '' })
+        });
+        const data = await res.json();
+        if (data.status === 'success' && data.chat_id) {
+            chatIdInput.value = data.chat_id;
+            showToast(`Connected to @${data.username || 'User'} (ID: ${data.chat_id})`, 'success', 'fa-check');
+            loadTelegramStatusUI();
+        } else {
+            showToast(data.message || data.detail || 'Could not find messages. Send a message to your bot first!', 'warning', 'fa-triangle-exclamation');
+        }
+    } catch (e) {
+        showToast('Detection error: ' + e.message, 'danger', 'fa-xmark');
+    } finally {
+        detectBtn.innerHTML = origHtml;
+        detectBtn.disabled = false;
+    }
 }
 
 function showSettings() {
@@ -538,11 +719,11 @@ async function saveSettings() {
     
     newConfig.LOCATION = getTagInputValues('config-location');
     newConfig.TARGET_LOCATIONS = getTagInputValues('config-target-locations');
-    newConfig.GLASSDOOR_LOC_ID = parseInt(document.getElementById('config-glassdoor-id').value) || 69;
+    newConfig.GLASSDOOR_LOC_ID = parseInt(document.getElementById('config-glassdoor-id')?.value) || 69;
     newConfig.GLOBAL_REMOTE_KEYWORDS = getTagInputValues('config-global-remote');
     newConfig.RESTRICTED_REMOTE_KEYWORDS = getTagInputValues('config-restricted-remote');
     newConfig.TARGET_LEVELS = getTagInputValues('config-target-levels');
-    newConfig.USER_BRIEF = document.getElementById('config-user-brief').value;
+    newConfig.USER_BRIEF = document.getElementById('config-user-brief')?.value || '';
     
     newConfig.RESUME_KEYWORDS = getTagInputValues('config-resume-keywords');
     newConfig.EXCLUDE_KEYWORDS = getTagInputValues('config-exclude-keywords');
@@ -552,10 +733,10 @@ async function saveSettings() {
     newConfig.SITES = getTagInputValues('config-sites');
     const minSkillsVal = parseInt(document.getElementById('config-min-matched-skills')?.value);
     newConfig.MIN_MATCHED_SKILLS = !isNaN(minSkillsVal) ? minSkillsVal : 2;
-    newConfig.RESULTS_PER_TERM = parseInt(document.getElementById('config-results-per-term').value) || 15;
+    newConfig.RESULTS_PER_TERM = parseInt(document.getElementById('config-results-per-term')?.value) || 15;
     newConfig.HOURS_OLD = currentConfig.HOURS_OLD || 168;
     newConfig.MAX_JOBS_TO_SEND = currentConfig.MAX_JOBS_TO_SEND || 10;
-    newConfig.job_retention_days = parseInt(document.getElementById('config-retention-days').value) || 90;
+    newConfig.job_retention_days = parseInt(document.getElementById('config-retention-days')?.value) || 90;
 
     try {
         const response = await fetch('/api/config', {
@@ -569,13 +750,30 @@ async function saveSettings() {
             currentConfig.last_reviewed_date = result.last_reviewed_date;
             hideSettings();
             document.getElementById('settings-warning').classList.add('hidden');
-            showToast('Settings saved successfully!', 'success', 'fa-check');
-            
+            showToast('Settings saved & jobs rescored in background!', 'success', 'fa-wand-magic-sparkles');
             setTimeout(() => {
-                showRerankModal();
-            }, 400);
+                fetchJobs();
+            }, 800);
         } else {
             showToast('Failed to save settings', 'danger', 'fa-xmark');
+        }
+
+        // Save Telegram Bot credentials if changed
+        const tgTokenInput = document.getElementById('telegram-bot-token');
+        const tgChatInput = document.getElementById('telegram-chat-id');
+        const tgToken = tgTokenInput ? tgTokenInput.value.trim() : '';
+        const tgChat = tgChatInput ? tgChatInput.value.trim() : '';
+
+        if (tgToken || tgChat) {
+            try {
+                await fetch('/api/telegram/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bot_token: tgToken, chat_id: tgChat })
+                });
+            } catch (tgErr) {
+                console.error("Failed to save Telegram config:", tgErr);
+            }
         }
     } catch (e) {
         showToast('Error saving settings', 'danger', 'fa-xmark');
@@ -587,11 +785,19 @@ function hideSystemStatus() {
     modal.classList.add('hidden');
 }
 
-// Close modal if user clicks outside of it
+// Close modals if user clicks outside
 window.onclick = function(event) {
-    const modal = document.getElementById('status-modal');
-    if (event.target == modal) {
+    const statusModal = document.getElementById('status-modal');
+    if (event.target == statusModal) {
         hideSystemStatus();
+    }
+    const addJobModal = document.getElementById('add-job-modal');
+    if (event.target == addJobModal) {
+        hideAddJobModal();
+    }
+    const jobTextModal = document.getElementById('job-text-modal');
+    if (event.target == jobTextModal) {
+        hideJobTextModal();
     }
 }
 
@@ -761,25 +967,32 @@ function setScraperState(running) {
     const icon = document.getElementById('scraper-icon');
     const spinner = document.getElementById('scraper-spinner');
     const text = document.getElementById('scraper-text');
+    const progressContainer = document.getElementById('scraper-progress-container');
     
     if (running) {
-        btn.disabled = true;
-        btn.style.opacity = '0.7';
-        btn.style.cursor = 'not-allowed';
-        icon.classList.add('hidden');
-        spinner.classList.remove('hidden');
-        text.innerText = 'Searching...';
+        if (btn) {
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            btn.style.cursor = 'not-allowed';
+        }
+        if (icon) icon.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+        if (text) text.innerText = 'Searching...';
+        if (progressContainer) progressContainer.classList.remove('hidden');
         
         if (!scraperPollInterval) {
-            scraperPollInterval = setInterval(pollScraper, 3000);
+            scraperPollInterval = setInterval(pollScraper, 2000);
         }
     } else {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
-        icon.classList.remove('hidden');
-        spinner.classList.add('hidden');
-        text.innerText = 'Search for New Jobs';
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+        }
+        if (icon) icon.classList.remove('hidden');
+        if (spinner) spinner.classList.add('hidden');
+        if (text) text.innerText = 'Search for New Jobs';
+        if (progressContainer) progressContainer.classList.add('hidden');
         
         if (scraperPollInterval) {
             clearInterval(scraperPollInterval);
@@ -796,70 +1009,54 @@ async function pollScraper() {
         const data = await res.json();
         
         if (data.last_run) {
-            document.getElementById('last-run-text').innerText = `Last Run: ${data.last_run}`;
+            const lastRunEl = document.getElementById('last-run-text');
+            if (lastRunEl) lastRunEl.innerText = `Last Run: ${data.last_run}`;
         }
+
+        const progressContainer = document.getElementById('scraper-progress-container');
         
-        if (!data.is_running && isScraping) {
-            setScraperState(false);
-        } else if (data.is_running && !isScraping) {
-            setScraperState(true);
+        if (data.is_running) {
+            if (!isScraping) {
+                setScraperState(true);
+            }
+            if (progressContainer) {
+                progressContainer.classList.remove('hidden');
+            }
+            if (data.progress) {
+                const p = data.progress;
+                const percent = Math.min(100, Math.max(0, p.percent || 0));
+                
+                const fillEl = document.getElementById('progress-fill');
+                if (fillEl) fillEl.style.width = `${percent}%`;
+
+                const percentEl = document.getElementById('progress-percent');
+                if (percentEl) percentEl.innerText = `${percent}%`;
+
+                const taskEl = document.getElementById('progress-task');
+                if (taskEl) taskEl.innerText = p.task || 'Scraping in progress...';
+
+                const etaEl = document.getElementById('progress-eta');
+                if (etaEl) etaEl.innerText = p.eta_str || 'Calculating...';
+
+                const jobsEl = document.getElementById('progress-jobs-found');
+                if (jobsEl) jobsEl.innerText = p.jobs_found || 0;
+
+                const detailsEl = document.getElementById('progress-details');
+                if (detailsEl) detailsEl.innerText = `Step ${p.current_step || 0} of ${p.total_steps || 0}`;
+
+                const elapsedEl = document.getElementById('progress-elapsed');
+                if (elapsedEl) elapsedEl.innerText = `Elapsed: ${p.elapsed_str || '0s'}`;
+            }
+        } else {
+            if (isScraping) {
+                setScraperState(false);
+            }
+            if (progressContainer) {
+                progressContainer.classList.add('hidden');
+            }
         }
     } catch(e) {
         console.error(e);
-    }
-}
-
-function showRerankModal() {
-    const modal = document.getElementById('rerank-modal');
-    if (modal) modal.classList.remove('hidden');
-}
-
-function hideRerankModal() {
-    const modal = document.getElementById('rerank-modal');
-    if (modal) modal.classList.add('hidden');
-}
-
-function confirmRerankFromModal() {
-    hideRerankModal();
-    rescoreJobs();
-}
-
-async function rescoreJobs() {
-    const btn = document.getElementById('rescore-btn');
-    const icon = document.getElementById('rescore-icon');
-    const spinner = document.getElementById('rescore-spinner');
-    const text = document.getElementById('rescore-text');
-
-    if (btn) {
-        btn.disabled = true;
-        btn.style.opacity = '0.7';
-        btn.style.cursor = 'wait';
-        if (icon) icon.classList.add('hidden');
-        if (spinner) spinner.classList.remove('hidden');
-        if (text) text.innerText = 'Rescoring...';
-    }
-
-    try {
-        const response = await fetch('/api/rerank-jobs', { method: 'POST' });
-        const result = await response.json();
-
-        if (result.status === 'success') {
-            showToast(`Rescored ${result.rescored} jobs in ${result.duration_seconds}s!`, 'success', 'fa-wand-magic-sparkles');
-            fetchJobs();
-        } else {
-            showToast('Error rescoring jobs: ' + (result.error || 'Unknown'), 'danger', 'fa-xmark');
-        }
-    } catch (e) {
-        showToast('Error connecting to server', 'danger', 'fa-xmark');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.style.opacity = '1';
-            btn.style.cursor = 'pointer';
-            if (icon) icon.classList.remove('hidden');
-            if (spinner) spinner.classList.add('hidden');
-            if (text) text.innerText = 'Rescore Jobs';
-        }
     }
 }
 
@@ -1104,34 +1301,270 @@ async function deleteSingleJob(jobId) {
     }
 }
 
-function showCleanupModal() {
-    document.getElementById('cleanup-modal').classList.remove('hidden');
+// ---------------------------------------------------------------------------
+// Add Job by URL Functions
+// ---------------------------------------------------------------------------
+
+function showAddJobModal() {
+    const modal = document.getElementById('add-job-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        const urlInput = document.getElementById('add-job-url');
+        if (urlInput) {
+            urlInput.focus();
+        }
+        // Clear status
+        const statusDiv = document.getElementById('add-job-status');
+        if (statusDiv) {
+            statusDiv.className = 'hidden';
+            statusDiv.innerHTML = '';
+        }
+    }
 }
 
-function hideCleanupModal() {
-    document.getElementById('cleanup-modal').classList.add('hidden');
+function hideAddJobModal() {
+    const modal = document.getElementById('add-job-modal');
+    if (modal) modal.classList.add('hidden');
+    const scholCheck = document.getElementById('add-job-is-scholarship');
+    if (scholCheck) scholCheck.checked = false;
 }
 
-async function confirmCleanupOldJobs() {
-    const periodSelect = document.getElementById('cleanup-period-select');
-    const period = parseInt(periodSelect.value) || 3;
-    hideCleanupModal();
-
-    showToast(`Cleaning jobs older than ${period} month(s)...`, 'info', 'fa-spinner fa-spin');
-
-    try {
-        const response = await fetch(`/api/jobs/cleanup?months=${period}`, { method: 'DELETE' });
-        const data = await response.json();
-        if (data.status === 'success') {
-            showToast(`Successfully deleted ${data.deleted_count} old job(s)!`, 'success', 'fa-broom');
-            fetchJobs();
+function onAddJobUrlInput(val) {
+    const select = document.getElementById('add-job-scraper-type');
+    if (!select || !val) return;
+    const url = val.toLowerCase();
+    
+    // Smart auto-detect helper for scraper selector
+    if (url.includes('linkedin.com') || url.includes('eg.linkedin.com')) {
+        if (url.includes('/posts/') || url.includes('/feed/update/') || url.includes('activity')) {
+            select.value = 'linkedin_post';
         } else {
-            showToast('Failed to cleanup old jobs', 'danger', 'fa-circle-xmark');
+            select.value = 'linkedin_job';
+        }
+    } else if (url.includes('wuzzuf.net')) {
+        select.value = 'wuzzuf';
+    } else if (url.includes('tanqeeb.com')) {
+        select.value = 'tanqeeb';
+    } else if (url.includes('bayt.com')) {
+        select.value = 'bayt';
+    } else if (url.includes('http') || url.includes('.')) {
+        if (select.value !== 'auto') {
+            select.value = 'auto';
+        }
+    }
+}
+
+async function pasteClipboardToUrl() {
+    try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+            const input = document.getElementById('add-job-url');
+            if (input) {
+                input.value = text.trim();
+                onAddJobUrlInput(input.value);
+            }
         }
     } catch (err) {
-        console.error('Error cleaning up jobs:', err);
-        showToast('Error cleaning up jobs', 'danger', 'fa-circle-xmark');
+        showToast('Clipboard access denied or unavailable', 'info', 'fa-paste');
     }
+}
+
+async function submitAddJob() {
+    const urlInput = document.getElementById('add-job-url');
+    const scraperTypeSelect = document.getElementById('add-job-scraper-type');
+    const rawTextInput = document.getElementById('add-job-raw-text');
+    const submitBtn = document.getElementById('add-job-submit-btn');
+    const btnIcon = document.getElementById('add-job-btn-icon');
+    const btnSpinner = document.getElementById('add-job-btn-spinner');
+    const btnText = document.getElementById('add-job-btn-text');
+    const statusDiv = document.getElementById('add-job-status');
+
+    const url = (urlInput ? urlInput.value : '').trim();
+    const scraperType = scraperTypeSelect ? scraperTypeSelect.value : 'auto';
+    const rawText = (rawTextInput ? rawTextInput.value : '').trim();
+    const isScholarship = document.getElementById('add-job-is-scholarship')?.checked || false;
+
+    if (!url && !rawText) {
+        if (statusDiv) {
+            statusDiv.className = '';
+            statusDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+            statusDiv.style.border = '1px solid var(--danger)';
+            statusDiv.style.color = 'var(--text-main)';
+            statusDiv.innerHTML = '<i class="fa-solid fa-circle-exclamation" style="color:var(--danger);margin-right:6px;"></i>Please provide a job link or post text.';
+        }
+        if (urlInput) urlInput.focus();
+        return;
+    }
+
+    // Set UI loading state
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.75';
+        submitBtn.style.cursor = 'wait';
+    }
+    if (btnIcon) btnIcon.classList.add('hidden');
+    if (btnSpinner) btnSpinner.classList.remove('hidden');
+    if (btnText) btnText.innerText = 'Scraping & Adding...';
+
+    if (statusDiv) {
+        statusDiv.className = '';
+        statusDiv.style.background = 'rgba(59, 130, 246, 0.15)';
+        statusDiv.style.border = '1px solid var(--primary)';
+        statusDiv.style.color = 'var(--text-main)';
+        statusDiv.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:var(--primary);margin-right:6px;"></i>Connecting to site and extracting job details with AI...';
+    }
+
+    try {
+        const response = await fetch('/api/jobs/add-by-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: url,
+                scraper_type: scraperType,
+                raw_text: rawText,
+                is_scholarship: isScholarship
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.status === 'success' && data.job) {
+            const savedJob = data.job;
+            hideAddJobModal();
+
+            // Clear inputs for next time
+            if (urlInput) urlInput.value = '';
+            if (rawTextInput) rawTextInput.value = '';
+            if (scraperTypeSelect) scraperTypeSelect.value = 'auto';
+            const scholCheck = document.getElementById('add-job-is-scholarship');
+            if (scholCheck) scholCheck.checked = false;
+
+            // Insert or update in local state
+            const existingIdx = allJobs.findIndex(j => j.job_id === savedJob.job_id || (j.job_url && j.job_url === savedJob.job_url));
+            if (existingIdx >= 0) {
+                allJobs[existingIdx] = savedJob;
+            } else {
+                allJobs.unshift(savedJob);
+            }
+
+            // Hide empty state if visible
+            const emptyState = document.getElementById('empty-state');
+            if (emptyState) emptyState.classList.add('hidden');
+
+            // Re-render grid
+            applyFiltersAndSort();
+
+            const actionVerb = data.is_new ? 'added to dashboard' : 'updated in dashboard';
+            showToast(`"${savedJob.title}" at ${savedJob.company} ${actionVerb}! (Score: ${Math.round(savedJob.relevance_score || 0)})`, 'success', 'fa-circle-check');
+
+            // Scroll to the card and highlight
+            setTimeout(() => {
+                const card = document.getElementById(`job-${savedJob.job_id}`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.style.transition = 'box-shadow 0.4s ease, border-color 0.4s ease';
+                    card.style.boxShadow = '0 0 20px rgba(59, 130, 246, 0.6)';
+                    card.style.borderColor = 'var(--primary)';
+                    setTimeout(() => {
+                        card.style.boxShadow = '';
+                        card.style.borderColor = '';
+                    }, 2500);
+                }
+            }, 250);
+
+        } else if (response.ok && data.status === 'pruned') {
+            if (statusDiv) {
+                statusDiv.className = '';
+                statusDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+                statusDiv.style.border = '1px solid var(--danger)';
+                statusDiv.style.color = 'var(--text-main)';
+                statusDiv.innerHTML = `<i class="fa-solid fa-trash-can" style="color:var(--danger);margin-right:6px;"></i>${escapeHtml(data.detail)}`;
+            }
+            showToast('Role scored 0% (outside target criteria) and was pruned.', 'danger', 'fa-trash-can');
+        } else {
+            const errDetail = data.detail || data.error || 'Failed to scrape job.';
+            if (statusDiv) {
+                statusDiv.className = '';
+                statusDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+                statusDiv.style.border = '1px solid var(--danger)';
+                statusDiv.style.color = 'var(--text-main)';
+                statusDiv.innerHTML = `<i class="fa-solid fa-circle-xmark" style="color:var(--danger);margin-right:6px;"></i>${errDetail}`;
+            }
+        }
+    } catch (err) {
+        console.error('Error adding job by URL:', err);
+        if (statusDiv) {
+            statusDiv.className = '';
+            statusDiv.style.background = 'rgba(239, 68, 68, 0.15)';
+            statusDiv.style.border = '1px solid var(--danger)';
+            statusDiv.style.color = 'var(--text-main)';
+            statusDiv.innerHTML = `<i class="fa-solid fa-circle-xmark" style="color:var(--danger);margin-right:6px;"></i>Network error: ${err.message || err}`;
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
+        }
+        if (btnIcon) btnIcon.classList.remove('hidden');
+        if (btnSpinner) btnSpinner.classList.add('hidden');
+        if (btnText) btnText.innerText = 'Scrape & Add Job';
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Job Text Modal Functions (for manual jobs added with no external URL)
+// ---------------------------------------------------------------------------
+let currentModalJobText = '';
+
+function openJobTextModal(jobId) {
+    const job = allJobs.find(j => String(j.job_id) === String(jobId));
+    if (!job) return;
+
+    currentModalJobText = job.description || 'No job description text provided.';
+
+    const titleEl = document.getElementById('job-text-title');
+    const companyEl = document.getElementById('job-text-company');
+    const contentEl = document.getElementById('job-text-content');
+
+    if (titleEl) titleEl.textContent = job.title || 'Untitled Job';
+    if (companyEl) {
+        const comp = job.company && job.company !== 'Unknown Company' ? job.company : (job.location || 'Manual Entry');
+        companyEl.textContent = comp;
+    }
+    if (contentEl) contentEl.textContent = currentModalJobText;
+
+    const modal = document.getElementById('job-text-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function hideJobTextModal() {
+    const modal = document.getElementById('job-text-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function copyCurrentJobText() {
+    if (!currentModalJobText) return;
+    navigator.clipboard.writeText(currentModalJobText).then(() => {
+        showToast('Job text copied to clipboard!', 'success', 'fa-copy');
+    }).catch(err => {
+        console.error('Failed to copy to clipboard:', err);
+        showToast('Failed to copy text', 'danger', 'fa-circle-xmark');
+    });
+}
+
+function copyJobTextById(jobId) {
+    const job = allJobs.find(j => String(j.job_id) === String(jobId));
+    if (!job || !job.description) {
+        showToast('No job text available to copy', 'info', 'fa-circle-info');
+        return;
+    }
+    navigator.clipboard.writeText(job.description).then(() => {
+        showToast('Job post text copied to clipboard!', 'success', 'fa-copy');
+    }).catch(err => {
+        console.error('Failed to copy to clipboard:', err);
+        showToast('Failed to copy text', 'danger', 'fa-circle-xmark');
+    });
 }
 
 // Developer Credits

@@ -1,11 +1,13 @@
+import os
 import sys
 import urllib.parse
 import pandas as pd
 import datetime
 import logging
-import random
+import re
+from bs4 import BeautifulSoup
 
-from core.llm_parser import extract_feed_posts_with_ai
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.config import GLASSDOOR_LOC_ID
 from core.database import is_job_seen
 
@@ -14,26 +16,22 @@ def fetch_glassdoor_full_description(driver, job_url):
     if not driver or not job_url or 'glassdoor.com/Job/jobs.htm' in job_url:
         return ""
     try:
-        driver.uc_open_with_reconnect(job_url, 3)
-        try:
-            driver.wait_for_element('div.jobDescriptionContent, div[class*="JobDetails_jobDescription"]', timeout=6)
-        except Exception:
-            pass
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
-        desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['jobDescriptionContent', 'JobDetails_jobDescription', 'desc']))
-        if desc_div:
-            text = desc_div.get_text(separator='\n', strip=True)
-            if len(text) > 80:
-                return text
-    except Exception as e:
-        logging.debug(f"Glassdoor full desc fetch error for {job_url}: {e}")
+        from curl_cffi import requests as c_requests
+        resp = c_requests.get(job_url, impersonate="chrome120", timeout=5)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.content, 'html.parser')
+            desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['jobDescriptionContent', 'JobDetails_jobDescription', 'desc']))
+            if desc_div:
+                text = desc_div.get_text(separator='\n', strip=True)
+                if len(text) > 80:
+                    return text
+    except Exception:
+        pass
     return ""
 
 def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, driver=None):
     jobs = []
     
-    # Simple URL encoding for glassdoor (this will redirect to the right search)
     url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={urllib.parse.quote(search_term)}&locT=N&locId={GLASSDOOR_LOC_ID}&locKeyword={urllib.parse.quote(location)}&sortBy=date_desc"
     if hours_old:
         days = int(hours_old / 24)
@@ -41,7 +39,6 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, d
             url += f"&fromAge={days}"
     
     if driver is None:
-        logging.error("Glassdoor scraper requires a SeleniumBase driver.")
         return pd.DataFrame()
         
     try:
@@ -51,75 +48,59 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, d
         except Exception:
             pass
         
-        # wait for job cards or cloudflare bypass
         try:
-            driver.wait_for_element('li', timeout=10)
+            driver.wait_for_element('li', timeout=8)
         except Exception:
             pass
 
-        from bs4 import BeautifulSoup
         html_content = driver.get_page_source()
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        content_text = ""
-        # Extract job cards (Glassdoor usually uses li tags for jobs)
         job_cards = soup.find_all('li')
+        cutoff = (datetime.datetime.now() - datetime.timedelta(hours=hours_old)).date() if hours_old else None
+
         for card in job_cards:
+            if len(jobs) >= results_wanted:
+                break
+
             a_tag = card.find('a', href=True)
-            if a_tag:
-                href = a_tag['href']
-                if 'job-listing' in href or '/partner/' in href:
-                    if href.startswith('/'):
-                        href = "https://www.glassdoor.com" + href
-                    if is_job_seen(href):
-                        logging.debug(f"    ⏭️ Skipping known job (cached): {href}")
-                        continue
-                    text = card.get_text(separator=" ", strip=True)
-                    if len(text) > 10:
-                        content_text += f"Job Link: {href}\nJob Info: {text}\n\n"
+            if not a_tag:
+                continue
 
-        if not content_text.strip():
-            return pd.DataFrame()
+            href = a_tag['href']
+            if not ('job-listing' in href or '/partner/' in href):
+                continue
 
-        ai_data = extract_feed_posts_with_ai(content_text[:20000])
-        
-        if ai_data and not ai_data.get("error"):
-            jobs_list = ai_data.get("jobs", [])
-            # Apply hours_old cutoff that was previously ignored
-            cutoff = None
-            if hours_old:
-                cutoff = (datetime.datetime.now() - datetime.timedelta(hours=hours_old)).date()
-            for job in jobs_list:
-                if job.get("is_job") and len(jobs) < results_wanted:
-                    raw_date = job.get('date_posted')
-                    if cutoff and raw_date:
-                        try:
-                            job_date = datetime.datetime.strptime(raw_date, "%Y-%m-%d").date()
-                            if job_date < cutoff:
-                                continue
-                        except Exception:
-                            pass
-                    job_url = job.get('job_url', '')
-                    if not job_url:
-                        job_url = url
-                    
-                    card_desc = job.get('description', '')
-                    full_desc = fetch_glassdoor_full_description(driver, job_url) if job_url and job_url != url else ""
-                    final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+            if href.startswith('/'):
+                href = "https://www.glassdoor.com" + href
 
-                    jobs.append({
-                        'title': job.get('title', 'Unknown'),
-                        'company': job.get('company', 'Unknown'),
-                        'location': job.get('location', location),
-                        'job_url': job_url,
-                        'job_type': job.get('job_type', 'Not specified'),
-                        'description': final_desc,
-                        'is_remote': 'remote' in search_term.lower() or 'remote' in str(job.get('location', '')).lower(),
-                        'site': 'glassdoor',
-                        'date_posted': job.get('date_posted') or datetime.datetime.now().date()
-                    })
-        else:
-            logging.warning(f"⚠️ Glassdoor AI Parsing Error: {ai_data.get('error') if ai_data else 'Unknown'}")
+            if is_job_seen(href):
+                continue
+
+            title_elem = card.find(['a', 'span'], class_=lambda c: c and any(k in str(c) for k in ['JobTitle', 'job-title', 'jobTitle'])) or a_tag
+            title = title_elem.text.strip() if title_elem else ""
+            if not title or len(title) < 2:
+                continue
+
+            comp_elem = card.find(['span', 'div', 'p'], class_=lambda c: c and any(k in str(c) for k in ['EmployerName', 'employer', 'company']))
+            company = comp_elem.text.strip() if comp_elem else "Unknown"
+
+            loc_elem = card.find(['div', 'span'], class_=lambda c: c and any(k in str(c) for k in ['location', 'Location', 'loc']))
+            loc_val = loc_elem.text.strip() if loc_elem else location
+
+            card_desc = card.get_text(separator=' ', strip=True)
+
+            jobs.append({
+                'title': title,
+                'company': company,
+                'location': loc_val,
+                'job_url': href,
+                'job_type': 'Not specified',
+                'description': card_desc,
+                'is_remote': 'remote' in search_term.lower() or 'remote' in str(loc_val).lower(),
+                'site': 'glassdoor',
+                'date_posted': datetime.datetime.now().date()
+            })
             
     except Exception as e:
         logging.error(f"⚠️ Glassdoor Scraper Error: {e}")
