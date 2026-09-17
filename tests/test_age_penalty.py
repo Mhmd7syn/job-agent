@@ -10,14 +10,14 @@ class TestDatePenalty(unittest.TestCase):
             "ROLES": [{
                 "title": "AI Engineer",
                 "english_terms": ["AI Engineer", "Machine Learning"],
-                "arabic_terms": [],
                 "years_experience": 1
             }],
             "RESUME_KEYWORDS": ["python", "pytorch", "machine learning", "deep learning"],
             "MIN_MATCHED_SKILLS": 2,
             "TARGET_LOCATIONS": ["cairo", "egypt"],
-            "TARGET_LEVELS": ["junior", "intern"],
-            "EXCLUDE_KEYWORDS": ["senior"],
+            "TARGET_LEVELS": ["Intern / Student", "Fresh Graduate / Entry-level", "Junior"],
+            "LEVEL_EXCLUDE": ["Mid-Level", "Senior / Lead", "Manager / Director"],
+            "EXCLUDE_KEYWORDS": [],
             "EXCLUDED_COMPANIES": [],
             "FAVORITE_COMPANIES": [],
             "DAILY_DATE_PENALTY": 1.5,
@@ -152,6 +152,128 @@ class TestDatePenalty(unittest.TestCase):
         score_future = calculate_score(job_future, self.base_config)
         score_today = calculate_score(self._make_job(days_old=0), self.base_config)
         self.assertEqual(score_future, score_today)
+
+    def test_degree_years_does_not_penalize(self):
+        # "Bachelor degree (4 years)" should not trigger an experience penalty
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        job_normal = self._make_job(days_old=0, extra_skills="")
+        job_degree = self._make_job(days_old=0, extra_skills="Requirements: Bachelor degree in Computer Science (4 years).")
+        score_normal = calculate_score(job_normal, cfg)
+        score_degree = calculate_score(job_degree, cfg)
+        self.assertEqual(score_normal, score_degree)
+
+    def test_fresh_grad_zero_to_two_years_zero_penalty(self):
+        # "0-2 years of experience" must be recognized as min 0 years, giving 0 penalty for user_exp=0
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        job_normal = self._make_job(days_old=0, extra_skills="")
+        job_range = self._make_job(days_old=0, extra_skills="Requirements: 0-2 years of relevant experience.")
+        score_normal = calculate_score(job_normal, cfg)
+        score_range = calculate_score(job_range, cfg)
+        self.assertEqual(score_normal, score_range)
+
+    def test_experience_penalty_five_per_year(self):
+        # 2 years required experience when candidate has 0 years should dock 2 * 5 = 10 points
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        job_normal = self._make_job(days_old=0, extra_skills="")
+        job_2y = self._make_job(days_old=0, extra_skills="Requirements: 2 years of experience.")
+        score_normal = calculate_score(job_normal, cfg)
+        score_2y = calculate_score(job_2y, cfg)
+        self.assertEqual(score_normal - score_2y, 10)
+
+    def test_range_experience_with_to_zero_penalty(self):
+        # "0 to 2 years of experience" should register min 0 years
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        job_normal = self._make_job(days_old=0, extra_skills="")
+        job_range = self._make_job(days_old=0, extra_skills="Requirements: 0 to 2 years of experience.")
+        score_normal = calculate_score(job_normal, cfg)
+        score_range = calculate_score(job_range, cfg)
+        self.assertEqual(score_normal, score_range)
+
+    def test_seniority_in_title_penalizes_fifty(self):
+        cfg = dict(self.base_config)
+        cfg["EXCLUDE_KEYWORDS"] = ["senior", "lead", "manager"]
+        job_senior_title = self._make_job(days_old=0, title="Senior AI Engineer", extra_skills="")
+        job_junior_title = self._make_job(days_old=0, title="Junior AI Engineer", extra_skills="")
+        score_senior = calculate_score(job_senior_title, cfg)
+        score_junior = calculate_score(job_junior_title, cfg)
+        self.assertEqual(score_senior, 0)
+        self.assertGreater(score_junior, 40)
+
+    def test_seniority_in_desc_does_not_penalize(self):
+        cfg = dict(self.base_config)
+        cfg["EXCLUDE_KEYWORDS"] = ["senior", "lead", "manager", "head"]
+        job_clean = self._make_job(days_old=0, title="Junior AI Engineer", extra_skills="")
+        job_with_hierarchy = self._make_job(
+            days_old=0,
+            title="Junior AI Engineer",
+            extra_skills="You will report to the Data Science Manager, work with the team lead, and collaborate with senior engineers."
+        )
+        score_clean = calculate_score(job_clean, cfg)
+        score_hierarchy = calculate_score(job_with_hierarchy, cfg)
+        # Seniority keywords in description should NOT dock points
+        self.assertEqual(score_clean, score_hierarchy)
+
+    def test_domain_exclude_in_desc_penalizes(self):
+        cfg = dict(self.base_config)
+        cfg["EXCLUDE_KEYWORDS"] = ["sales", "cold calling"]
+        job_clean = self._make_job(days_old=0, title="Junior AI Engineer", extra_skills="")
+        job_with_sales = self._make_job(
+            days_old=0,
+            title="Junior AI Engineer",
+            extra_skills="This role also includes direct business sales responsibilities."
+        )
+        score_clean = calculate_score(job_clean, cfg)
+        score_sales = calculate_score(job_with_sales, cfg)
+        # Non-seniority domain exclude in description docks 15 points
+        self.assertEqual(score_clean - score_sales, 15)
+
+    def test_company_age_five_or_ten_years_ignored(self):
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        job_clean = self._make_job(days_old=0, extra_skills="")
+        job_company_10y = self._make_job(days_old=0, extra_skills="We are an innovative tech company with 10 years experience in the market.")
+        job_company_5y = self._make_job(days_old=0, extra_skills="Our team has 5 years of experience delivering top-tier solutions.")
+        score_clean = calculate_score(job_clean, cfg)
+        score_10y = calculate_score(job_company_10y, cfg)
+        score_5y = calculate_score(job_company_5y, cfg)
+        self.assertEqual(score_clean, score_10y)
+        self.assertEqual(score_clean, score_5y)
+
+    def test_company_mention_with_candidate_requirement_penalizes(self):
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        job_clean = self._make_job(days_old=0, extra_skills="")
+        job_req = self._make_job(days_old=0, extra_skills="We are seeking an AI Engineer with 3+ years experience.")
+        score_clean = calculate_score(job_clean, cfg)
+        score_req = calculate_score(job_req, cfg)
+        self.assertEqual(score_clean - score_req, 15)
+
+    def test_competition_and_hackathon_recognized_as_scholarship(self):
+        cfg = dict(self.base_config)
+        job_comp = {
+            "job_id": "test_comp",
+            "title": "AI Innovation Competition 2026",
+            "company": "Tech Foundation",
+            "location": "Cairo, Egypt",
+            "date_posted": date.today().isoformat(),
+            "description": "Annual student competition for deep learning.",
+            "job_type": "competition"
+        }
+        score = calculate_score(job_comp, cfg)
+        self.assertGreater(score, 0)
+
+    def test_bachelor_duration_stripped_with_real_experience(self):
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        job_clean = self._make_job(days_old=0, extra_skills="")
+        job_both = self._make_job(days_old=0, extra_skills="Requirements: Bachelor degree in CS (4 years) with 2 years experience.")
+        score_clean = calculate_score(job_clean, cfg)
+        score_both = calculate_score(job_both, cfg)
+        self.assertEqual(score_clean - score_both, 10)
 
 if __name__ == "__main__":
     unittest.main()

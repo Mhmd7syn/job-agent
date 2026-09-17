@@ -7,6 +7,13 @@ import time
 import unicodedata
 from datetime import date, datetime
 from core.database import DB_PATH
+from core.career_levels import expand_levels, get_excluded_levels
+
+SENIORITY_EXCLUDE_KEYWORDS = {
+    "senior", "lead", "manager", "principal", "head", "director", "sr",
+    "staff", "expert", "phd", "architect", "vp", "executive", "mid-level",
+    "intermediate"
+}
 
 def load_latest_config():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +31,9 @@ def calculate_score(row, config=None, apply_date_penalty=True):
         config = load_latest_config()
 
     title = str(row.get('title', '')).lower()
+    raw_title = str(row.get('title', ''))
     desc = str(row.get('description', '')).lower()
+    raw_desc = str(row.get('description', ''))
     company = str(row.get('company', '')).lower()
     job_type_val = str(row.get('job_type', '')).lower()
     career_level_val = str(row.get('career_level', '')).lower() if 'career_level' in row else ''
@@ -41,175 +50,206 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     )
 
     roles = config.get("ROLES", [])
-    search_terms = []
-    arabic_search_terms = []
+    all_search_terms = []
     for role in roles:
-        search_terms.extend(role.get("english_terms", []))
-        arabic_search_terms.extend(role.get("arabic_terms", []))
-    if not search_terms:
-        search_terms = config.get("SEARCH_TERMS", [])
-    if not arabic_search_terms:
-        arabic_search_terms = config.get("ARABIC_SEARCH_TERMS", [])
+        all_search_terms.extend(role.get("english_terms", role.get("terms", [])))
+    if not all_search_terms:
+        all_search_terms = config.get("SEARCH_TERMS", [])
 
     resume_keywords = config.get("RESUME_KEYWORDS", [])
     exclude_keywords = config.get("EXCLUDE_KEYWORDS", [])
-    excluded_companies = [c.lower() for c in config.get("EXCLUDED_COMPANIES", [])]
-    favorite_companies = [c.lower() for c in config.get("FAVORITE_COMPANIES", [])]
+    excluded_companies = [c.lower() for c in config.get("EXCLUDED_COMPANIES", []) if c.strip()]
+    favorite_companies = [c.lower() for c in config.get("FAVORITE_COMPANIES", []) if c.strip()]
     target_locations = [l.lower() for l in config.get("TARGET_LOCATIONS", ["cairo", "giza", "maadi", "nasr city", "new cairo"])]
-    target_levels = [l.lower() for l in config.get("TARGET_LEVELS", ["junior", "fresh", "student", "intern", "entry"])]
+    target_levels_cfg = config.get("TARGET_LEVELS", ["Intern / Student", "Fresh Graduate / Entry-level", "Junior"])
+    level_exclude_cfg = config.get("LEVEL_EXCLUDE", None)
+
+    target_level_synonyms = expand_levels(target_levels_cfg)
+    if level_exclude_cfg is not None:
+        excluded_level_synonyms = expand_levels(level_exclude_cfg)
+    else:
+        excluded_categories = get_excluded_levels(target_levels_cfg)
+        excluded_level_synonyms = expand_levels(excluded_categories)
+
+    # Disregard any excluded synonym if it's already covered in target levels
+    effective_excluded_synonyms = excluded_level_synonyms - target_level_synonyms
+
     restricted_remote_keywords = [k.lower() for k in config.get("RESTRICTED_REMOTE_KEYWORDS", ['us only', 'uk only', 'eu only', 'united states', 'us applicants', 'us citizen', 'us citizenship'])]
-    global_remote_keywords = [k.lower() for k in config.get("GLOBAL_REMOTE_KEYWORDS", ['africa', 'middle east', 'mena', 'worldwide', 'global'])]
 
-    score = 0
-
-    # 1. Negative Filtering: Excluded Companies
+    # -------------------------------------------------------------
+    # STAGE 1: Hard Disqualification Gate
+    # -------------------------------------------------------------
     if any(comp in company for comp in excluded_companies):
-        return -100
+        return 0
 
-    # 2. Negative Filtering: Excluded Keywords
+    full_loc_desc = f"{loc_val} {title} {desc}"
+    if any(r in full_loc_desc for r in restricted_remote_keywords):
+        return 0
+
+    # Career Level Scope
+    level_scope = f"{title} {job_type_val} {career_level_val}"
+    # Guard against phrases like "non-manager" or "non manager" triggering false positive on "manager"
+    clean_level_scope = re.sub(r'\bnon[-\s]manager\b', '', level_scope, flags=re.IGNORECASE)
+
+    # Hard Disqualification: Seniority level in LEVEL_EXCLUDE
+    for syn in effective_excluded_synonyms:
+        if not syn:
+            continue
+        syn_pat = re.compile(r'\b' + re.escape(syn) + r'\b', re.IGNORECASE)
+        if syn_pat.search(clean_level_scope):
+            return 0
+
+    # Excluded seniority or title keywords in Title / Career Level
     for kw in exclude_keywords:
         if not kw:
             continue
-        pat = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
-        if pat.search(title):
-            score -= 50
-        elif pat.search(job_type_val) or pat.search(career_level_val):
-            score -= 40
-        elif pat.search(desc):
-            score -= 15
-
-    # 3. Positive Matching: Search Terms / Roles
-    has_term_match = False
-    for term in search_terms:
-        term_lower = term.lower()
-        if term_lower in title:
-            score += 20
-            has_term_match = True
-            break
-        elif term_lower in desc:
-            score += 5
-            has_term_match = True
-            break
-
-    raw_title = str(row.get('title', ''))
-    raw_desc = str(row.get('description', ''))
-    for term in arabic_search_terms:
-        if term in raw_title:
-            score += 20
-            has_term_match = True
-            break
-        elif term in raw_desc:
-            score += 5
-            has_term_match = True
-            break
+        kw_clean = kw.strip().lower()
+        pat = re.compile(r'\b' + re.escape(kw_clean) + r'\b', re.IGNORECASE)
+        if pat.search(title) or (kw_clean in SENIORITY_EXCLUDE_KEYWORDS and pat.search(clean_level_scope)):
+            return 0
 
     is_scholarship = (
-        job_type_val == 'scholarship'
+        job_type_val in ('scholarship', 'competition', 'hackathon')
         or row.get('is_scholarship') is True
         or str(row.get('is_scholarship')).lower() == 'true'
-        or any(k in f"{title} {job_type_val}" for k in ['scholarship', 'fellowship', 'منحة'])
+        or any(k in f"{title} {job_type_val}" for k in [
+            'scholarship', 'fellowship', 'competition', 'hackathon'
+        ])
     )
 
-    # 4. Positive Matching: Resume Skills (Awarded strictly once per unique keyword)
-    matched_skills = 0
+    # -------------------------------------------------------------
+    # STAGE 2: Core Technical Relevance Gate
+    # -------------------------------------------------------------
+    tech_score = 0
+
+    # Role terms in title (+20) or description (+5)
+    role_matched = False
+    for term in all_search_terms:
+        if not term:
+            continue
+        term_clean = term.strip().lower()
+        if term_clean in title:
+            tech_score += 20
+            role_matched = True
+            break
+    if not role_matched:
+        for term in all_search_terms:
+            if not term:
+                continue
+            term_clean = term.strip().lower()
+            if term_clean in desc:
+                tech_score += 5
+                break
+
+    # Technical Skills in title (+8) or description (+3)
     for kw in resume_keywords:
         if not kw:
             continue
         pat = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         if pat.search(title):
-            score += 8
-            matched_skills += 1
+            tech_score += 8
         elif pat.search(desc):
-            score += 3
-            matched_skills += 1
+            tech_score += 3
 
-    # Zero baseline: If a job matches fewer than MIN_MATCHED_SKILLS (default 2) resume skills, it is unrelated (score = 0)
-    min_skills = config.get("MIN_MATCHED_SKILLS", 2)
-    if matched_skills < min_skills:
-        if not is_scholarship:
-            return 0
+    # SIMPLE GATE: If no technical match at all, STOP!
+    # Non-tech roles (Accountants, HR, Sales) die here without receiving generic boosts.
+    if tech_score == 0 and not is_scholarship:
+        return 0
 
+    score = tech_score
 
-    # 5. Experience Penalty (Smooth Relative formula)
-    user_exp = 1
+    # -------------------------------------------------------------
+    # STAGE 3: Contextual Boosts (Only for Verified Technical Jobs)
+    # -------------------------------------------------------------
+    # Target Seniority Level Boost
+    for lvl in target_level_synonyms:
+        if not lvl:
+            continue
+        lvl_pat = re.compile(r'\b' + re.escape(lvl) + r'\b', re.IGNORECASE)
+        if lvl_pat.search(clean_level_scope):
+            score += 15
+            break
+
+    # Favorite Companies Boost
+    if any(comp in company for comp in favorite_companies):
+        score += 15
+
+    # Location check: fair +5 for Target Location OR Remote
+    normalized_loc = unicodedata.normalize('NFKD', loc_val).encode('ascii', 'ignore').decode('utf-8')
+    matches_target_loc = any(target in loc_val or target in normalized_loc for target in target_locations)
+
+    if matches_target_loc or is_remote:
+        score += 5
+
+    # Location Gate: Reject in-person jobs located outside target country (e.g. on-site Germany/UK)
+    if not is_scholarship and not matches_target_loc and not is_remote:
+        return 0
+
+    # Domain Exclude Keywords in Description (e.g. Sales, Cold Calling)
+    for kw in exclude_keywords:
+        if not kw:
+            continue
+        kw_clean = kw.strip().lower()
+        if kw_clean not in SENIORITY_EXCLUDE_KEYWORDS:
+            pat = re.compile(r'\b' + re.escape(kw_clean) + r'\b', re.IGNORECASE)
+            if pat.search(desc):
+                score -= 15
+
+    # Experience Penalty (5 points per year gap)
+    user_exp = 0
     for role in roles:
-        role_terms = [t.lower() for t in role.get('english_terms', [])] + [t.lower() for t in role.get('arabic_terms', [])]
+        role_terms = [t.lower() for t in role.get('english_terms', role.get('terms', []))]
         if any(term in title for term in role_terms):
-            user_exp = role.get('years_experience', role.get('max_years_experience', 1))
+            user_exp = role.get('years_experience', 0)
             break
 
     extracted_exp = []
-    text_to_check = f"{desc} {career_level_val} {title}"
-    for min_y, _ in re.findall(r'\b(\d+)\s*(?:-|–|\s+to\s+)\s*(\d+)\s*(?:years?|yrs?)', text_to_check):
-        try: extracted_exp.append(int(min_y))
-        except ValueError: pass
-    for y in re.findall(r'\b(\d+)\+?\s*(?:years?|yrs?)\b', text_to_check):
-        try: extracted_exp.append(int(y))
-        except ValueError: pass
-    for y in re.findall(r'\b(?:minimum|at\s+least|min\.?)\s*(\d+)\+?\s*(?:years?|yrs?)', text_to_check):
-        try: extracted_exp.append(int(y))
-        except ValueError: pass
-    for min_y, _ in re.findall(r'خبرة\s*(?:من\s+)?(\d+)\s*(?:إلى|-|–)\s*(\d+)\s*(?:سنوات|سنين|سنة)', text_to_check):
-        try: extracted_exp.append(int(min_y))
-        except ValueError: pass
-    for y1, y2 in re.findall(r'(?:خبرة\s*(?:لا\s*تقل\s*عن)?\s*(\d+)|(\d+)\s*(?:سنوات|سنين|سنة)\s*(?:من\s+)?خبرة)', text_to_check):
-        y = y1 or y2
-        if y:
-            try: extracted_exp.append(int(y))
-            except ValueError: pass
+    text_to_check = f"{desc}\n{career_level_val}\n{title}"
+    sentences = re.split(r'[\n\.\;\•\*\!\?]+', text_to_check)
 
-    extracted_exp = [x for x in extracted_exp if 1 <= x <= 15]
+    company_indicators = [
+        'about us', 'who we are', 'our company', 'the company', 'we are', 'we have been',
+        'founded', 'established', 'in the market', 'our team', 'our organization',
+        'serving clients', 'industry leader', 'history of', 'track record of'
+    ]
+    req_indicators = [
+        'required', 'requirement', 'requirements', 'must', 'minimum', 'at least',
+        'looking for', 'seeking', 'candidate', 'applicant', 'qualification', 'qualifications',
+        'should have', 'plus', 'preferred'
+    ]
+
+    for sentence in sentences:
+        s_clean = sentence.strip()
+        s_lower = s_clean.lower()
+        if not s_clean:
+            continue
+        if any(kw in s_lower for kw in ['experience', 'exp']):
+            # Filter out company background descriptions that lack candidate requirement cues
+            if any(ci in s_lower for ci in company_indicators) and not any(ri in s_lower for ri in req_indicators):
+                continue
+
+            # Strip leading list numbers like "1.", "2)", "- "
+            s_clean_text = re.sub(r'^\s*\d+[\.\)\-]\s*', '', s_clean)
+
+            # Extract numbers from the sentence (< 40 to avoid calendar years like 2024 or phone numbers)
+            # min(nums) naturally handles both single numbers (e.g. [2] -> 2) and ranges (e.g. [0, 2] -> 0)
+            nums = [int(n) for n in re.findall(r'\b\d+\b', s_clean_text) if int(n) < 40]
+            if nums:
+                extracted_exp.append(min(nums))
+
     if extracted_exp:
         min_req_exp = min(extracted_exp)
         diff = min_req_exp - user_exp
         if diff > 0:
-            score -= diff * 30
+            score -= diff * 5
 
-    # 6. Target Level Boost (Checked on structured title/job_type/career_level only)
-    level_scope = f"{title} {job_type_val} {career_level_val}"
-    for lvl in target_levels:
-        if not lvl:
-            continue
-        lvl_pat = re.compile(r'\b' + re.escape(lvl) + r'\b', re.IGNORECASE)
-        if lvl_pat.search(level_scope):
-            score += 15
-            break
-
-    # 7. Favorite Companies Boost
-    if any(comp in company for comp in favorite_companies):
-        score += 15
-
-    # 8. Target Location & Remote Eligibility
-    full_loc_desc = f"{loc_val} {title} {desc}"
-    if any(r in full_loc_desc for r in restricted_remote_keywords):
-        score -= 100
-
-    normalized_loc = unicodedata.normalize('NFKD', loc_val).encode('ascii', 'ignore').decode('utf-8')
-    matches_target_loc = any(target in loc_val or target in normalized_loc for target in target_locations)
-
-    if matches_target_loc:
-        score += 5
-
-    if is_remote:
-        score += 5
-        if any(g in full_loc_desc for g in global_remote_keywords):
-            score += 5
-
-    # Location Gate: Job MUST be located in target locations (Egypt) OR be Remote.
-    # Discard foreign in-person / on-site jobs (e.g., Melbourne, Madrid, Bordeaux, San Diego).
-    # Exception: Scholarships are often international/study-abroad programs and bypass this local gate.
-    if not is_scholarship and not matches_target_loc and not is_remote:
-        return 0
-
-    # Discard non-relevant jobs before applying date adjustments
-    if score <= 0:
-        return 0
-
-    # If date penalty is disabled (e.g. for base relevance eligibility), return base score directly
+    # If date penalty is disabled, return base score directly
     if not apply_date_penalty:
         return int(score)
 
-    # 9. Dynamic Daily Date Penalty (Negative score according to date posted)
+    # -------------------------------------------------------------
+    # STAGE 4: Recency / Daily Date Penalty
+    # -------------------------------------------------------------
     post_date_raw = row.get('date_posted')
     if post_date_raw:
         try:
@@ -227,7 +267,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
         except Exception as e:
             logging.debug(f"Date parsing failed for '{post_date_raw}': {e}")
 
-    # No artificial floor value applied: raw age-decayed score is returned
+    # Raw score returned without artificial floor; score <= 0 simply ranks at the bottom
     return int(score)
 
 def is_valid_job(row, base_score=None, config=None):
@@ -244,36 +284,17 @@ def rescore_all_jobs():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    cursor.execute("SELECT * FROM jobs")
+    cursor.execute("SELECT * FROM jobs WHERE status IN ('pending', 'liked', 'not_related')")
     rows = cursor.fetchall()
     
     jobs_to_update = []
-    jobs_to_delete = []
     
     for row in rows:
         job_dict = dict(row)
         job_id = job_dict['job_id']
-        status = job_dict.get('status', 'pending')
-        is_applied = job_dict.get('is_applied', 0)
-        is_scholarship_job = (
-            job_dict.get('job_type', '').lower() == 'scholarship'
-            or str(job_dict.get('is_scholarship', '')).lower() in ('true', '1')
-        )
-        
         final_score = calculate_score(job_dict, config=config, apply_date_penalty=True)
-
-        # Prune pending jobs that are not relevant (score <= 0 due to skills/location/exclusions or age decay)
-        # Note: Liked jobs, Applied jobs, and Scholarships are protected from pruning
-        if status == 'pending' and not is_scholarship_job and is_applied != 1:
-            if final_score <= 0:
-                jobs_to_delete.append((job_id,))
-            else:
-                jobs_to_update.append((final_score, job_id))
-        else:
-            jobs_to_update.append((final_score, job_id))
+        jobs_to_update.append((final_score, job_id))
             
-    if jobs_to_delete:
-        cursor.executemany("DELETE FROM jobs WHERE job_id = ?", jobs_to_delete)
     if jobs_to_update:
         cursor.executemany("UPDATE jobs SET relevance_score = ? WHERE job_id = ?", jobs_to_update)
         
@@ -281,10 +302,10 @@ def rescore_all_jobs():
     conn.close()
     
     duration = round(time.time() - t0, 3)
-    logging.info(f"Rescored {len(jobs_to_update)} jobs, pruned {len(jobs_to_delete)} jobs in {duration}s")
+    logging.info(f"Rescored {len(jobs_to_update)} jobs in {duration}s")
     return {
         "status": "success",
         "rescored": len(jobs_to_update),
-        "removed": len(jobs_to_delete),
+        "removed": 0,
         "duration_seconds": duration
     }

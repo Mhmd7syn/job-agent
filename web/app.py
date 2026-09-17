@@ -92,17 +92,6 @@ def add_job_by_url_endpoint(req: AddJobByUrlRequest):
         is_scholarship = req.is_scholarship or job_dict.get('job_type') == 'Scholarship'
         score = job_dict.get('relevance_score', 0)
 
-        # If job scores 0 or less and is not a scholarship, prune it immediately
-        if not is_scholarship and score <= 0:
-            delete_job_by_id(job_dict.get("job_id"))
-            return {
-                "status": "pruned",
-                "score": score,
-                "title": job_dict.get("title"),
-                "company": job_dict.get("company"),
-                "detail": f"Job '{job_dict.get('title')}' at '{job_dict.get('company')}' scored 0% (outside target career criteria or location) and was pruned."
-            }
-
         saved_job, is_new = save_or_update_job(job_dict, force_pending=True)
         return {
             "status": "success",
@@ -115,9 +104,11 @@ def add_job_by_url_endpoint(req: AddJobByUrlRequest):
         logging.error(f"Error adding job by URL: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to scrape job: {str(e)}")
 
+CONFIG_JSON_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'core', 'config.json')
+
 @app.get("/api/config")
 def get_config():
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'core', 'config.json')
+    config_path = CONFIG_JSON_PATH
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -126,19 +117,22 @@ def get_config():
 
 @app.post("/api/config")
 async def update_config(request: Request, background_tasks: BackgroundTasks):
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'core', 'config.json')
+    config_path = CONFIG_JSON_PATH
     try:
         new_config = await request.json()
         new_config["last_reviewed_date"] = datetime.now().strftime("%Y-%m-%d")
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(new_config, f, indent=2, ensure_ascii=False)
         
+        app_config.reload_config()
+
         # Automatically rescore all jobs in the background with updated preferences
         background_tasks.add_task(rescore_all_jobs)
 
         return {"status": "success", "last_reviewed_date": new_config["last_reviewed_date"]}
     except Exception as e:
         logging.error(f"Error updating config: {e}")
+        return {"status": "error", "error": str(e)}
 class TelegramConfigRequest(BaseModel):
     bot_token: str = Field(default="")
     chat_id: str = Field(default="")

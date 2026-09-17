@@ -812,3 +812,78 @@ header {
     font-size: 0.8rem;
     color: var(--text-muted);
 }
+
+/* Career Seniority Levels Checkbox Grid */
+.career-levels-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.career-level-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--input-bg, rgba(15, 23, 42, 0.6));
+    border: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.career-level-card:hover {
+    border-color: var(--primary, #38bdf8);
+    background: rgba(56, 189, 248, 0.08);
+}
+
+.career-level-card.checked {
+    border-color: var(--primary, #38bdf8);
+    background: rgba(56, 189, 248, 0.14);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+}
+
+.career-level-left {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex: 1;
+}
+
+.career-level-card input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+    accent-color: var(--primary, #38bdf8);
+    cursor: pointer;
+}
+
+.career-level-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-main, #f8fafc);
+}
+
+.career-level-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.35rem;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.career-level-badge.badge-target {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.career-level-badge.badge-exclude {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+

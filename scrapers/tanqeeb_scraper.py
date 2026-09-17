@@ -9,9 +9,11 @@ import random
 import datetime
 import logging
 import re
+import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
+from core.job_utils import normalize_job_dict
 
 _IMPERSONATE_PROFILES = ["chrome120", "chrome110", "chrome107", "edge99", "safari15_5"]
 
@@ -37,7 +39,7 @@ def fetch_tanqeeb_full_description(job_url):
     if not job_url or 'egypt.tanqeeb.com/jobs/search' in job_url:
         return ""
     try:
-        response = fetch_with_retries(job_url, retries=2, timeout=6)
+        response = fetch_with_retries(job_url, retries=1, timeout=5)
         if response and response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             desc_div = (
@@ -101,7 +103,9 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
     cutoff = (datetime.datetime.now() - datetime.timedelta(hours=hours_old)).date() if hours_old else None
     
     page = 1
-    while len(jobs) < results_wanted and page <= 3:
+    candidates = []
+    seen_urls = set()
+    while len(candidates) < results_wanted and page <= 3:
         url = f"{base_url}&page_no={page}"
         response = fetch_with_retries(url)
         if not response:
@@ -129,7 +133,7 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
 
             added_in_page = 0
             for a_tag, card in cards_found:
-                if len(jobs) >= results_wanted:
+                if len(candidates) >= results_wanted:
                     break
 
                 href = a_tag['href']
@@ -138,8 +142,9 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                 elif not href.startswith('http'):
                     href = "https://egypt.tanqeeb.com/" + href
 
-                if is_job_seen(href):
+                if href in seen_urls or is_job_seen(href):
                     continue
+                seen_urls.add(href)
 
                 title = a_tag.text.strip()
                 if not title:
@@ -177,16 +182,13 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                 if cutoff and date_posted < cutoff:
                     continue
 
-                full_desc = fetch_tanqeeb_full_description(href) if href != url else ""
-                final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
-
-                jobs.append({
+                candidates.append({
                     'title': title,
                     'company': company,
                     'location': loc_val,
                     'job_url': href,
                     'job_type': 'Not specified',
-                    'description': final_desc,
+                    'description': card_desc,
                     'is_remote': 'remote' in search_term.lower() or 'remote' in str(loc_val).lower(),
                     'site': 'tanqeeb',
                     'date_posted': date_posted
@@ -201,6 +203,20 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
             break
             
         page += 1
+
+    jobs = []
+    def _fetch_desc(job):
+        try:
+            full_desc = fetch_tanqeeb_full_description(job['job_url']) if job['job_url'] != base_url else ""
+            if full_desc and len(full_desc) > len(job['description']):
+                job['description'] = full_desc
+        except Exception as e:
+            logging.debug(f"Tanqeeb desc fetch failed for {job['job_url']}: {e}")
+        return normalize_job_dict(job)
+
+    if candidates:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 5)) as executor:
+            jobs = list(executor.map(_fetch_desc, candidates))
         
     return pd.DataFrame(jobs)
 

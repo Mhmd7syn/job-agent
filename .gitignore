@@ -36,3 +36,4 @@ data/
 *.png
 
 /__pycache__
+ISSUES_QUEUE.md

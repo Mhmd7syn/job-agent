@@ -51,93 +51,15 @@ def detect_scraper_type(url: str) -> str:
         return "generic"
 
 
-def _make_job_id(title: str, company: str, job_url: str = "") -> str:
-    """Generates a clean, deterministic unique ID for the job."""
-    t = re.sub(r'[^\w\s]', ' ', str(title or '').lower()).strip()
-    c = re.sub(r'[^\w\s]', ' ', str(company or '').lower()).strip()
-    jid = f"{re.sub(r'\s+', ' ', t)}|{re.sub(r'\s+', ' ', c)}"
-    if len(jid.replace('|', '').strip()) < 3:
-        import hashlib
-        h = hashlib.md5((job_url or f"{title}_{company}").encode('utf-8')).hexdigest()[:12]
-        jid = f"job_{h}"
-    return jid
-
-
-def _fix_job_type(raw_type: str, title: str = "", desc: str = "", is_scholarship: bool = False) -> str:
-    """Normalizes job type into standard labels."""
-    if is_scholarship:
-        return "Scholarship"
-    combined = f"{raw_type} {title} {desc}".lower()
-    if any(k in combined for k in ["scholarship", "fellowship", "منحة", "منح", "grant"]):
-        return "Scholarship"
-    if any(k in combined for k in ["intern", "internship", "trainee", "working student"]):
-        return "Internship"
-    if any(k in combined for k in ["part time", "part-time", "دوام جزئي"]):
-        return "Part-time"
-    if any(k in combined for k in ["contract", "freelance", "عقد", "حر"]):
-        return "Contract"
-    if any(k in combined for k in ["full time", "full-time", "دوام كامل", "permanent"]):
-        return "Full-time"
-    return (raw_type.strip().title() if raw_type and raw_type.lower() not in ["not specified", "unknown", "nan"] else "Not specified")
-
-
-
-def _fix_is_remote(location: str, title: str = "", desc: str = "", raw_is_remote: bool = False) -> bool:
-    """Determines whether the job is remote."""
-    if raw_is_remote is True or str(raw_is_remote).lower() == "true":
-        return True
-    combined = f"{location} {title} {desc}".lower()
-    return any(k in combined for k in ["remote", "work from home", "عن بعد", "العمل من المنزل", "telecommute", "wfh"])
-
-
-def _extract_company_from_desc(desc: str) -> str:
-    """Attempts regex extraction of real company names if marked Confidential/Unknown."""
-    generic_names = {'nan', 'confidential', 'unknown', 'not specified', 'not mentioned', 'staffing and recruiting', 'client', 'our client', 'a leading client', 'our multinational client', 'the company'}
-    match = re.search(r'\b([A-Z][A-Za-z0-9\.\-\s&]{1,30}?)\s+(?:is\s+)?(?:looking|seeking|hiring|searching|recruiting)\s+(?:for|to|a|an)\b', desc[:800])
-    if match:
-        extracted = match.group(1).strip()
-        ignore_words = ['we', 'our', 'the', 'this', 'here', 'currently', 'an', 'a', 'our client', 'client', 'someone', 'who', 'they', 'he', 'she']
-        if extracted.lower() not in ignore_words and not any(gw in extracted.lower() for gw in ['our client', 'leading client', 'multinational', 'reputable company']):
-            return extracted
-    match_about = re.search(r'(?:^|\n|\.\s+)\s*About\s+([A-Z][A-Za-z0-9\.\-\s&]{2,30}?)(?:\s*:|\s*\.|\s*\n|\s+is|\s+was|\s+-)', desc)
-    if match_about:
-        extracted = match_about.group(1).strip()
-        if extracted.lower() not in ['this job', 'the role', 'us', 'our company', 'the company', 'the position', 'the team', 'the client'] and not any(gw in extracted.lower() for gw in ['our client', 'leading client']):
-            return extracted
-    return ""
-
-
-def _parse_relative_date(date_str: str) -> str:
-    """Parses relative time strings like '5 days ago', '1 week ago', 'أمس' into YYYY-MM-DD."""
-    today = datetime.date.today()
-    if not date_str:
-        return today.isoformat()
-    ds = date_str.lower().strip()
-    try:
-        # Match direct YYYY-MM-DD
-        m_iso = re.search(r'(\d{4}-\d{2}-\d{2})', ds)
-        if m_iso:
-            return m_iso.group(1)
-        # Months
-        m_month = re.search(r'(\d+)\s*(?:month|months|شهر|أشهر)', ds)
-        if m_month:
-            return (today - datetime.timedelta(days=int(m_month.group(1)) * 30)).isoformat()
-        # Weeks
-        m_week = re.search(r'(\d+)\s*(?:w|week|weeks|أسبوع|أسابيع)', ds)
-        if m_week:
-            return (today - datetime.timedelta(days=int(m_week.group(1)) * 7)).isoformat()
-        # Days
-        m_day = re.search(r'(\d+)\s*(?:d|day|days|يوم|أيام)', ds)
-        if m_day:
-            return (today - datetime.timedelta(days=int(m_day.group(1)))).isoformat()
-        # Hours / minutes / today / yesterday
-        if any(w in ds for w in ['yesterday', 'أمس', 'امس']):
-            return (today - datetime.timedelta(days=1)).isoformat()
-        if any(w in ds for w in ['today', 'hour', 'ساعة', 'دقيقة', 'minute', 'just now']):
-            return today.isoformat()
-    except Exception:
-        pass
-    return today.isoformat()
+from core.job_utils import (
+    make_job_id as _make_job_id,
+    normalize_job_type as _fix_job_type,
+    normalize_is_remote as _fix_is_remote,
+    extract_company_from_desc as _extract_company_from_desc,
+    parse_job_date as _parse_relative_date,
+    normalize_job_dict,
+    score_job_dict,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -612,43 +534,13 @@ def scrape_job_from_url(url: str, scraper_type: str = "auto", raw_text: str = ""
     if not raw_job or not raw_job.get("title"):
         raise ValueError("Could not extract job title and details from this link.")
 
-    title = str(raw_job.get("title", "Unknown")).strip()
-    company = str(raw_job.get("company", "Unknown")).strip()
-    location = str(raw_job.get("location", "Not specified")).strip()
-    description = str(raw_job.get("description", "")).strip()
-    job_type = _fix_job_type(raw_job.get("job_type", "Not specified"), title, description, is_scholarship=has_scholarship_tag)
-    site = raw_job.get("site") or detect_scraper_type(url)
-    job_url = url or raw_job.get("job_url", "")
+    raw_job["job_url"] = url or raw_job.get("job_url", "")
+    raw_job["site"] = raw_job.get("site") or detect_scraper_type(url)
+    if is_scholarship or has_scholarship_tag:
+        raw_job["is_scholarship"] = True
 
-    # Clean company if generic
-    if company.lower() in ["unknown", "confidential", "nan", ""]:
-        extracted_comp = _extract_company_from_desc(description)
-        if extracted_comp:
-            company = extracted_comp
-
-    is_remote = _fix_is_remote(location, title, description, raw_job.get("is_remote", False))
-    date_posted = _parse_relative_date(str(raw_job.get("date_posted", "")))
-    job_id = _make_job_id(title, company, job_url)
-
-    job_dict = {
-        "job_id": job_id,
-        "title": title,
-        "company": company,
-        "location": location,
-        "job_url": job_url,
-        "job_type": job_type,
-        "date_posted": date_posted,
-        "site": site,
-        "description": description,
-        "is_remote": is_remote,
-        "is_scholarship": has_scholarship_tag,
-        "status": "pending",
-        "is_applied": 0
-    }
-
-    # Calculate match score based on user's current configuration
-    config = load_latest_config()
-    score = calculate_score(job_dict, config=config)
-    job_dict["relevance_score"] = float(score)
+    job_dict = normalize_job_dict(raw_job)
+    score_job_dict(job_dict, config=load_latest_config())
+    job_dict["relevance_score"] = float(job_dict["relevance_score"])
 
     return job_dict

@@ -45,12 +45,13 @@ def save_job(job_dict):
     cursor = conn.cursor()
     
     now = datetime.now().isoformat()
+    status = job_dict.get('status', 'pending')
     
     # Insert or ignore (if it already exists, we might not want to overwrite its status)
     cursor.execute("""
         INSERT OR IGNORE INTO jobs 
         (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         job_dict.get('job_id', ''),
         job_dict.get('title', ''),
@@ -62,6 +63,7 @@ def save_job(job_dict):
         job_dict.get('site', ''),
         job_dict.get('relevance_score', 0),
         job_dict.get('description', ''),
+        status,
         now
     ))
     
@@ -74,6 +76,53 @@ def save_job(job_dict):
 
     conn.commit()
     conn.close()
+
+def save_dropped_jobs(job_records):
+    """
+    Saves minimal records (job_id, job_url, date_posted, timestamp) with status='filtered'
+    and empty description for jobs dropped during preliminary scoring stages.
+    Prevents re-scraping via is_job_seen() while allowing normal cleanup via retention days.
+    """
+    if not job_records:
+        return 0
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    
+    rows_to_insert = []
+    for j in job_records:
+        job_url = j.get('job_url', '')
+        if not job_url:
+            continue
+        job_id = j.get('job_id') or j.get('id') or job_url
+        date_posted = str(j.get('date_posted', '')) if j.get('date_posted') is not None else ''
+        title = j.get('title', '')
+        company = j.get('company', '')
+        site = j.get('site', '')
+        rows_to_insert.append((
+            job_id,
+            title,
+            company,
+            '',
+            job_url,
+            '',
+            date_posted,
+            site,
+            0,
+            '',
+            'filtered',
+            now
+        ))
+
+    cursor.executemany("""
+        INSERT OR IGNORE INTO jobs 
+        (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, rows_to_insert)
+    inserted_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return inserted_count
 
 def save_or_update_job(job_dict, force_pending=True):
     """
@@ -166,7 +215,6 @@ def get_jobs_by_status(status_list):
     cursor.execute(f"""
         SELECT * FROM jobs 
         WHERE status IN ({placeholders})
-          AND (status != 'pending' OR relevance_score > 0 OR job_type = 'Scholarship' OR is_applied = 1)
         ORDER BY relevance_score DESC, date_posted DESC
     """, status_list)
     rows = cursor.fetchall()

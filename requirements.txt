@@ -15,3 +15,6 @@ cryptography
 pypdf
 python-docx
 python-multipart
+seleniumbase
+python-jobspy
+pytest

@@ -400,22 +400,6 @@ def process_message(bot_token: str, message: Dict[str, Any], allowed_chat_id: Op
                 company = job_dict.get("company") or "Unknown Company"
                 location = job_dict.get("location") or "Not Specified"
 
-                # If job scores 0 or less and is neither Liked, Applied, nor a Scholarship, prune it immediately
-                if not is_liked and not is_applied and not is_scholarship and score <= 0:
-                    delete_job_by_id(job_dict.get("job_id"))
-                    results.append({
-                        "status": "pruned",
-                        "title": title,
-                        "company": company,
-                        "location": location,
-                        "score": score,
-                        "url": job_url,
-                        "is_scholarship": False,
-                        "is_liked": False,
-                        "is_applied": False
-                    })
-                    continue
-
                 saved_job, is_new = save_or_update_job(job_dict, force_pending=force_pending)
 
                 title = saved_job.get("title") or "Unknown Title"

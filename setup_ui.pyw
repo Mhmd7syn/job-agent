@@ -13,6 +13,7 @@ import urllib.request
 import zipfile
 import re
 import ast
+from core.career_levels import normalize_category_name, CAREER_LEVEL_CATEGORIES
 
 # Windows creation flag to hide console window when invoking subprocesses
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
@@ -851,8 +852,11 @@ class SetupWizard(tk.Tk):
                 sub_locs = [l.strip() for l in self.cities_var.get().split(",") if l.strip()]
                 cpy = re.sub(r'TARGET_LOCATIONS\s*=\s*\[.*?\]', f'TARGET_LOCATIONS = {json.dumps(sub_locs, ensure_ascii=False, indent=4)}', cpy, flags=re.DOTALL)
                 
-                levels = [l.strip() for l in self.levels_var.get().split(",") if l.strip()]
+                raw_levels = [l.strip() for l in self.levels_var.get().split(",") if l.strip()]
+                levels = [normalize_category_name(l) for l in raw_levels if normalize_category_name(l)]
+                level_exclude = [c for c in CAREER_LEVEL_CATEGORIES if c not in levels]
                 cpy = re.sub(r'TARGET_LEVELS\s*=\s*\[.*?\]', f'TARGET_LEVELS = {json.dumps(levels, ensure_ascii=False)}', cpy, flags=re.DOTALL)
+                cpy = re.sub(r'LEVEL_EXCLUDE\s*=\s*\[.*?\]', f'LEVEL_EXCLUDE = {json.dumps(level_exclude, ensure_ascii=False)}', cpy, flags=re.DOTALL)
                 
                 new_brief = self.brief_text_content.strip()
                 if 'USER_BRIEF = """' in cpy:
@@ -880,6 +884,7 @@ class SetupWizard(tk.Tk):
                     cdata["TARGET_LOCATIONS"] = sub_locs
                 if levels:
                     cdata["TARGET_LEVELS"] = levels
+                    cdata["LEVEL_EXCLUDE"] = level_exclude
                 with open(config_json_path, "w", encoding="utf-8") as f:
                     json.dump(cdata, f, ensure_ascii=False, indent=2)
                 self.log("✓ core/config.json updated with personalized preferences.")

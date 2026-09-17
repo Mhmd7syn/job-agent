@@ -388,9 +388,8 @@ class TestTelegramBot(unittest.TestCase):
     @patch("core.telegram_bot.send_message")
     @patch("core.telegram_bot.send_chat_action")
     @patch("core.telegram_bot.scrape_job_from_url")
-    @patch("core.telegram_bot.delete_job_by_id")
     @patch("core.telegram_bot.save_or_update_job")
-    def test_process_message_with_zero_score_pruned(self, mock_save, mock_delete, mock_scrape, mock_action, mock_send):
+    def test_process_message_with_zero_score_saved(self, mock_save, mock_scrape, mock_action, mock_send):
         mock_scrape.return_value = {
             "job_id": "data analyst|makan",
             "title": "Data Analyst",
@@ -399,6 +398,15 @@ class TestTelegramBot(unittest.TestCase):
             "relevance_score": 0.0,
             "job_type": "Full-time"
         }
+        mock_save.return_value = ({
+            "job_id": "data analyst|makan",
+            "title": "Data Analyst",
+            "company": "MAKAN",
+            "location": "Riyadh, Saudi Arabia",
+            "relevance_score": 0.0,
+            "job_type": "Full-time",
+            "status": "pending"
+        }, True)
 
         msg = {
             "chat": {"id": 12345678},
@@ -409,15 +417,14 @@ class TestTelegramBot(unittest.TestCase):
         results = process_message("fake_token", msg, allowed_chat_id="12345678")
 
         mock_scrape.assert_called_once()
-        # Must NOT save the 0-score pending job
-        mock_save.assert_not_called()
-        mock_delete.assert_called_once_with("data analyst|makan")
+        # Must save the 0-score job, not prune it
+        mock_save.assert_called_once()
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["status"], "pruned")
+        self.assertEqual(results[0]["status"], "added")
         mock_send.assert_called_once()
         reply_text = mock_send.call_args[0][2]
-        self.assertIn("Pruned", reply_text)
-        self.assertIn("0%", reply_text)
+        self.assertIn("Job Saved", reply_text)
+        self.assertIn("0.0%", reply_text)
 
 
 if __name__ == "__main__":

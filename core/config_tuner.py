@@ -5,6 +5,7 @@ import ctypes
 import uuid
 from core.llm_parser import client
 from pydantic import BaseModel, Field
+from core.career_levels import normalize_category_name, CAREER_LEVEL_CATEGORIES
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
 ALERT_PATH = os.path.join(os.path.dirname(__file__), 'pending_alerts.json')
@@ -179,14 +180,20 @@ def generate_proposals(candidate_updates, current_config=None, source_name="AI R
         for item in items:
             if not item:
                 continue
-            item_clean = str(item).lower().strip()
-            if not item_clean:
+            item_raw = str(item).strip()
+            if not item_raw:
                 continue
+            if field == "TARGET_LEVELS":
+                item_clean = normalize_category_name(item_raw)
+            else:
+                item_clean = item_raw.lower()
+
+            item_key = item_clean.lower()
 
             # Validation against current_config
-            if p_type == "add" and item_clean in existing_set:
+            if p_type == "add" and item_key in existing_set:
                 continue  # Skip if already in config
-            if p_type == "remove" and item_clean not in existing_set:
+            if p_type == "remove" and item_key not in existing_set:
                 continue  # Skip if not in config to begin with
 
             reason_str = f"{reason_context} - {def_reason}" if reason_context else def_reason
@@ -196,13 +203,13 @@ def generate_proposals(candidate_updates, current_config=None, source_name="AI R
                 "field": field,
                 "type": p_type,
                 "value": item_clean,
-                "display_name": f"{prefix}: {item_clean.title() if len(item_clean) < 30 else item_clean}",
+                "display_name": f"{prefix}: {item_clean if len(item_clean) < 30 else item_clean[:27] + '...'}",
                 "reason": reason_str
             })
             if p_type == "add":
-                existing_set.add(item_clean)
-            elif p_type == "remove" and item_clean in existing_set:
-                existing_set.remove(item_clean)
+                existing_set.add(item_key)
+            elif p_type == "remove" and item_key in existing_set:
+                existing_set.remove(item_key)
 
     # 2. Location (Country residency addition)
     cv_loc = raw_updates.get("location")
@@ -240,7 +247,7 @@ def generate_proposals(candidate_updates, current_config=None, source_name="AI R
             if p_type == "remove" and title_lower not in existing_titles:
                 continue
 
-            role_obj = r if isinstance(r, dict) else {"title": title, "english_terms": [title], "arabic_terms": []}
+            role_obj = r if isinstance(r, dict) else {"title": title, "english_terms": [title]}
             reason_str = f"{reason_context} - {def_reason}" if reason_context else def_reason
             proposals.append({
                 "id": f"prop_{uuid.uuid4().hex[:8]}",
@@ -307,8 +314,9 @@ def analyze_job_and_tune_config(job_dict, action):
     - If the company is relevant and missing from `FAVORITE_COMPANIES`, add to `favorite_companies_add`.
     
     If the action is NOT_RELATED:
-    - Identify WHY it's not related (e.g. Requires Senior/Manager, or irrelevant domain like Finance/Sales).
-    - Extract negative keywords missing from `EXCLUDE_KEYWORDS` and add to `exclude_keywords_add`.
+    - Identify WHY it's not related (e.g. irrelevant domain like Sales, HR, Finance, or unwanted tech stack).
+    - Extract negative skill/domain keywords missing from `EXCLUDE_KEYWORDS` and add to `exclude_keywords_add`.
+    - DO NOT suggest seniority levels (such as 'senior', 'lead', 'manager', 'director', 'mid-level', 'intern', 'junior') in `exclude_keywords_add`. Seniority is handled strictly by the career level settings.
     - If an existing skill in `RESUME_KEYWORDS` was the reason this irrelevant job was picked, suggest removing it in `resume_keywords_remove`.
     """
 
@@ -378,7 +386,7 @@ def apply_single_proposal(proposal, config_data):
             return True
         return False
 
-    if field in ["RESULTS_PER_TERM", "HOURS_OLD", "MAX_JOBS_TO_SEND", "GLASSDOOR_LOC_ID"]:
+    if field in ["RESULTS_PER_TERM", "HOURS_OLD", "MAX_JOBS_TO_SEND"]:
         try:
             config_data[field] = type(config_data.get(field, 0))(val)
             return True
@@ -393,7 +401,7 @@ def apply_single_proposal(proposal, config_data):
             target_title = val.get("title", "").strip().lower() if isinstance(val, dict) else str(val).strip().lower()
             existing_titles = [r.get("title", "").strip().lower() for r in roles if isinstance(r, dict)]
             if target_title and target_title not in existing_titles:
-                role_obj = val if isinstance(val, dict) else {"title": str(val).strip(), "english_terms": [str(val).strip()], "arabic_terms": []}
+                role_obj = val if isinstance(val, dict) else {"title": str(val).strip(), "english_terms": [str(val).strip()]}
                 roles.append(role_obj)
                 config_data["ROLES"] = roles
                 return True
@@ -410,7 +418,31 @@ def apply_single_proposal(proposal, config_data):
     if not isinstance(current_list, list):
         current_list = []
 
+    if field == "TARGET_LEVELS":
+        val_cat = normalize_category_name(val)
+        existing_set = set([str(x).lower().strip() for x in current_list])
+        if p_type == "add":
+            if val_cat and val_cat.lower() not in existing_set:
+                current_list.append(val_cat)
+                config_data[field] = current_list
+                config_data["LEVEL_EXCLUDE"] = [c for c in CAREER_LEVEL_CATEGORIES if c.lower() not in set(x.lower() for x in current_list)]
+                return True
+        elif p_type == "remove":
+            new_list = [x for x in current_list if str(x).lower().strip() != val_cat.lower()]
+            if len(new_list) != len(current_list):
+                config_data[field] = new_list
+                config_data["LEVEL_EXCLUDE"] = [c for c in CAREER_LEVEL_CATEGORIES if c.lower() not in set(x.lower() for x in new_list)]
+                return True
+        return False
+
     val_str = str(val).lower().strip()
+
+    if field == "EXCLUDE_KEYWORDS":
+        from core.career_levels import expand_levels, CAREER_LEVEL_CATEGORIES
+        all_career_level_synonyms = expand_levels(CAREER_LEVEL_CATEGORIES)
+        all_career_level_synonyms.add("phd")
+        if val_str in all_career_level_synonyms:
+            return False
 
     if p_type == "add":
         existing_set = set([str(x).lower().strip() for x in current_list])
@@ -456,6 +488,11 @@ def apply_config_updates(updates):
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
             logging.info("Applied config updates to config.json")
+            try:
+                import core.config as app_config
+                app_config.reload_config()
+            except Exception as e:
+                logging.warning(f"Could not reload config in-memory: {e}")
 
     except Exception as e:
         logging.error(f"Error applying updates to config.json: {e}")
@@ -484,7 +521,7 @@ def analyze_run_and_tune_config(logs_text, eval_text):
     {config_summary}
     
     Recommend appropriate configuration adjustments:
-    - Missing negative keywords -> `exclude_keywords_add`
+    - Missing negative domain/skill keywords -> `exclude_keywords_add` (Do NOT include seniority levels like senior, lead, manager; those are managed by career level settings)
     - Conflicting negative keywords -> `exclude_keywords_remove`
     - Spam/irrelevant companies -> `excluded_companies_add`
     - Relevant skills -> `resume_keywords_add` (Extract atomic/single standalone skills only. DO NOT suggest compounded combinations like 'python mentor' or 'python instructor')

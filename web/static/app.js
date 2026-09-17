@@ -129,12 +129,7 @@ function applyFiltersAndSort() {
             if (job.status === 'not_related') return false;
         }
 
-        // Never display pending jobs with score <= 0 unless scholarship or applied
-        const isScholarship = (job.job_type || '').toLowerCase() === 'scholarship';
-        const isApplied = job.is_applied === 1;
-        if (job.status === 'pending' && !isScholarship && !isApplied && (job.relevance_score || 0) <= 0) {
-            return false;
-        }
+
 
         if (appliedFilter === 'applied' && job.is_applied !== 1) return false;
         if (appliedFilter === 'not_applied' && job.is_applied === 1) return false;
@@ -143,7 +138,7 @@ function applyFiltersAndSort() {
             const roleConfig = currentConfig.ROLES.find(r => r.title === roleFilter);
             if (roleConfig) {
                 const t = (job.title || '').toLowerCase();
-                const terms = [...(roleConfig.english_terms || []), ...(roleConfig.arabic_terms || [])]
+                const terms = (roleConfig.english_terms || roleConfig.terms || [])
                                 .map(term => term.toLowerCase());
                 
                 if (terms.length > 0) {
@@ -275,7 +270,7 @@ function createJobCard(job) {
 
     const viewBtnHtml = hasLink ?
         `<a href="${job.job_url}" target="_blank" class="btn btn-view"><i class="fa-solid fa-arrow-up-right-from-square"></i>View Job</a>` :
-        `<button type="button" class="btn btn-view btn-view-text" onclick="openJobTextModal('${job.job_id}')" title="View the job post text you added"><i class="fa-solid fa-file-lines"></i>View Post Text</button>`;
+        `<button type="button" class="btn btn-view" onclick="openJobTextModal('${job.job_id}')" title="View Job Details"><i class="fa-solid fa-arrow-up-right-from-square"></i>View Job</button>`;
 
     let actionsHtml = '';
     if (job.status === 'not_related') {
@@ -306,16 +301,6 @@ function createJobCard(job) {
         `<div class="tag"><i class="fa-solid fa-globe"></i>${job.site || 'Web'}</div>` :
         `<div class="tag tag-manual" title="Added manually by you (not scraped from job boards)"><i class="fa-solid fa-user-pen"></i>Added by Me</div>`;
 
-    const jobTextSnippet = (!hasLink && job.description) ? `
-        <div class="manual-job-banner">
-            <div class="manual-job-header">
-                <span><i class="fa-solid fa-file-lines" style="color: var(--primary); margin-right: 5px;"></i><strong>Job Post Text:</strong></span>
-                <button type="button" class="btn-copy-mini" onclick="event.stopPropagation(); copyJobTextById('${job.job_id}')" title="Copy text"><i class="fa-regular fa-copy"></i> Copy</button>
-            </div>
-            <div class="manual-job-body">${escapeHtml(job.description)}</div>
-        </div>
-    ` : '';
-
     div.innerHTML = `
         <div class="card-header">
             <h3 class="job-title" title="${job.title}">${job.title}</h3>
@@ -333,8 +318,6 @@ function createJobCard(job) {
             <div class="${typeTagClass}"><i class="${typeTagIcon}"></i>${job.job_type || 'Full-time'}</div>
             ${siteTagHtml}
         </div>
-
-        ${jobTextSnippet}
         
         <div class="job-date"><i class="fa-regular fa-calendar" style="margin-right:6px;"></i>${dateStr}</div>
         
@@ -577,12 +560,10 @@ function refreshSettingsUI() {
     
     initTagInput('config-location', currentConfig.LOCATION || ['Egypt']);
     initTagInput('config-target-locations', currentConfig.TARGET_LOCATIONS || ['cairo', 'giza', 'new capital']);
-    const gdEl = document.getElementById('config-glassdoor-id');
-    if (gdEl) gdEl.value = currentConfig.GLASSDOOR_LOC_ID || 69;
     initTagInput('config-global-remote', currentConfig.GLOBAL_REMOTE_KEYWORDS || ['africa', 'middle east', 'mena', 'worldwide', 'global']);
     initTagInput('config-restricted-remote', currentConfig.RESTRICTED_REMOTE_KEYWORDS || ['us only', 'uk only', 'eu only']);
     
-    initTagInput('config-target-levels', currentConfig.TARGET_LEVELS || ['junior', 'fresh', 'student', 'intern', 'entry']);
+    renderCareerLevelsUI();
     const briefEl = document.getElementById('config-user-brief');
     if (briefEl) briefEl.value = currentConfig.USER_BRIEF || '';
 
@@ -702,16 +683,13 @@ async function saveSettings() {
         const index = card.dataset.index;
         const title = card.querySelector('.role-title-input').value.trim();
         const maxExpStr = card.querySelector('.role-max-exp-input')?.value;
-        const maxExp = maxExpStr !== undefined && maxExpStr !== '' ? parseInt(maxExpStr) : 1;
+        const maxExp = maxExpStr !== undefined && maxExpStr !== '' ? parseInt(maxExpStr) : 0;
         const enTerms = getTagInputValues('role-en-' + index);
-        const arTerms = getTagInputValues('role-ar-' + index);
-        if (title || enTerms.length > 0 || arTerms.length > 0) {
+        if (title || enTerms.length > 0) {
             newRoles.push({
                 title: title || 'Unnamed Role',
                 years_experience: maxExp,
-                max_years_experience: maxExp,
-                english_terms: enTerms,
-                arabic_terms: arTerms
+                english_terms: enTerms
             });
         }
     });
@@ -719,10 +697,22 @@ async function saveSettings() {
     
     newConfig.LOCATION = getTagInputValues('config-location');
     newConfig.TARGET_LOCATIONS = getTagInputValues('config-target-locations');
-    newConfig.GLASSDOOR_LOC_ID = parseInt(document.getElementById('config-glassdoor-id')?.value) || 69;
     newConfig.GLOBAL_REMOTE_KEYWORDS = getTagInputValues('config-global-remote');
     newConfig.RESTRICTED_REMOTE_KEYWORDS = getTagInputValues('config-restricted-remote');
-    newConfig.TARGET_LEVELS = getTagInputValues('config-target-levels');
+    
+    const targetLevels = [];
+    const levelExclude = [];
+    CAREER_LEVEL_CONFIG.forEach(lvl => {
+        const cb = document.getElementById(`lvl-cb-${lvl.id}`);
+        if (cb && cb.checked) {
+            targetLevels.push(lvl.label);
+        } else {
+            levelExclude.push(lvl.label);
+        }
+    });
+    newConfig.TARGET_LEVELS = targetLevels;
+    newConfig.LEVEL_EXCLUDE = levelExclude;
+
     newConfig.USER_BRIEF = document.getElementById('config-user-brief')?.value || '';
     
     newConfig.RESUME_KEYWORDS = getTagInputValues('config-resume-keywords');
@@ -801,6 +791,100 @@ window.onclick = function(event) {
     }
 }
 
+// Career Seniority Levels Config & UI
+const CAREER_LEVEL_CONFIG = [
+    { label: "Intern / Student", id: "intern_student", desc: "Internships, students, trainees" },
+    { label: "Fresh Graduate / Entry-level", id: "fresh_entry", desc: "0-1 years exp, fresh grads, beginner" },
+    { label: "Junior", id: "junior", desc: "1-2 years exp, junior associate" },
+    { label: "Mid-Level", id: "mid_level", desc: "2-5 years exp, intermediate, experienced" },
+    { label: "Senior / Lead", id: "senior_lead", desc: "5+ years exp, senior, leads, architects" },
+    { label: "Manager / Director", id: "manager_director", desc: "Management, team heads, directors, VP" }
+];
+
+const CAREER_LEVEL_SYNONYMS_CLIENT = {
+    "Intern / Student": ["intern", "internship", "student", "trainee", "undergrad", "undergraduate", "co-op"],
+    "Fresh Graduate / Entry-level": ["fresh", "graduate", "fresh graduate", "entry", "entry-level", "starter", "beginner"],
+    "Junior": ["junior", "jr", "associate"],
+    "Mid-Level": ["mid", "mid-level", "mid level", "intermediate", "experienced"],
+    "Senior / Lead": ["senior", "sr", "lead", "principal", "staff", "architect", "expert"],
+    "Manager / Director": ["manager", "director", "head", "vp", "executive"]
+};
+
+function renderCareerLevelsUI() {
+    const container = document.getElementById('config-career-levels');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const currentTargets = Array.isArray(currentConfig.TARGET_LEVELS) ? currentConfig.TARGET_LEVELS : ["Intern / Student", "Fresh Graduate / Entry-level", "Junior"];
+    const currentExcludes = Array.isArray(currentConfig.LEVEL_EXCLUDE) ? currentConfig.LEVEL_EXCLUDE : [];
+
+    const lowerTargets = currentTargets.map(t => String(t).toLowerCase().trim());
+    const lowerExcludes = currentExcludes.map(e => String(e).toLowerCase().trim());
+
+    CAREER_LEVEL_CONFIG.forEach(lvl => {
+        let isChecked = false;
+
+        // 1. Check if explicitly listed in TARGET_LEVELS
+        if (lowerTargets.includes(lvl.label.toLowerCase())) {
+            isChecked = true;
+        } else if (lowerExcludes.includes(lvl.label.toLowerCase())) {
+            isChecked = false;
+        } else {
+            // 2. Backward compatibility: check if any synonym is in lowerTargets
+            const syns = CAREER_LEVEL_SYNONYMS_CLIENT[lvl.label] || [];
+            if (syns.some(s => lowerTargets.includes(s.toLowerCase()))) {
+                isChecked = true;
+            } else if (currentExcludes.length === 0 && ["Intern / Student", "Fresh Graduate / Entry-level", "Junior"].includes(lvl.label)) {
+                // Default fallback if brand new config
+                isChecked = true;
+            }
+        }
+
+        const card = document.createElement('div');
+        card.className = `career-level-card ${isChecked ? 'checked' : ''}`;
+        card.id = `card-lvl-${lvl.id}`;
+
+        card.innerHTML = `
+            <div class="career-level-left">
+                <input type="checkbox" id="lvl-cb-${lvl.id}" ${isChecked ? 'checked' : ''}>
+                <span class="career-level-title">${lvl.label}</span>
+            </div>
+            <span class="career-level-badge ${isChecked ? 'badge-target' : 'badge-exclude'}" id="lvl-badge-${lvl.id}">
+                ${isChecked ? '<i class="fa-solid fa-arrow-up"></i> TARGET (+15)' : '<i class="fa-solid fa-ban"></i> EXCLUDE'}
+            </span>
+        `;
+
+        const cb = card.querySelector(`#lvl-cb-${lvl.id}`);
+        const badge = card.querySelector(`#lvl-badge-${lvl.id}`);
+
+        function updateCardState(checked) {
+            cb.checked = checked;
+            if (checked) {
+                card.classList.add('checked');
+                badge.className = 'career-level-badge badge-target';
+                badge.innerHTML = '<i class="fa-solid fa-arrow-up"></i> TARGET (+15)';
+            } else {
+                card.classList.remove('checked');
+                badge.className = 'career-level-badge badge-exclude';
+                badge.innerHTML = '<i class="fa-solid fa-ban"></i> EXCLUDE';
+            }
+        }
+
+        cb.addEventListener('change', (e) => {
+            e.stopPropagation();
+            updateCardState(cb.checked);
+        });
+
+        card.addEventListener('click', (e) => {
+            if (e.target !== cb) {
+                updateCardState(!cb.checked);
+            }
+        });
+
+        container.appendChild(card);
+    });
+}
+
 // Tag Input Helper
 const tagInputInstances = {};
 
@@ -877,17 +961,17 @@ function renderRolesUI() {
     roleIndexCounter = 0;
     
     roles.forEach((role) => {
-        const userExp = role.years_experience !== undefined ? role.years_experience : (role.max_years_experience !== undefined ? role.max_years_experience : 1);
-        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms, role.arabic_terms, userExp);
+        const userExp = role.years_experience !== undefined ? role.years_experience : 0;
+        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms || role.terms || [], userExp);
     });
 }
 
 function addRoleUI() {
     const container = document.getElementById('roles-container');
-    addRoleCard(container, roleIndexCounter++, 'New Role', [], [], 1);
+    addRoleCard(container, roleIndexCounter++, 'New Role', [], 0);
 }
 
-function addRoleCard(container, index, title, enTerms, arTerms, maxExp) {
+function addRoleCard(container, index, title, enTerms, maxExp) {
     const card = document.createElement('div');
     card.className = 'role-card';
     card.style = 'background: rgba(0, 0, 0, 0.2); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--card-border); position: relative;';
@@ -914,18 +998,13 @@ function addRoleCard(container, index, title, enTerms, arTerms, maxExp) {
     maxExpInput.type = 'number';
     maxExpInput.min = '0';
     maxExpInput.className = 'role-max-exp-input';
-    maxExpInput.value = maxExp !== undefined ? maxExp : 1;
+    maxExpInput.value = maxExp !== undefined ? maxExp : 0;
     maxExpInput.style = 'width: 100%; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
 
     const enLabel = document.createElement('label');
-    enLabel.innerText = 'English Search Terms';
+    enLabel.innerText = 'Search Terms';
     const enContainer = document.createElement('div');
     enContainer.id = 'role-en-' + index;
-    
-    const arLabel = document.createElement('label');
-    arLabel.innerText = 'Arabic Search Terms';
-    const arContainer = document.createElement('div');
-    arContainer.id = 'role-ar-' + index;
     
     card.appendChild(titleLabel);
     card.appendChild(titleInput);
@@ -933,13 +1012,10 @@ function addRoleCard(container, index, title, enTerms, arTerms, maxExp) {
     card.appendChild(maxExpInput);
     card.appendChild(enLabel);
     card.appendChild(enContainer);
-    card.appendChild(arLabel);
-    card.appendChild(arContainer);
     
     container.appendChild(card);
     
     initTagInput(enContainer.id, enTerms || []);
-    initTagInput(arContainer.id, arTerms || []);
 }
 
 // --- Scraper Control Logic ---
@@ -1533,6 +1609,14 @@ function openJobTextModal(jobId) {
         companyEl.textContent = comp;
     }
     if (contentEl) contentEl.textContent = currentModalJobText;
+
+    const sourceEl = document.getElementById('job-text-source');
+    if (sourceEl) {
+        const site = job.site || 'Added by Me';
+        const isManual = !job.site || job.site.toLowerCase().includes('manual') || job.site.toLowerCase().includes('added');
+        const iconClass = isManual ? 'fa-solid fa-user-pen' : 'fa-solid fa-globe';
+        sourceEl.innerHTML = `<i class="${iconClass}" style="margin-right: 4px;"></i>${site}`;
+    }
 
     const modal = document.getElementById('job-text-modal');
     if (modal) modal.classList.remove('hidden');

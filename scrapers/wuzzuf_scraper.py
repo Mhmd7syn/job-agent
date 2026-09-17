@@ -9,9 +9,11 @@ import re
 import datetime
 import logging
 import random
+import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
+from core.job_utils import normalize_job_dict
 
 def fetch_wuzzuf_full_description(job_url):
     """Fetches the complete full job description and requirements via fast HTTP."""
@@ -56,99 +58,127 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
     if location.lower() == "worldwide" or location.lower() == "remote":
         query += " remote"
         
-    url = f"https://wuzzuf.net/search/jobs/?q={urllib.parse.quote(query)}&o=t"
+    base_url = f"https://wuzzuf.net/search/jobs/?q={urllib.parse.quote(query)}&o=t"
     if hours_old:
         days = hours_old / 24
         if days <= 1:
-            url += "&filters[post_date][0]=within_24_hours"
+            base_url += "&filters[post_date][0]=within_24_hours"
         elif days <= 7:
-            url += "&filters[post_date][0]=within_1_week"
+            base_url += "&filters[post_date][0]=within_1_week"
         else:
-            url += "&filters[post_date][0]=within_1_month"
+            base_url += "&filters[post_date][0]=within_1_month"
     
     if driver is None:
         logging.error("Wuzzuf scraper requires a SeleniumBase driver.")
         return pd.DataFrame()
         
     try:
-        driver.uc_open_with_reconnect(url, 4)
-        try:
-            driver.uc_gui_click_captcha()
-        except Exception:
-            pass
-        
-        try:
-            driver.wait_for_element('div.css-pkv5jc', timeout=10)
-        except Exception:
-            driver.save_screenshot("wuzzuf.png")
-            pass
+        candidates = []
+        seen_urls = set()
+        page = 0
+        max_pages = 3
 
-        html_content = driver.get_page_source()
-        soup = BeautifulSoup(html_content, 'html.parser')
-        job_cards = soup.find_all('div', class_=lambda c: c and 'css-pkv5jc' in c)
-        
-        for card in job_cards:
-            if len(jobs) >= results_wanted:
+        while len(candidates) < results_wanted and page < max_pages:
+            url = f"{base_url}&start={page}"
+            driver.uc_open_with_reconnect(url, 4)
+            try:
+                driver.uc_gui_click_captcha()
+            except Exception:
+                pass
+            
+            try:
+                driver.wait_for_element('div.css-pkv5jc', timeout=10)
+            except Exception:
+                driver.save_screenshot("wuzzuf.png")
+                pass
+
+            html_content = driver.get_page_source()
+            soup = BeautifulSoup(html_content, 'html.parser')
+            job_cards = soup.find_all('div', class_=lambda c: c and 'css-pkv5jc' in c)
+            if not job_cards:
                 break
+
+            added_in_page = 0
+            for card in job_cards:
+                if len(candidates) >= results_wanted:
+                    break
+                    
+                title_tag = card.find('h2')
+                if not title_tag or not title_tag.a: continue
                 
-            title_tag = card.find('h2')
-            if not title_tag or not title_tag.a: continue
-            
-            # Extract date to filter old posts
-            date_str = ""
-            company_loc_div = card.find('div', class_='css-1k5ee52')
-            if company_loc_div:
-                date_tag = company_loc_div.find('div')
-                if date_tag:
-                    date_str = date_tag.text.strip()
-            
-            job_hours = parse_wuzzuf_date_to_hours(date_str) if date_str else 0
-            if hours_old is not None and job_hours > hours_old:
-                continue
+                # Extract date to filter old posts
+                date_str = ""
+                company_loc_div = card.find('div', class_='css-1k5ee52')
+                if company_loc_div:
+                    date_tag = company_loc_div.find('div')
+                    if date_tag:
+                        date_str = date_tag.text.strip()
                 
-            date_posted = datetime.datetime.now() - datetime.timedelta(hours=job_hours)
-            
-            title = title_tag.a.text.strip()
-            job_url = "https://wuzzuf.net" + title_tag.a['href']
-            
-            if is_job_seen(job_url):
-                continue
+                job_hours = parse_wuzzuf_date_to_hours(date_str) if date_str else 0
+                if hours_old is not None and job_hours > hours_old:
+                    continue
+                    
+                date_posted = datetime.datetime.now() - datetime.timedelta(hours=job_hours)
+                
+                title = title_tag.a.text.strip()
+                job_url = "https://wuzzuf.net" + title_tag.a['href']
+                
+                if job_url in seen_urls or is_job_seen(job_url):
+                    continue
+                seen_urls.add(job_url)
 
-            company_tag = card.find('a', class_='css-ipsyv7')
-            company = company_tag.text.replace('-', '').strip() if company_tag else "Unknown"
-            
-            loc_tag = card.find('span', class_='css-16x61xq')
-            loc = loc_tag.text.strip() if loc_tag else location
-            
-            job_type_tags = card.find_all('span', class_=lambda c: c and 'eoyjyou0' in c)
-            all_tags = [t.text.strip() for t in job_type_tags]
+                company_tag = card.find('a', class_='css-ipsyv7')
+                company = company_tag.text.replace('-', '').strip() if company_tag else "Unknown"
+                
+                loc_tag = card.find('span', class_='css-16x61xq')
+                loc = loc_tag.text.strip() if loc_tag else location
+                
+                job_type_tags = card.find_all('span', class_=lambda c: c and 'eoyjyou0' in c)
+                all_tags = [t.text.strip() for t in job_type_tags]
 
-            _JOB_TYPE_KWS = {'full time', 'part time', 'freelance', 'contract', 'remote', 'work from home', 'internship', 'student activity'}
-            _CAREER_LEVEL_KWS = {'fresh graduate', 'junior', 'mid level', 'mid-level', 'senior', 'manager',
-                                  'director', 'executive', 'student activity', 'entry level', 'entry-level',
-                                  'experienced', 'team lead', 'c-level', 'vp'}
-            type_tags = [t for t in all_tags if any(k in t.lower() for k in _JOB_TYPE_KWS)]
-            level_tags = [t for t in all_tags if any(k in t.lower() for k in _CAREER_LEVEL_KWS)]
+                _JOB_TYPE_KWS = {'full time', 'part time', 'freelance', 'contract', 'remote', 'work from home', 'internship', 'student activity'}
+                _CAREER_LEVEL_KWS = {'fresh graduate', 'junior', 'mid level', 'mid-level', 'senior', 'manager',
+                                      'director', 'executive', 'student activity', 'entry level', 'entry-level',
+                                      'experienced', 'team lead', 'c-level', 'vp'}
+                type_tags = [t for t in all_tags if any(k in t.lower() for k in _JOB_TYPE_KWS)]
+                level_tags = [t for t in all_tags if any(k in t.lower() for k in _CAREER_LEVEL_KWS)]
 
-            job_type = ", ".join(type_tags) if type_tags else "Full Time"
-            career_level = ", ".join(level_tags) if level_tags else "Not specified"
+                job_type = ", ".join(type_tags) if type_tags else "Full Time"
+                career_level = ", ".join(level_tags) if level_tags else "Not specified"
 
-            card_desc = card.get_text(separator=' ', strip=True)
-            full_desc = fetch_wuzzuf_full_description(job_url)
-            description = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+                card_desc = card.get_text(separator=' ', strip=True)
 
-            jobs.append({
-                'title': title,
-                'company': company,
-                'location': loc,
-                'job_url': job_url,
-                'job_type': job_type,
-                'career_level': career_level,
-                'description': description,
-                'is_remote': 'remote' in query.lower() or any('remote' in t.lower() or 'work from home' in t.lower() for t in all_tags),
-                'site': 'wuzzuf',
-                'date_posted': date_posted.date()
-            })
+                candidates.append({
+                    'title': title,
+                    'company': company,
+                    'location': loc,
+                    'job_url': job_url,
+                    'job_type': job_type,
+                    'career_level': career_level,
+                    'description': card_desc,
+                    'is_remote': 'remote' in query.lower() or any('remote' in t.lower() or 'work from home' in t.lower() for t in all_tags),
+                    'site': 'wuzzuf',
+                    'date_posted': date_posted.date()
+                })
+                added_in_page += 1
+
+            if added_in_page == 0:
+                break
+            page += 1
+
+        # Concurrent description fetching
+        def _fetch_desc(job):
+            try:
+                full_desc = fetch_wuzzuf_full_description(job['job_url'])
+                if full_desc and len(full_desc) > len(job['description']):
+                    job['description'] = full_desc
+            except Exception as e:
+                logging.debug(f"Wuzzuf desc fetch failed for {job['job_url']}: {e}")
+            return normalize_job_dict(job)
+
+        if candidates:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 5)) as executor:
+                jobs = list(executor.map(_fetch_desc, candidates))
             
     except Exception as e:
         logging.error(f"⚠️ Wuzzuf Scraper Error: {e}")
