@@ -34,25 +34,59 @@ def fetch_with_retries(url, retries=3, timeout=15):
             time.sleep(1)
     return None
 
-def fetch_tanqeeb_full_description(job_url):
-    """Fetches the complete full job description and requirements from a Tanqeeb job page."""
+def _parse_tanqeeb_soup(soup):
+    import json
+    company = ""
+    desc = ""
+    # 1. Schema.org JSON-LD
+    for s in soup.find_all('script', type='application/ld+json'):
+        try:
+            d = json.loads(s.string or '{}')
+            if d.get('@type') == 'JobPosting':
+                if d.get('description'):
+                    desc = BeautifulSoup(d['description'], 'html.parser').get_text(separator='\n', strip=True)
+                if d.get('hiringOrganization', {}).get('name'):
+                    company = d['hiringOrganization']['name'].strip()
+        except Exception:
+            pass
+
+    if desc and len(desc) > 30:
+        return {'description': desc, 'company': company}
+
+    # 2. Modern DOM
+    desc_div = (
+        soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['vacancy-desc', 'job-description', 'card-body', 'details-content'])) or
+        soup.find('section', class_=lambda c: c and 'description' in str(c))
+    )
+    if desc_div:
+        text = desc_div.get_text(separator='\n', strip=True)
+        if len(text) > 80:
+            return {'description': text, 'company': company}
+
+    return {'description': '', 'company': company}
+
+_TANQEEB_DETAILS_CACHE = {}
+
+def fetch_tanqeeb_job_details(job_url):
+    """Fetches the complete full job description and company from a Tanqeeb job page."""
     if not job_url or 'egypt.tanqeeb.com/jobs/search' in job_url:
-        return ""
+        return {'description': '', 'company': ''}
+    if job_url in _TANQEEB_DETAILS_CACHE:
+        return _TANQEEB_DETAILS_CACHE[job_url]
     try:
-        response = fetch_with_retries(job_url, retries=1, timeout=5)
+        response = fetch_with_retries(job_url, retries=1, timeout=6)
         if response and response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
-            desc_div = (
-                soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['vacancy-desc', 'job-description', 'card-body', 'details-content'])) or
-                soup.find('section', class_=lambda c: c and 'description' in str(c))
-            )
-            if desc_div:
-                text = desc_div.get_text(separator='\n', strip=True)
-                if len(text) > 80:
-                    return text
+            res = _parse_tanqeeb_soup(soup)
+            _TANQEEB_DETAILS_CACHE[job_url] = res
+            return res
     except Exception as e:
         logging.debug(f"Tanqeeb full desc fetch error for {job_url}: {e}")
-    return ""
+    return {'description': '', 'company': ''}
+
+def fetch_tanqeeb_full_description(job_url):
+    """Fetches the complete full job description and requirements from a Tanqeeb job page."""
+    return fetch_tanqeeb_job_details(job_url).get('description', '')
 
 def _parse_tanqeeb_date(date_str):
     if not date_str:
@@ -158,12 +192,17 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                 if card:
                     card_desc = card.get_text(separator=' ', strip=True)
                     comp_elem = (
-                        card.find('span', class_='search-job-source') or
-                        card.find('div', class_='search-job-top-tags') or
-                        card.find('span', class_=lambda c: c and 'company' in str(c))
+                        card.find('span', class_=lambda c: c and 'company' in str(c)) or
+                        card.find('a', class_=lambda c: c and 'company' in str(c))
                     )
                     if comp_elem:
                         company = comp_elem.text.strip()
+                    else:
+                        src_elem = card.find('span', class_='search-job-source')
+                        if src_elem:
+                            s_txt = src_elem.text.strip()
+                            if s_txt.lower() not in ['linkedin', 'naukri gulf', 'wuzzuf', 'bayt', 'forasna', 'tanqeeb']:
+                                company = s_txt
 
                     loc_elem = (
                         card.find('span', class_='search-job-workplace-location') or
@@ -210,6 +249,10 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
             full_desc = fetch_tanqeeb_full_description(job['job_url']) if job['job_url'] != base_url else ""
             if full_desc and len(full_desc) > len(job['description']):
                 job['description'] = full_desc
+            if (job.get('company') in ('Unknown', '', None) or job.get('company', '').lower() in ['linkedin', 'naukri gulf', 'wuzzuf', 'bayt', 'forasna', 'tanqeeb']):
+                details = fetch_tanqeeb_job_details(job['job_url']) if job['job_url'] != base_url else {}
+                if details.get('company'):
+                    job['company'] = details['company']
         except Exception as e:
             logging.debug(f"Tanqeeb desc fetch failed for {job['job_url']}: {e}")
         return normalize_job_dict(job)

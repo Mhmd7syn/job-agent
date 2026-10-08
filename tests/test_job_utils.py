@@ -14,6 +14,8 @@ from core import database
 from core.database import init_db, is_job_seen, get_jobs_by_status
 from core.job_utils import (
     make_job_id,
+    clean_location,
+    extract_location_and_setup,
     normalize_job_type,
     normalize_is_remote,
     extract_company_from_desc,
@@ -26,6 +28,37 @@ from core.job_utils import (
 
 
 class TestJobUtils(unittest.TestCase):
+    def test_clean_location(self):
+        # Prefixes stripped
+        self.assertEqual(clean_location("On-site - Egypt - Cairo"), "Egypt - Cairo")
+        self.assertEqual(clean_location("Onsite - Cairo"), "Cairo")
+        self.assertEqual(clean_location("Remote - United States"), "United States")
+        self.assertEqual(clean_location("Hybrid - Cairo, Egypt"), "Cairo, Egypt")
+        self.assertEqual(clean_location("عن بعد - القاهرة"), "القاهرة")
+
+        # Standalone location without delimiter preserved
+        self.assertEqual(clean_location("Remote"), "Remote")
+        self.assertEqual(clean_location("On-site"), "On-site")
+        self.assertEqual(clean_location("Cairo, Egypt"), "Cairo, Egypt")
+        self.assertEqual(clean_location(""), "")
+
+    def test_extract_location_and_setup(self):
+        loc, setup = extract_location_and_setup("On-site - Egypt - Cairo")
+        self.assertEqual(loc, "Egypt - Cairo")
+        self.assertEqual(setup, "On-site")
+
+        loc, setup = extract_location_and_setup("Remote - Cairo")
+        self.assertEqual(loc, "Cairo")
+        self.assertEqual(setup, "Remote")
+
+        loc, setup = extract_location_and_setup("Hybrid - Cairo, Egypt")
+        self.assertEqual(loc, "Cairo, Egypt")
+        self.assertEqual(setup, "Hybrid")
+
+        loc, setup = extract_location_and_setup("Cairo, Egypt", raw_is_remote=True)
+        self.assertEqual(loc, "Cairo, Egypt")
+        self.assertEqual(setup, "Remote")
+
     def test_make_job_id_deterministic(self):
         id1 = make_job_id("Junior Python Developer", "Vodafone Egypt")
         id2 = make_job_id("junior python developer!", "Vodafone, Egypt.")
@@ -140,6 +173,33 @@ class TestJobUtils(unittest.TestCase):
         self.assertFalse(norm["is_remote"])
         self.assertEqual(norm["status"], "pending")
         self.assertEqual(norm["is_applied"], 0)
+
+        # Test location prefix stripping and setup detection in normalize_job_dict
+        raw_onsite = {
+            "title": "Business Data Analyst",
+            "company": "Wuzzuf",
+            "location": "On-site - Egypt - Cairo",
+            "job_url": "https://example.com/job/2",
+            "job_type": "Internship"
+        }
+        norm_onsite = normalize_job_dict(raw_onsite)
+        self.assertEqual(norm_onsite["location"], "Egypt - Cairo")
+        self.assertEqual(norm_onsite["workplace_setup"], "On-site")
+        self.assertEqual(norm_onsite["job_type"], "Internship")
+        self.assertFalse(norm_onsite["is_remote"])
+
+        raw_remote = {
+            "title": "Data Analyst",
+            "company": "Tech",
+            "location": "Remote - Egypt - Cairo",
+            "job_url": "https://example.com/job/3",
+            "job_type": "Full-time"
+        }
+        norm_remote = normalize_job_dict(raw_remote)
+        self.assertEqual(norm_remote["location"], "Egypt - Cairo")
+        self.assertEqual(norm_remote["workplace_setup"], "Remote")
+        self.assertEqual(norm_remote["job_type"], "Full-time")
+        self.assertTrue(norm_remote["is_remote"])
 
     def test_score_job_dict(self):
         job = {

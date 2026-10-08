@@ -12,28 +12,76 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 from core.job_utils import normalize_job_dict
 
-def fetch_bayt_full_description(job_url):
-    """Fetches the complete full job description and requirements via lightweight HTTP."""
+def _parse_bayt_soup(soup):
+    import json
+    company = ""
+    desc = ""
+    # 1. Schema.org JSON-LD
+    for s in soup.find_all('script', type='application/ld+json'):
+        try:
+            d = json.loads(s.string or '{}')
+            if d.get('@type') == 'JobPosting':
+                if d.get('description'):
+                    desc = BeautifulSoup(d['description'], 'html.parser').get_text(separator='\n', strip=True)
+                if d.get('hiringOrganization', {}).get('name'):
+                    company = d['hiringOrganization']['name'].strip()
+        except Exception:
+            pass
+
+    if desc and len(desc) > 30:
+        return {'description': desc, 'company': company}
+
+    # 2. Modern DOM fallback (ignoring chat promotion popup)
+    for tag in soup.find_all(['div', 'section']):
+        c = ' '.join(tag.get('class', []))
+        if any(k in c for k in ['t-break', 'job-description', 'card-content', 'is-space-bottom-large']):
+            t = tag.get_text(separator='\n', strip=True)
+            if 'chat feature' not in t.lower() and len(t) > 80:
+                return {'description': t, 'company': company}
+
+    return {'description': '', 'company': company}
+
+_BAYT_DETAILS_CACHE = {}
+
+def fetch_bayt_job_details(job_url, driver=None):
+    """Fetches full job description and company name from a Bayt job page."""
     if not job_url or 'bayt.com/en/' not in job_url:
-        return ""
+        return {'description': '', 'company': ''}
+    if job_url in _BAYT_DETAILS_CACHE:
+        return _BAYT_DETAILS_CACHE[job_url]
     try:
         from curl_cffi import requests as c_requests
         resp = c_requests.get(
             job_url,
             impersonate="chrome120",
-            timeout=5
+            timeout=6
         )
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.content, 'html.parser')
-            desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['card-content', 't-break', 'job-description', 'is-space-bottom-large']))
-            if desc_div:
-                text = desc_div.get_text(separator='\n', strip=True)
-                if len(text) > 80:
-                    return text
+            res = _parse_bayt_soup(soup)
+            if res.get('description'):
+                _BAYT_DETAILS_CACHE[job_url] = res
+                return res
     except Exception as e:
         logging.debug(f"Bayt HTTP fetch failed for {job_url}: {e}")
 
-    return ""
+    if driver is not None:
+        try:
+            driver.uc_open_with_reconnect(job_url, 3)
+            soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
+            res = _parse_bayt_soup(soup)
+            if res.get('description'):
+                _BAYT_DETAILS_CACHE[job_url] = res
+                return res
+        except Exception as e:
+            logging.debug(f"Bayt driver fetch failed for {job_url}: {e}")
+
+    return {'description': '', 'company': ''}
+
+def fetch_bayt_full_description(job_url, driver=None):
+    """Fetches the complete full job description and requirements via lightweight HTTP with driver fallback."""
+    details = fetch_bayt_job_details(job_url, driver=driver)
+    return details.get('description', '')
 
 def _fetch_bayt_page(url, driver=None):
     """Fetches a Bayt page via fast HTTP first, with driver fallback for Cloudflare."""
@@ -118,7 +166,11 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver
                 if not title:
                     continue
 
-                company_elem = card.find('b', class_='p10r')
+                company_elem = (
+                    card.find('b', class_='p10r') or
+                    card.find('span', class_=lambda c: c and 'company' in str(c).lower()) or
+                    card.find('b')
+                )
                 company = company_elem.text.strip() if company_elem else "Unknown"
 
                 loc_elem = card.find('span', class_='t-mute')
@@ -161,9 +213,13 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver
         # Concurrent description fetching
         def _fetch_desc(job):
             try:
-                full_desc = fetch_bayt_full_description(job['job_url'])
+                full_desc = fetch_bayt_full_description(job['job_url'], driver=driver) if driver else fetch_bayt_full_description(job['job_url'])
                 if full_desc and len(full_desc) > len(job['description']):
                     job['description'] = full_desc
+                if job.get('company') in ('Unknown', '', None):
+                    details = fetch_bayt_job_details(job['job_url'], driver=driver) if driver else fetch_bayt_job_details(job['job_url'])
+                    if details.get('company'):
+                        job['company'] = details['company']
             except Exception as e:
                 logging.debug(f"Bayt desc fetch failed for {job['job_url']}: {e}")
             return normalize_job_dict(job)

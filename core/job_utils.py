@@ -53,6 +53,53 @@ def normalize_job_type(raw_type: str = "", title: str = "", desc: str = "", is_s
     return rt.title()
 
 
+def extract_location_and_setup(location: str = "", title: str = "", desc: str = "", raw_is_remote: Any = False) -> Tuple[str, str]:
+    """
+    Extracts a clean geographic location and canonical Workplace Setup ('Remote', 'Hybrid', or 'On-site').
+    
+    If the location starts with a prefix like 'On-site -', 'Remote -', or 'Hybrid -',
+    the prefix is parsed into the workplace setup, and stripped from the location string.
+    """
+    loc = str(location or "").strip()
+    match = re.match(r'^(On-site|Onsite|Remote|Hybrid|عن بعد|حضوري|هجين)\s*[-–—|:]\s*(.*)$', loc, flags=re.IGNORECASE)
+    
+    setup_prefix = ""
+    clean_loc = loc
+    if match:
+        prefix_raw = match.group(1).lower()
+        clean_loc = match.group(2).strip() or loc
+        if prefix_raw in ("remote", "عن بعد"):
+            setup_prefix = "Remote"
+        elif prefix_raw in ("hybrid", "هجين"):
+            setup_prefix = "Hybrid"
+        elif prefix_raw in ("on-site", "onsite", "حضوري"):
+            setup_prefix = "On-site"
+
+    if setup_prefix:
+        workplace_setup = setup_prefix
+    elif raw_is_remote is True or str(raw_is_remote).lower() in ("true", "1"):
+        workplace_setup = "Remote"
+    else:
+        combined = f"{loc} {title} {desc}".lower()
+        if any(k in combined for k in ["remote", "work from home", "عن بعد", "العمل من المنزل", "telecommute", "wfh"]):
+            workplace_setup = "Remote"
+        elif any(k in combined for k in ["hybrid", "هجين"]):
+            workplace_setup = "Hybrid"
+        else:
+            workplace_setup = "On-site"
+
+    return clean_loc, workplace_setup
+
+
+def clean_location(location: str = "") -> str:
+    """
+    Strips redundant workplace setup prefixes (e.g. 'On-site -', 'Remote -', 'Hybrid -')
+    from location strings, leaving only the clean geographical location.
+    """
+    clean_loc, _ = extract_location_and_setup(location)
+    return clean_loc
+
+
 def normalize_is_remote(location: str = "", title: str = "", desc: str = "", job_type: str = "", raw_is_remote: Any = False) -> bool:
     """
     Determines whether a job is remote based on boolean flag or English/Arabic keywords.
@@ -74,8 +121,13 @@ def extract_company_from_desc(desc: str) -> str:
     match = re.search(r'\b([A-Z][A-Za-z0-9\.\-\s&]{1,30}?)\s+(?:is\s+)?(?:looking|seeking|hiring|searching|recruiting)\s+(?:for|to|a|an)\b', desc[:800])
     if match:
         extracted = match.group(1).strip()
-        ignore_words = {'we', 'our', 'the', 'this', 'here', 'currently', 'an', 'a', 'our client', 'client', 'someone', 'who', 'they', 'he', 'she'}
-        if extracted.lower() not in ignore_words and not any(gw in extracted.lower() for gw in ['our client', 'leading client', 'multinational', 'reputable company']):
+        ignore_words = {'we', 'our', 'the', 'this', 'here', 'currently', 'an', 'a', 'our client', 'client', 'someone', 'who', 'they', 'he', 'she', 'are', 'if', 'as', 'when', 'why', 'do', 'you', 'are you'}
+        lower_ext = extracted.lower()
+        if (
+            lower_ext not in ignore_words
+            and not any(gw in lower_ext for gw in ['our client', 'leading client', 'multinational', 'reputable company'])
+            and not lower_ext.startswith(('are you', 'if you', 'we are', 'who are', 'as a', 'as an', 'looking for', 'seeking a', 'do you'))
+        ):
             return extracted
 
     # Pattern 2: "About [Company]..."
@@ -144,6 +196,39 @@ def parse_job_date(date_val: Any) -> str:
     return today.isoformat()
 
 
+def normalize_site(site: str = "", job_url: str = "") -> str:
+    """
+    Normalizes site identifiers into canonical values:
+    'linkedin', 'linkedin_posts', 'wuzzuf', 'glassdoor', 'indeed', 'bayt', 'tanqeeb', or web.
+    Prevents export tags (e.g. 'whatsapp_export') or shortlinks ('lnkd') from misrepresenting job sources.
+    """
+    s = str(site or "").strip().lower()
+    url = str(job_url or "").strip().lower()
+
+    if "linkedin.com" in url or "lnkd.in" in url:
+        if any(p in url for p in ["/posts/", "/feed/update/", "activity", "ugcpost", "share:", "lnkd.in"]):
+            return "linkedin_posts"
+        return "linkedin"
+    elif "wuzzuf.net" in url:
+        return "wuzzuf"
+    elif "tanqeeb.com" in url:
+        return "tanqeeb"
+    elif "bayt.com" in url:
+        return "bayt"
+    elif "glassdoor.com" in url:
+        return "glassdoor"
+    elif "indeed.com" in url:
+        return "indeed"
+
+    if s in ["lnkd", "linkedin_posts", "linkedin_post"]:
+        return "linkedin_posts"
+    if s in ["linkedin_job", "linkedin"]:
+        return "linkedin"
+    if s in ["whatsapp_export", "whatsapp"]:
+        return "web"
+    return s or "web"
+
+
 def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
     """
     Takes any raw job dictionary and standardizes all fields into a unified schema.
@@ -151,7 +236,13 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
     title = str(raw_job.get("title") or "").strip()
     desc = str(raw_job.get("description") or "").strip()
     company = normalize_company(raw_job.get("company", ""), desc)
-    location = str(raw_job.get("location") or "Not specified").strip()
+    raw_location = str(raw_job.get("location") or "Not specified").strip()
+    location, workplace_setup = extract_location_and_setup(
+        location=raw_location,
+        title=title,
+        desc=desc,
+        raw_is_remote=raw_job.get("is_remote", False)
+    )
     job_url = str(raw_job.get("job_url") or "").strip()
 
     is_scholarship = (
@@ -168,8 +259,8 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
         is_scholarship=is_scholarship
     )
 
-    is_remote = normalize_is_remote(
-        location=location,
+    is_remote = (workplace_setup == "Remote") or normalize_is_remote(
+        location=f"{raw_location} {location}",
         title=title,
         desc=desc,
         job_type=job_type,
@@ -177,7 +268,8 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
     )
 
     date_posted = parse_job_date(raw_job.get("date_posted"))
-    site = str(raw_job.get("site") or default_site or "").strip().lower()
+    raw_site = raw_job.get("site") or default_site or ""
+    site = normalize_site(raw_site, job_url)
     job_id = raw_job.get("job_id") or make_job_id(title, company, job_url)
     status = raw_job.get("status", "pending")
     is_applied = int(raw_job.get("is_applied", 0))
@@ -187,6 +279,7 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
         "title": title,
         "company": company,
         "location": location,
+        "workplace_setup": workplace_setup,
         "job_url": job_url,
         "job_type": job_type,
         "date_posted": date_posted,
@@ -199,6 +292,14 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
     }
     if "career_level" in raw_job and raw_job["career_level"]:
         norm["career_level"] = str(raw_job["career_level"]).strip()
+    if "is_easy_apply" in raw_job:
+        norm["is_easy_apply"] = bool(raw_job["is_easy_apply"])
+    if "apply_url" in raw_job and raw_job["apply_url"]:
+        norm["apply_url"] = str(raw_job["apply_url"]).strip()
+    if "apply_type" in raw_job and raw_job["apply_type"]:
+        norm["apply_type"] = str(raw_job["apply_type"]).strip()
+    if "apply_payload" in raw_job and raw_job["apply_payload"]:
+        norm["apply_payload"] = raw_job["apply_payload"]
     return norm
 
 

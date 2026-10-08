@@ -15,29 +15,74 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 from core.job_utils import normalize_job_dict
 
-def fetch_wuzzuf_full_description(job_url):
-    """Fetches the complete full job description and requirements via fast HTTP."""
+def _parse_wuzzuf_soup(soup):
+    import json
+    # 1. Schema.org JSON-LD
+    for s in soup.find_all('script', type='application/ld+json'):
+        try:
+            d = json.loads(s.string or '{}')
+            if d.get('@type') == 'JobPosting' and d.get('description'):
+                clean = BeautifulSoup(d['description'], 'html.parser').get_text(separator='\n', strip=True)
+                if len(clean) > 30:
+                    return clean
+        except Exception:
+            pass
+
+    # 2. Modern section headers: Job Description & Job Requirements
+    content_parts = []
+    for h in soup.find_all(['h2', 'h3', 'h4', 'strong', 'b', 'span']):
+        txt = h.get_text(strip=True).lower()
+        if txt in ['job description', 'job requirements', 'description', 'requirements', 'about the job', 'responsibilities']:
+            parent = h.find_parent(['section', 'div', 'article'])
+            if parent:
+                p_text = parent.get_text(separator='\n', strip=True)
+                if len(p_text) > 40 and p_text not in content_parts:
+                    content_parts.append(p_text)
+
+    if content_parts:
+        return '\n\n'.join(content_parts)
+
+    # 3. Modern and legacy Wuzzuf classes
+    sections = soup.find_all(['section', 'div'], class_=lambda c: c and any(k in str(c) for k in ['css-5pnqc5', 'css-3fx252', 'css-1u1fu21', 'css-117ic1a', 'description', 'requirements']))
+    if sections:
+        full_text = "\n\n".join([sec.get_text(separator=' ', strip=True) for sec in sections if len(sec.get_text(strip=True)) > 20])
+        if len(full_text) > 80:
+            return full_text
+
+    req_sec = soup.find('section', class_=lambda c: c and 'css-1v1k5x' in c) or soup.find('div', class_=lambda c: c and 'css-10p02e' in c)
+    if req_sec:
+        return req_sec.get_text(separator=' ', strip=True)
+    return ""
+
+def fetch_wuzzuf_full_description(job_url, driver=None):
+    """Fetches the complete full job description and requirements via fast HTTP with driver fallback."""
     if not job_url:
         return ""
+
     try:
         from curl_cffi import requests as c_requests
         resp = c_requests.get(
             job_url,
             impersonate="chrome120",
-            timeout=5
+            timeout=6
         )
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.content, 'html.parser')
-            sections = soup.find_all(['section', 'div'], class_=lambda c: c and any(k in str(c) for k in ['css-3fx252', 'css-1u1fu21', 'css-117ic1a', 'description', 'requirements']))
-            if sections:
-                full_text = "\n\n".join([sec.get_text(separator=' ', strip=True) for sec in sections if len(sec.get_text(strip=True)) > 20])
-                if len(full_text) > 80:
-                    return full_text
-            req_sec = soup.find('section', class_=lambda c: c and 'css-1v1k5x' in c) or soup.find('div', class_=lambda c: c and 'css-10p02e' in c)
-            if req_sec:
-                return req_sec.get_text(separator=' ', strip=True)
+            desc = _parse_wuzzuf_soup(soup)
+            if desc:
+                return desc
     except Exception as e:
         logging.debug(f"Wuzzuf HTTP fetch failed for {job_url}: {e}")
+
+    if driver is not None:
+        try:
+            driver.uc_open_with_reconnect(job_url, 3)
+            soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
+            desc = _parse_wuzzuf_soup(soup)
+            if desc:
+                return desc
+        except Exception as e:
+            logging.debug(f"Wuzzuf driver fetch failed for {job_url}: {e}")
 
     return ""
 

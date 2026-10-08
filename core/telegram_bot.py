@@ -86,6 +86,156 @@ def send_message(bot_token: str, chat_id: int | str, text: str, parse_mode: Opti
         return False
 
 
+def get_bot_token() -> str:
+    """Returns the configured Telegram Bot Token strictly from config or .env."""
+    try:
+        from core import config as app_config
+        tok = getattr(app_config, "TELEGRAM_BOT_TOKEN", None)
+        if tok and str(tok).strip():
+            return str(tok).strip()
+    except Exception:
+        pass
+    return os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+
+
+def get_bot_info(bot_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Fetches bot username and identity from Telegram getMe."""
+    token = bot_token or get_bot_token()
+    if not token:
+        return None
+    state = get_state()
+    cached = state.get("bot_info")
+    if cached and cached.get("token_prefix") == token[:8]:
+        return cached
+    url = f"https://api.telegram.org/bot{token}/getMe"
+    try:
+        resp = requests.get(url, timeout=6)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("ok"):
+                info = data.get("result", {})
+                res = {
+                    "id": info.get("id"),
+                    "username": info.get("username", ""),
+                    "first_name": info.get("first_name", ""),
+                    "token_prefix": token[:8]
+                }
+                state["bot_info"] = res
+                save_state(state)
+                return res
+    except Exception as e:
+        logger.debug(f"Failed to fetch bot info: {e}")
+    return cached
+
+
+def get_bot_username(bot_token: Optional[str] = None) -> str:
+    """Returns the bot's username dynamically fetched from the bot token via getMe."""
+    info = get_bot_info(bot_token)
+    if info and info.get("username"):
+        return info["username"].strip().lstrip("@")
+    return "JobAgent_Mhmd7syn_bot"
+
+
+def get_bot_url(bot_token: Optional[str] = None) -> str:
+    """
+    Constructs the universal Telegram link for the bot dynamically from its token:
+    e.g., https://t.me/BotUsername
+    """
+    username = get_bot_username(bot_token)
+    return f"https://t.me/{username}"
+
+
+def get_bot_tme_url(bot_token: Optional[str] = None) -> str:
+    """Universal t.me link for the bot."""
+    return get_bot_url(bot_token)
+
+
+def get_bot_web_url(bot_token: Optional[str] = None) -> str:
+    """Universal t.me link for the bot."""
+    return get_bot_url(bot_token)
+
+
+def _persist_chat_id_to_env(chat_id: str) -> None:
+    """Safely updates TELEGRAM_CHAT_ID in the local .env file."""
+    try:
+        env_path = os.path.join(BASE_DIR, ".env")
+        lines = []
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.strip().startswith("TELEGRAM_CHAT_ID"):
+                new_lines.append(f'TELEGRAM_CHAT_ID="{chat_id}"\n')
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f'TELEGRAM_CHAT_ID="{chat_id}"\n')
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception as e:
+        logger.debug(f"Failed to persist chat_id to .env: {e}")
+
+
+def resolve_chat_id_for_username(bot_token: Optional[str] = None, username: str = "") -> Optional[str]:
+    """
+    Resolves a user's Telegram chat_id given their username:
+    1. Checks cached state (known_users or last_seen_chat).
+    2. Inspects recent updates from Telegram getUpdates.
+    3. Falls back to configured TELEGRAM_CHAT_ID if TELEGRAM_USERNAME matches.
+    """
+    target = username.lstrip("@").strip().lower()
+    if not target:
+        return None
+
+    state = get_state()
+    known = state.get("known_users", {})
+    if target in known and known[target]:
+        return str(known[target])
+
+    last_seen = state.get("last_seen_chat", {})
+    last_user = (last_seen.get("username") or "").lstrip("@").strip().lower()
+    if last_user == target and last_seen.get("chat_id"):
+        return str(last_seen.get("chat_id"))
+
+    token = bot_token or get_bot_token()
+    if token:
+        url = f"https://api.telegram.org/bot{token}/getUpdates"
+        try:
+            resp = requests.get(url, params={"limit": 100, "timeout": 0}, timeout=6)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("ok"):
+                    updates = data.get("result", [])
+                    for u in reversed(updates):
+                        msg = u.get("message") or u.get("channel_post")
+                        if msg and "chat" in msg:
+                            u_from = msg.get("from", {})
+                            u_name = (u_from.get("username") or "").lstrip("@").strip().lower()
+                            if u_name == target:
+                                c_id = str(msg["chat"]["id"])
+                                if "known_users" not in state:
+                                    state["known_users"] = {}
+                                state["known_users"][target] = c_id
+                                save_state(state)
+                                return c_id
+        except Exception as e:
+            logger.debug(f"Error querying updates for username resolution: {e}")
+
+    try:
+        from core import config as app_config
+        cfg_user = (getattr(app_config, "TELEGRAM_USERNAME", None) or os.getenv("TELEGRAM_USERNAME", "") or "").lstrip("@").strip().lower()
+        cfg_chat = getattr(app_config, "TELEGRAM_CHAT_ID", None) or os.getenv("TELEGRAM_CHAT_ID", "") or ""
+        if cfg_user == target and cfg_chat:
+            return str(cfg_chat)
+    except Exception:
+        pass
+
+    return None
+
+
 def send_chat_action(bot_token: str, chat_id: int | str, action: str = "typing") -> None:
     """Sends a chat action status like 'typing' to show user something is happening."""
     url = f"https://api.telegram.org/bot{bot_token}/sendChatAction"
@@ -246,23 +396,51 @@ def process_message(bot_token: str, message: Dict[str, Any], allowed_chat_id: Op
     chat = message.get("chat", {})
     chat_id = str(chat.get("id", ""))
     user = message.get("from", {})
-    username = user.get("username", user.get("first_name", "User"))
+    raw_user = user.get("username") or user.get("first_name", "User")
+    username = raw_user.lstrip("@").strip()
 
     if chat_id:
         _last_seen_chat = {
             "chat_id": chat_id,
-            "username": username,
+            "username": raw_user,
             "text": (message.get("text") or message.get("caption") or "").strip()
         }
         try:
             state = get_state()
             state["last_seen_chat"] = _last_seen_chat
+            if "known_users" not in state:
+                state["known_users"] = {}
+            if username:
+                state["known_users"][username.lower()] = chat_id
             save_state(state)
         except Exception:
             pass
 
-    # Security check: If allowed_chat_id is specified, strictly enforce it
-    if allowed_chat_id and str(allowed_chat_id).strip():
+    # Security check: verify against configured username or allowed_chat_id
+    configured_user = ""
+    try:
+        from core import config as app_config
+        configured_user = (getattr(app_config, "TELEGRAM_USERNAME", None) or os.getenv("TELEGRAM_USERNAME", "") or "").lstrip("@").strip().lower()
+    except Exception:
+        pass
+
+    if configured_user:
+        if username.lower() == configured_user:
+            # Auto-bind chat_id if changed or newly detected
+            try:
+                from core import config as app_config
+                if getattr(app_config, "TELEGRAM_CHAT_ID", "") != chat_id:
+                    app_config.TELEGRAM_CHAT_ID = chat_id
+                    _persist_chat_id_to_env(chat_id)
+            except Exception:
+                pass
+        elif allowed_chat_id and str(allowed_chat_id).strip() == chat_id:
+            pass
+        else:
+            logger.warning(f"Blocked unauthorized message from chat_id={chat_id} (@{username}) - expected @{configured_user}")
+            send_message(bot_token, chat_id, "⛔ Unauthorized: This Job Agent bot is configured for a private user.")
+            return []
+    elif allowed_chat_id and str(allowed_chat_id).strip():
         if chat_id != str(allowed_chat_id).strip():
             logger.warning(f"Blocked unauthorized message from chat_id={chat_id} (@{username})")
             send_message(bot_token, chat_id, "⛔ Unauthorized: This Job Agent bot is configured for a private user.")
@@ -273,28 +451,20 @@ def process_message(bot_token: str, message: Dict[str, Any], allowed_chat_id: Op
         return []
 
     # Handle /start, /help or initial pairing
-    if text.startswith("/start") or text.startswith("/help") or not allowed_chat_id:
-        if not allowed_chat_id:
-            welcome_text = (
-                f"👋 <b>Welcome to Job Agent Mobile Sync!</b>\n\n"
-                f"📱 Detected User: @{html_escape(username)}\n"
-                f"🔑 Your Chat ID: <code>{html_escape(chat_id)}</code>\n\n"
-                f"👉 Click <b>'Auto-Detect'</b> in the Job Agent Settings on your desktop to link your phone, or paste <code>{html_escape(chat_id)}</code> into the Chat ID box!"
-            )
-        else:
-            welcome_text = (
-                "👋 <b>Welcome to Job Agent Mobile Sync!</b>\n\n"
-                "Whenever you find a job on your phone:\n"
-                "• <b>Share or send a link</b> (LinkedIn, Wuzzuf, etc.)\n"
-                "• <b>Or paste the post text</b> directly\n\n"
-                "🏷️ <b>Quick Tags & Commands:</b>\n"
-                "• <code>/scholarship</code> or <code>#scholarship</code> — Save as Scholarship 🎓\n"
-                "• <code>/liked</code> or <code>#liked</code> — Save directly as Liked ❤️\n"
-                "• <code>/applied</code> or <code>#applied</code> — Mark as Already Applied ✅\n\n"
-                "You can combine tags too (e.g. <code>#scholarship #applied [link]</code>)!\n"
-                "I will automatically parse the job, score it against your CV, and save it to your database."
-            )
-        send_message(bot_token, chat_id, welcome_text, parse_mode="HTML")
+    if text.startswith("/start") or text.startswith("/help") or not (allowed_chat_id or configured_user):
+        start_reply = (
+            f"👋 <b>Welcome to Job Agent Mobile Sync!</b>\n\n"
+            f"📱 Connected User: @{html_escape(username)}\n\n"
+            f"Whenever you find a job on your phone:\n"
+            f"• <b>Share or send a link</b> (LinkedIn, Wuzzuf, etc.)\n"
+            f"• <b>Or paste the post text</b> directly\n\n"
+            f"🏷️ <b>Quick Tags & Commands:</b>\n"
+            f"• <code>/scholarship</code> or <code>#scholarship</code> — Save as Scholarship 🎓\n"
+            f"• <code>/liked</code> or <code>#liked</code> — Save directly as Liked ❤️\n"
+            f"• <code>/applied</code> or <code>#applied</code> — Mark as Already Applied ✅\n\n"
+            f"Job Agent will automatically parse the job, score it against your CV, and save it to your database."
+        )
+        send_message(bot_token, chat_id, start_reply, parse_mode="HTML")
         return []
 
     send_chat_action(bot_token, chat_id, "typing")

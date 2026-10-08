@@ -9,7 +9,7 @@ import socket
 def start_desktop_app():
     # Start the FastAPI server as a subprocess without a console window
     # creationflags=0x08000000 is CREATE_NO_WINDOW in Windows
-    python_exe = sys.executable.replace("pythonw.exe", "python.exe")
+    python_exe = sys.executable.replace("pythonw.exe", "python.exe").replace("job-agent-w.exe", "job-agent.exe")
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uvicorn_server.log")
     log_file = open(log_path, "a", encoding="utf-8")
     server_process = subprocess.Popen(

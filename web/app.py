@@ -2,6 +2,7 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional
 import collections
 import subprocess
 import logging
@@ -27,7 +28,8 @@ from scrapers.link_scraper import scrape_job_from_url
 import core.config as app_config
 from core.telegram_bot import (
     sync_queued_telegram_jobs, stop_bot_thread, is_bot_running, get_latest_chat_id_from_telegram,
-    get_and_clear_new_telegram_jobs
+    get_and_clear_new_telegram_jobs, get_bot_token, get_bot_info, resolve_chat_id_for_username,
+    get_bot_url, get_bot_username
 )
 
 app = FastAPI(title="Job Dashboard")
@@ -133,28 +135,35 @@ async def update_config(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         logging.error(f"Error updating config: {e}")
         return {"status": "error", "error": str(e)}
+ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+
 class TelegramConfigRequest(BaseModel):
-    bot_token: str = Field(default="")
-    chat_id: str = Field(default="")
+    username: str = Field(default="")
 
 @app.get("/api/telegram/status")
 def get_telegram_status():
-    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or ""
-    masked_token = (token[:6] + "..." + token[-4:]) if len(token) > 10 else ""
+    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN", "") or get_bot_token()
+    username = getattr(app_config, "TELEGRAM_USERNAME", None)
+    if username is None:
+        username = os.getenv("TELEGRAM_USERNAME", "")
+    chat_id = getattr(app_config, "TELEGRAM_CHAT_ID", None)
+    if chat_id is None:
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    bot_username = get_bot_username(token)
+    bot_url = get_bot_url(token)
     return {
-        "is_configured": bool(token),
-        "is_running": bool(token),
-        "masked_token": masked_token,
-        "chat_id": getattr(app_config, "TELEGRAM_CHAT_ID", "") or ""
+        "is_configured": bool(username or chat_id),
+        "is_running": bool(username or chat_id),
+        "username": username,
+        "chat_id": chat_id,
+        "has_chat_id": bool(chat_id),
+        "bot_username": bot_username,
+        "bot_url": bot_url
     }
 
 @app.post("/api/telegram/detect-chat")
 def detect_telegram_chat(req: TelegramConfigRequest):
-    token = req.bot_token.strip() or getattr(app_config, "TELEGRAM_BOT_TOKEN", "") or ""
-    if not token:
-        raise HTTPException(status_code=400, detail="Please enter your Telegram Bot Token first.")
-
-    # Check for recent message, checking updates directly from Telegram API
+    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN", "") or get_bot_token()
     info = None
     for _ in range(4):
         info = get_latest_chat_id_from_telegram(token)
@@ -165,7 +174,7 @@ def detect_telegram_chat(req: TelegramConfigRequest):
     if not info or not info.get("chat_id"):
         return {
             "status": "not_found",
-            "message": "No recent message found yet. Please send any message (like 'hello' or '/start') to your bot in Telegram from your phone, then click Auto-Detect!"
+            "message": "No recent message found yet. Please open the bot on Telegram and tap Start, then try again!"
         }
     return {
         "status": "success",
@@ -176,47 +185,79 @@ def detect_telegram_chat(req: TelegramConfigRequest):
 
 @app.post("/api/telegram/config")
 def save_telegram_config(req: TelegramConfigRequest):
-    new_token = req.bot_token.strip()
-    new_chat_id = req.chat_id.strip()
+    new_username = req.username.strip().lstrip("@")
+    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN", "") or get_bot_token()
 
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    current_username = getattr(app_config, "TELEGRAM_USERNAME", None)
+    if current_username is None:
+        current_username = os.getenv("TELEGRAM_USERNAME", "")
+    current_username = (current_username or "").lstrip("@").strip()
+
+    chat_id = getattr(app_config, "TELEGRAM_CHAT_ID", None)
+    if chat_id is None:
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    chat_id = str(chat_id or "")
+
+    if new_username:
+        resolved = resolve_chat_id_for_username(token, new_username)
+        if resolved:
+            chat_id = resolved
+        elif current_username.lower() != new_username.lower():
+            chat_id = ""
+    else:
+        chat_id = ""
+
+    env_path = ENV_FILE_PATH
     lines = []
     if os.path.exists(env_path):
         with open(env_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-    updated_token = False
+    updated_user = False
     updated_chat = False
     new_lines = []
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("TELEGRAM_BOT_TOKEN"):
-            new_lines.append(f'TELEGRAM_BOT_TOKEN="{new_token}"\n')
-            updated_token = True
+        if stripped.startswith("TELEGRAM_USERNAME"):
+            new_lines.append(f'TELEGRAM_USERNAME="{new_username}"\n')
+            updated_user = True
         elif stripped.startswith("TELEGRAM_CHAT_ID"):
-            new_lines.append(f'TELEGRAM_CHAT_ID="{new_chat_id}"\n')
+            new_lines.append(f'TELEGRAM_CHAT_ID="{chat_id}"\n')
             updated_chat = True
         else:
             new_lines.append(line)
 
-    if not updated_token:
-        new_lines.append(f'TELEGRAM_BOT_TOKEN="{new_token}"\n')
+    if not updated_user:
+        new_lines.append(f'TELEGRAM_USERNAME="{new_username}"\n')
     if not updated_chat:
-        new_lines.append(f'TELEGRAM_CHAT_ID="{new_chat_id}"\n')
+        new_lines.append(f'TELEGRAM_CHAT_ID="{chat_id}"\n')
 
     with open(env_path, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
 
-    app_config.TELEGRAM_BOT_TOKEN = new_token
-    app_config.TELEGRAM_CHAT_ID = new_chat_id
+    app_config.TELEGRAM_USERNAME = new_username
+    app_config.TELEGRAM_CHAT_ID = chat_id
+    os.environ["TELEGRAM_USERNAME"] = new_username
+    os.environ["TELEGRAM_CHAT_ID"] = chat_id
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=env_path, override=True)
+    except Exception:
+        pass
 
     # Stop any old lingering threads if any
     stop_bot_thread()
 
+    bot_username = get_bot_username(token)
+    bot_url = get_bot_url(token)
+
     return {
         "status": "success",
-        "is_running": bool(new_token),
-        "chat_id": new_chat_id
+        "username": new_username,
+        "chat_id": chat_id,
+        "bot_username": bot_username,
+        "bot_url": bot_url,
+        "message": f"Telegram username @{new_username} saved." if new_username else "Telegram username cleared."
     }
 
 @app.get("/api/telegram/sync")
@@ -401,8 +442,13 @@ def run_scraper():
             except OSError:
                 pass
 
-    script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "job_agent.py")
     python_exe = sys.executable
+    candidate_job_agent = os.path.join(os.path.dirname(sys.executable), "job-agent.exe")
+    alt_job_agent = r"C:\Users\HP\AppData\Local\Python\pythoncore-3.14-64\job-agent.exe"
+    if os.path.exists(candidate_job_agent):
+        python_exe = candidate_job_agent
+    elif os.path.exists(alt_job_agent):
+        python_exe = alt_job_agent
     
     creationflags = 0
     if os.name == 'nt':
@@ -576,6 +622,536 @@ def batch_resolve_pending_updates(data: BatchProposalActionRequest, background_t
     except Exception as e:
         logging.error(f"Error batch resolving proposals: {e}")
         return {"error": str(e), "status": "error"}
+
+from core.applicant_profile import load_profile, save_profile, scan_resume_directory
+from core.database import backfill_job_classifications
+
+@app.get("/api/profile")
+def get_profile_endpoint():
+    return load_profile()
+
+@app.post("/api/profile")
+def save_profile_endpoint(profile_data: Dict[str, Any]):
+    success = save_profile(profile_data)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save profile data.")
+    return {"status": "success", "profile": load_profile()}
+
+@app.api_route("/api/profile/scan-resumes", methods=["GET", "POST"])
+def scan_resumes_endpoint(base_dir: Optional[str] = None):
+    return scan_resume_directory(base_dir)
+
+@app.get("/api/auto-apply/settings")
+def get_auto_apply_settings_endpoint():
+    profile = load_profile()
+    return profile.get("auto_apply_settings", {})
+
+@app.post("/api/auto-apply/settings")
+def save_auto_apply_settings_endpoint(settings_data: Dict[str, Any]):
+    profile = load_profile()
+    profile["auto_apply_settings"] = settings_data
+    save_profile(profile)
+    return {"status": "success", "settings": profile.get("auto_apply_settings", {})}
+
+@app.post("/api/jobs/classify-all")
+def classify_all_jobs_endpoint():
+    count = backfill_job_classifications()
+    return {"status": "success", "classified_count": count}
+
+# ==========================================
+# Email Co-Pilot & Email Launchers Endpoints
+# ==========================================
+from appliers.email_generator import generate_email_draft
+from appliers.gmail_launcher import prepare_gmail_launch, copy_file_to_clipboard, reveal_in_explorer
+from appliers.outlook_launcher import launch_outlook_compose
+from core.database import DB_PATH
+import sqlite3
+
+class EmailDraftRequest(BaseModel):
+    job_id: str
+
+class OpenInGmailRequest(BaseModel):
+    job_id: Optional[str] = None
+    recipient: str = Field(default="")
+    subject: str = Field(default="")
+    body: str = Field(default="")
+    cv_path: Optional[str] = None
+    open_browser: bool = Field(default=False)
+
+class OpenInOutlookRequest(BaseModel):
+    job_id: Optional[str] = None
+    recipient: str = Field(default="")
+    subject: str = Field(default="")
+    body: str = Field(default="")
+    raw_body: Optional[str] = None
+    cv_path: Optional[str] = None
+    personal_signature: Optional[str] = None
+
+class MarkAppliedRequest(BaseModel):
+    job_id: str
+    recipient: Optional[str] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    applied_via: Optional[str] = "outlook_copilot"
+
+@app.post("/api/email/generate-draft")
+def generate_email_draft_endpoint(req: EmailDraftRequest):
+    draft = generate_email_draft(job_id=req.job_id)
+    if draft.get("status") == "error":
+        raise HTTPException(status_code=404, detail=draft.get("message", "Job not found"))
+    return draft
+
+@app.post("/api/email/open-in-outlook")
+def open_in_outlook_endpoint(req: OpenInOutlookRequest):
+    res = launch_outlook_compose(
+        recipient=req.recipient,
+        subject=req.subject,
+        body=req.body,
+        cv_path=req.cv_path,
+        raw_body=req.raw_body,
+        personal_signature=req.personal_signature
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "Failed to launch Outlook"))
+    return res
+
+@app.post("/api/email/open-in-gmail")
+def open_in_gmail_endpoint(req: OpenInGmailRequest):
+    res = prepare_gmail_launch(
+        recipient=req.recipient,
+        subject=req.subject,
+        body=req.body,
+        cv_path=req.cv_path,
+        open_browser=req.open_browser
+    )
+    return res
+
+@app.post("/api/email/copy-cv")
+def copy_cv_endpoint(req: Dict[str, Any]):
+    cv_path = req.get("cv_path")
+    if not cv_path or not os.path.exists(cv_path):
+        raise HTTPException(status_code=404, detail="CV file not found")
+    copied = copy_file_to_clipboard(cv_path)
+    return {"status": "success", "copied": copied, "cv_path": cv_path}
+
+@app.post("/api/email/reveal-cv")
+def reveal_cv_endpoint(req: Dict[str, Any]):
+    cv_path = req.get("cv_path")
+    if not cv_path or not os.path.exists(cv_path):
+        raise HTTPException(status_code=404, detail="CV file not found")
+    revealed = reveal_in_explorer(cv_path)
+    return {"status": "success", "revealed": revealed}
+
+@app.post("/api/email/mark-applied")
+def mark_email_applied_endpoint(req: MarkAppliedRequest):
+    if not os.path.exists(DB_PATH):
+        raise HTTPException(status_code=500, detail="Database not found")
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        cursor = conn.cursor()
+        now_str = datetime.now().isoformat()
+        
+        cursor.execute("SELECT apply_payload FROM jobs WHERE job_id = ?", (req.job_id,))
+        row = cursor.fetchone()
+        payload = {}
+        if row and row[0]:
+            try:
+                payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            except Exception:
+                payload = {}
+                
+        payload["sent_email"] = {
+            "recipient": req.recipient,
+            "subject": req.subject,
+            "body": req.body,
+            "applied_via": req.applied_via or "outlook_copilot",
+            "timestamp": now_str
+        }
+        
+        cursor.execute("""
+            UPDATE jobs 
+            SET is_applied = 1, apply_status = 'applied', applied_at = ?, apply_payload = ?
+            WHERE job_id = ?
+        """, (now_str, json.dumps(payload, ensure_ascii=False), req.job_id))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "job_id": req.job_id, "applied_at": now_str}
+    except Exception as e:
+        logging.error(f"Error marking job as applied: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================
+# WhatsApp Co-Pilot & Desktop Launch Endpoints
+# ============================================
+from appliers.whatsapp_copilot import generate_whatsapp_pitch
+from appliers.whatsapp_launcher import launch_whatsapp_desktop, launch_whatsapp_web
+
+class WhatsAppPitchRequest(BaseModel):
+    job_id: str
+
+class OpenInWhatsAppDesktopRequest(BaseModel):
+    phone: str = Field(default="")
+    pitch: str = Field(default="")
+    cv_path: Optional[str] = None
+    auto_attach: Optional[bool] = True
+
+class MarkWhatsAppAppliedRequest(BaseModel):
+    job_id: str
+    phone: Optional[str] = None
+    pitch: Optional[str] = None
+    applied_via: Optional[str] = "whatsapp_desktop"
+
+@app.post("/api/whatsapp/generate-pitch")
+def generate_whatsapp_pitch_endpoint(req: WhatsAppPitchRequest):
+    pitch_data = generate_whatsapp_pitch(job_id=req.job_id)
+    if pitch_data.get("status") == "error":
+        raise HTTPException(status_code=404, detail=pitch_data.get("message", "Job not found"))
+    return pitch_data
+
+@app.post("/api/whatsapp/open-in-desktop")
+def open_in_whatsapp_desktop_endpoint(req: OpenInWhatsAppDesktopRequest):
+    res = launch_whatsapp_desktop(
+        phone=req.phone,
+        pitch=req.pitch,
+        cv_path=req.cv_path,
+        auto_attach=req.auto_attach if req.auto_attach is not None else True
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "Failed to launch WhatsApp Desktop"))
+    return res
+
+@app.post("/api/whatsapp/copy-cv")
+def copy_whatsapp_cv_endpoint(req: Dict[str, Any]):
+    cv_path = req.get("cv_path")
+    if not cv_path or not os.path.exists(cv_path):
+        raise HTTPException(status_code=404, detail="CV file not found")
+    copied = copy_file_to_clipboard(cv_path)
+    return {"status": "success", "copied": copied, "cv_path": cv_path}
+
+@app.post("/api/whatsapp/reveal-cv")
+def reveal_whatsapp_cv_endpoint(req: Dict[str, Any]):
+    cv_path = req.get("cv_path")
+    if not cv_path or not os.path.exists(cv_path):
+        raise HTTPException(status_code=404, detail="CV file not found")
+    revealed = reveal_in_explorer(cv_path)
+    return {"status": "success", "revealed": revealed}
+
+@app.post("/api/whatsapp/mark-applied")
+def mark_whatsapp_applied_endpoint(req: MarkWhatsAppAppliedRequest):
+    if not os.path.exists(DB_PATH):
+        raise HTTPException(status_code=500, detail="Database not found")
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        cursor = conn.cursor()
+        now_str = datetime.now().isoformat()
+        
+        cursor.execute("SELECT apply_payload FROM jobs WHERE job_id = ?", (req.job_id,))
+        row = cursor.fetchone()
+        payload = {}
+        if row and row[0]:
+            try:
+                payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            except Exception:
+                payload = {}
+                
+        payload["sent_whatsapp"] = {
+            "phone": req.phone,
+            "pitch": req.pitch,
+            "applied_via": req.applied_via or "whatsapp_desktop",
+            "timestamp": now_str
+        }
+        
+        cursor.execute("""
+            UPDATE jobs 
+            SET is_applied = 1, apply_status = 'applied', applied_at = ?, apply_payload = ?
+            WHERE job_id = ?
+        """, (now_str, json.dumps(payload, ensure_ascii=False), req.job_id))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "job_id": req.job_id, "applied_at": now_str}
+    except Exception as e:
+        logging.error(f"Error marking WhatsApp job as applied: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================
+# Easy Apply Co-Pilot & Assisted Session Endpoints
+# ============================================
+from appliers.easy_apply_copilot import prepare_easy_apply, launch_easy_apply_session, get_session
+
+class EasyApplyPrepareRequest(BaseModel):
+    job_id: str
+
+class EasyApplyLaunchRequest(BaseModel):
+    job_id: str
+    headed: Optional[bool] = True
+
+class MarkEasyApplyAppliedRequest(BaseModel):
+    job_id: str
+    applied_via: Optional[str] = "easy_apply_copilot"
+
+@app.post("/api/easy-apply/prepare")
+def easy_apply_prepare_endpoint(req: EasyApplyPrepareRequest):
+    data = prepare_easy_apply(job_id=req.job_id)
+    if data.get("status") == "error":
+        raise HTTPException(status_code=404, detail=data.get("message", "Job not found"))
+    return data
+
+@app.post("/api/easy-apply/launch-session")
+def easy_apply_launch_session_endpoint(req: EasyApplyLaunchRequest):
+    res = launch_easy_apply_session(job_id=req.job_id, headed=req.headed if req.headed is not None else True)
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "Failed to launch Easy Apply session"))
+    return res
+
+@app.get("/api/easy-apply/status/{job_id}")
+def easy_apply_status_endpoint(job_id: str):
+    session = get_session(job_id)
+    if not session:
+        return {"status": "idle", "job_id": job_id, "current_step": "Not started", "logs": []}
+    return session.to_dict()
+
+@app.post("/api/easy-apply/mark-applied")
+def mark_easy_apply_applied_endpoint(req: MarkEasyApplyAppliedRequest):
+    if not os.path.exists(DB_PATH):
+        raise HTTPException(status_code=500, detail="Database not found")
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        cursor = conn.cursor()
+        now_str = datetime.now().isoformat()
+        
+        cursor.execute("SELECT apply_payload FROM jobs WHERE job_id = ?", (req.job_id,))
+        row = cursor.fetchone()
+        payload = {}
+        if row and row[0]:
+            try:
+                payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            except Exception:
+                payload = {}
+                
+        payload["sent_easy_apply"] = {
+            "applied_via": req.applied_via or "easy_apply_copilot",
+            "timestamp": now_str
+        }
+        
+        cursor.execute("""
+            UPDATE jobs 
+            SET is_applied = 1, apply_status = 'applied', applied_at = ?, apply_payload = ?
+            WHERE job_id = ?
+        """, (now_str, json.dumps(payload, ensure_ascii=False), req.job_id))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "job_id": req.job_id, "applied_at": now_str}
+    except Exception as e:
+        logging.error(f"Error marking Easy Apply job as applied: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ----------------------------------------------------
+# Company ATS & Web Forms Co-Pilot Endpoints (Batch 5)
+# ----------------------------------------------------
+from appliers.ats_copilot import (
+    prepare_ats_application,
+    launch_ats_session,
+    get_ats_session,
+    generate_ats_cover_letter,
+    mark_ats_applied
+)
+
+class AtsPrepareRequest(BaseModel):
+    job_id: str
+
+class AtsLaunchRequest(BaseModel):
+    job_id: str
+    headed: Optional[bool] = True
+
+class AtsCoverLetterRequest(BaseModel):
+    job_id: str
+
+class MarkAtsAppliedRequest(BaseModel):
+    job_id: str
+    applied_via: Optional[str] = "ats_copilot"
+
+@app.post("/api/ats/prepare")
+def ats_prepare_endpoint(req: AtsPrepareRequest):
+    data = prepare_ats_application(job_id=req.job_id)
+    if data.get("status") == "error":
+        raise HTTPException(status_code=404, detail=data.get("message", "Job not found"))
+    return data
+
+@app.post("/api/ats/launch-session")
+def ats_launch_session_endpoint(req: AtsLaunchRequest):
+    res = launch_ats_session(job_id=req.job_id, headed=req.headed if req.headed is not None else True)
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "Failed to launch ATS session"))
+    return res
+
+@app.get("/api/ats/status/{job_id}")
+def ats_status_endpoint(job_id: str):
+    session = get_ats_session(job_id)
+    if not session:
+        return {"status": "idle", "job_id": job_id, "current_step": "Not started", "logs": []}
+    return session.to_dict()
+
+@app.post("/api/ats/generate-cover-letter")
+def ats_cover_letter_endpoint(req: AtsCoverLetterRequest):
+    from core.applicant_profile import get_resume_for_role
+    from core.cv_parser import extract_text_from_file
+
+    job = get_job_by_id(req.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    cv_path = get_resume_for_role(job.get("title", ""))
+    cv_text = ""
+    if cv_path and os.path.exists(cv_path):
+        try:
+            cv_text = extract_text_from_file(cv_path)
+        except Exception:
+            pass
+    cl = generate_ats_cover_letter(
+        job_title=job.get("title", ""),
+        company=job.get("company", ""),
+        location=job.get("location", ""),
+        job_description=job.get("description", ""),
+        cv_text=cv_text
+    )
+    return {"status": "success", "job_id": req.job_id, "cover_letter": cl}
+
+@app.post("/api/ats/mark-applied")
+def mark_ats_applied_endpoint(req: MarkAtsAppliedRequest):
+    res = mark_ats_applied(job_id=req.job_id)
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "Failed to mark ATS job as applied"))
+    return res
+
+
+# ----------------------------------------------------
+# Auto-Pilot & Applications History Endpoints (Phase 2)
+# ----------------------------------------------------
+from appliers.email_worker import (
+    get_autopilot_state,
+    run_email_autopilot_batch
+)
+from appliers.whatsapp_worker import run_whatsapp_autopilot_batch
+from appliers.master_orchestrator import (
+    run_master_autopilot_cycle,
+    is_cycle_active,
+    get_applications_history,
+    get_applications_aggregate_stats,
+    resolve_telegram_hitl_answer
+)
+
+class RunCycleRequest(BaseModel):
+    force: Optional[bool] = False
+    dry_run: Optional[bool] = False
+
+class RunEmailBatchRequest(BaseModel):
+    force: Optional[bool] = False
+    dry_run: Optional[bool] = False
+    batch_limit: Optional[int] = None
+
+class RunWhatsappBatchRequest(BaseModel):
+    force: Optional[bool] = False
+    dry_run: Optional[bool] = False
+    batch_limit: Optional[int] = None
+
+class HitlAnswerRequest(BaseModel):
+    job_id: str
+    question: str
+    answer: str
+
+class RetryApplicationRequest(BaseModel):
+    job_id: str
+
+@app.post("/api/autopilot/run-cycle")
+def autopilot_run_cycle_endpoint(req: RunCycleRequest, bg_tasks: BackgroundTasks):
+    if is_cycle_active():
+        return {"status": "already_running", "message": "Auto-Pilot cycle is currently executing in background."}
+    bg_tasks.add_task(run_master_autopilot_cycle, force=req.force or False, dry_run=req.dry_run or False)
+    return {"status": "started", "message": "Master Auto-Pilot cycle dispatched to background."}
+
+class ToggleAutoPilotRequest(BaseModel):
+    enabled: bool
+
+@app.get("/api/autopilot/status")
+def autopilot_status_endpoint():
+    state = get_autopilot_state()
+    state["is_cycle_running"] = is_cycle_active()
+    profile = load_profile()
+    settings = profile.get("auto_apply_settings", {})
+    is_enabled = bool(settings.get("enabled", False))
+    state["is_enabled"] = is_enabled
+    state["is_paused"] = not is_enabled
+    return state
+
+@app.post("/api/autopilot/toggle-state")
+def autopilot_toggle_state_endpoint(req: ToggleAutoPilotRequest):
+    profile = load_profile()
+    if "auto_apply_settings" not in profile:
+        profile["auto_apply_settings"] = {}
+    profile["auto_apply_settings"]["enabled"] = req.enabled
+    save_profile(profile)
+    state_label = "Active / Resumed" if req.enabled else "Paused"
+    return {
+        "status": "success",
+        "enabled": req.enabled,
+        "is_paused": not req.enabled,
+        "message": f"Auto-Pilot is now {state_label}."
+    }
+
+@app.post("/api/autopilot/run-email-batch")
+def autopilot_run_email_batch_endpoint(req: RunEmailBatchRequest):
+    res = run_email_autopilot_batch(force=req.force or False, dry_run=req.dry_run or False, batch_limit=req.batch_limit)
+    return res
+
+@app.post("/api/autopilot/run-whatsapp-batch")
+def autopilot_run_whatsapp_batch_endpoint(req: RunWhatsappBatchRequest):
+    res = run_whatsapp_autopilot_batch(force=req.force or False, dry_run=req.dry_run or False, batch_limit=req.batch_limit)
+    return res
+
+@app.get("/api/applications/history")
+def applications_history_endpoint(
+    channel: Optional[str] = "all",
+    search: Optional[str] = "",
+    limit: Optional[int] = 50,
+    offset: Optional[int] = 0
+):
+    return get_applications_history(
+        channel_filter=channel,
+        search_query=search,
+        limit=limit or 50,
+        offset=offset or 0
+    )
+
+@app.get("/api/applications/stats")
+def applications_stats_endpoint():
+    return get_applications_aggregate_stats()
+
+@app.post("/api/applications/retry")
+def applications_retry_endpoint(req: RetryApplicationRequest):
+    if not os.path.exists(DB_PATH):
+        raise HTTPException(status_code=500, detail="Database not found")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE jobs
+            SET is_applied = 0,
+                apply_status = 'pending'
+            WHERE job_id = ?
+        """, (req.job_id,))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "message": f"Job {req.job_id} reset to pending application state."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/autopilot/hitl-answer")
+def autopilot_hitl_answer_endpoint(req: HitlAnswerRequest):
+    success = resolve_telegram_hitl_answer(job_id=req.job_id, question=req.question, answer=req.answer)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save HITL answer")
+    return {"status": "success", "message": "Answer saved and application resumed."}
+
 
 if __name__ == "__main__":
     import uvicorn

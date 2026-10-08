@@ -107,6 +107,25 @@ def _scrape_linkedin_job(url: str) -> dict:
                     if "employment type" in crit.lower():
                         emp_type = crit.split(":")[-1].strip()
 
+                # Extract apply URL and easy apply from guest HTML if present
+                apply_url = None
+                is_ea = None
+                apply_a = soup.find("a", class_=lambda c: c and "apply" in c) or soup.find("a", href=lambda h: h and ("/safety/go/" in h or "externalApply" in h))
+                if apply_a and apply_a.get("href"):
+                    raw_href = apply_a["href"]
+                    if "/safety/go/" in raw_href or "url=" in raw_href:
+                        parsed = urllib.parse.urlparse(raw_href)
+                        params = urllib.parse.parse_qs(parsed.query)
+                        apply_url = params.get("url", [raw_href])[0]
+                    else:
+                        apply_url = raw_href
+                    is_ea = False
+                apply_btn_soup = soup.find("button", class_=lambda c: c and "apply" in c)
+                if apply_btn_soup:
+                    btn_text = apply_btn_soup.get_text(separator=" ", strip=True).lower()
+                    if "easy apply" in btn_text:
+                        is_ea = True
+
                 if title and len(title) > 2:
                     return {
                         "title": title,
@@ -116,7 +135,9 @@ def _scrape_linkedin_job(url: str) -> dict:
                         "description": desc,
                         "date_posted": _parse_relative_date(date_str),
                         "site": "linkedin",
-                        "job_url": clean_url
+                        "job_url": clean_url,
+                        "apply_url": apply_url,
+                        "is_easy_apply": is_ea
                     }
         except Exception as e:
             logger.debug(f"LinkedIn guest API fetch failed: {e}")
@@ -141,6 +162,37 @@ def _scrape_linkedin_job(url: str) -> dict:
                 loc_val = page.evaluate("() => document.querySelector('.jobs-unified-top-card__bullet, .topcard__flavor--bullet, .job-details-jobs-unified-top-card__bullet')?.innerText.trim() || ''")
                 desc = page.evaluate("() => document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerText.trim() || ''")
 
+                # Extract apply button link directly from DOM
+                apply_info = page.evaluate("""() => {
+                    let applyAnchor = document.querySelector('a.jobs-apply-button, a[href*="/safety/go/"], a[aria-label*="Apply to"], a.apply-button');
+                    if (applyAnchor && applyAnchor.href) {
+                        return { type: 'anchor', href: applyAnchor.href, is_easy: false };
+                    }
+                    let applyBtn = document.querySelector('button.jobs-apply-button, button[class*="apply"]');
+                    if (applyBtn) {
+                        let text = applyBtn.innerText.trim().toLowerCase();
+                        let dataUrl = applyBtn.getAttribute('data-apply-url');
+                        return { type: 'button', href: dataUrl, is_easy: text.includes('easy apply') };
+                    }
+                    for (let a of document.querySelectorAll('a[href*="/safety/go/"]')) {
+                        return { type: 'safety_anchor', href: a.href, is_easy: false };
+                    }
+                    return null;
+                }""")
+                apply_url = None
+                is_ea = None
+                if apply_info:
+                    href = apply_info.get("href")
+                    is_ea = apply_info.get("is_easy", False)
+                    if href:
+                        if "/safety/go/" in href or "url=" in href:
+                            import urllib.parse
+                            parsed = urllib.parse.urlparse(href)
+                            params = urllib.parse.parse_qs(parsed.query)
+                            apply_url = params.get("url", [href])[0]
+                        else:
+                            apply_url = href
+
                 if title:
                     return {
                         "title": title,
@@ -150,7 +202,9 @@ def _scrape_linkedin_job(url: str) -> dict:
                         "description": desc,
                         "date_posted": datetime.date.today().isoformat(),
                         "site": "linkedin",
-                        "job_url": clean_url
+                        "job_url": clean_url,
+                        "apply_url": apply_url,
+                        "is_easy_apply": is_ea
                     }
     except Exception as e:
         logger.warning(f"Playwright fallback for LinkedIn job failed: {e}")

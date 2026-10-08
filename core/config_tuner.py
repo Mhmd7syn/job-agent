@@ -5,7 +5,7 @@ import ctypes
 import uuid
 from core.llm_parser import client
 from pydantic import BaseModel, Field
-from core.career_levels import normalize_category_name, CAREER_LEVEL_CATEGORIES
+from core.career_levels import normalize_category_name, CAREER_LEVEL_CATEGORIES, expand_levels
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
 ALERT_PATH = os.path.join(os.path.dirname(__file__), 'pending_alerts.json')
@@ -438,7 +438,6 @@ def apply_single_proposal(proposal, config_data):
     val_str = str(val).lower().strip()
 
     if field == "EXCLUDE_KEYWORDS":
-        from core.career_levels import expand_levels, CAREER_LEVEL_CATEGORIES
         all_career_level_synonyms = expand_levels(CAREER_LEVEL_CATEGORIES)
         all_career_level_synonyms.add("phd")
         if val_str in all_career_level_synonyms:

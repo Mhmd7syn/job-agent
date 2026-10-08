@@ -1,0 +1,53 @@
+{
+  "personal_info": {
+    "full_name": "Full Name",
+    "first_name": "First",
+    "last_name": "Last",
+    "email": "candidate@example.com",
+    "phone": "+1234567890",
+    "city": "City",
+    "country": "Country",
+    "linkedin_url": "https://www.linkedin.com/in/username",
+    "github_url": "https://github.com/username",
+    "portfolio_url": "",
+    "resume_base_dir": "C:\\path\\to\\resumes"
+  },
+  "smart_screening": {
+    "driving_license": false,
+    "military_status": "Exempted / Completed",
+    "notice_period_days": 30,
+    "home_country": "Egypt",
+    "home_city": "Cairo",
+    "sponsorship_outside_home_only": true,
+    "relocate_outside_home_only": true,
+    "expected_salary_egp": 35000,
+    "expected_salary_usd": 1500,
+    "current_salary": "Negotiable",
+    "years_experience_by_role": {
+      "Computer Vision & AI": 0,
+      "Data Science & Machine Learning": 0,
+      "Data Analytics & BI": 0,
+      "Teaching & STEM Instructor": 3
+    }
+  },
+  "auto_apply_settings": {
+    "enabled": false,
+    "batch_size_per_run": 3,
+    "max_runs_per_day": 5,
+    "min_relevance_score": 70,
+    "channels_enabled": {
+      "email": true,
+      "whatsapp": true,
+      "easy_apply": true,
+      "platform": true
+    },
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 465,
+    "smtp_email": "candidate@example.com",
+    "smtp_app_password": "",
+    "email_signature_personal": "Best Regards,\nCandidate Name\nRole\n📞 +1234567890 📧 candidate@example.com",
+    "whatsapp_mode": "deep_link",
+    "whatsapp_default_language": "auto"
+  },
+  "custom_qa_pairs": {}
+}

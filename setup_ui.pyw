@@ -87,6 +87,7 @@ class SetupWizard(tk.Tk):
         self.li_email_var = tk.StringVar()
         self.li_pwd_var = tk.StringVar()
         self.gemini_key_var = tk.StringVar()
+        self.tg_username_var = tk.StringVar()
         self.keep_env_var = tk.BooleanVar(value=os.path.exists(os.path.join(PROJECT_ROOT, ".env")))
         
         # Schedule & shortcut state
@@ -676,6 +677,15 @@ class SetupWizard(tk.Tk):
                     seen = set()
                     unique = [x for x in terms if not (x in seen or seen.add(x))]
                     self.terms_var.set(", ".join(unique[:3])) # Limit display length to simple defaults
+            
+            env_file = os.path.join(PROJECT_ROOT, ".env")
+            if os.path.exists(env_file):
+                with open(env_file, "r", encoding="utf-8") as ef:
+                    for eline in ef:
+                        if eline.strip().startswith("TELEGRAM_USERNAME"):
+                            uval = eline.split("=", 1)[1].strip().strip('"').strip("'")
+                            if uval:
+                                self.tg_username_var.set(uval)
         except Exception as e:
             logging.warning(f"Notice loading defaults: {e}")
 
@@ -722,7 +732,16 @@ class SetupWizard(tk.Tk):
 
         make_row("LinkedIn Email:", self.li_email_var)
         pwd_entry, pwd_row = make_row("LinkedIn Password:", self.li_pwd_var, show_char="●")
-        key_entry, key_row = make_row("Gemini AI API Key:", self.gemini_key_var, show_char="●")
+        tg_entry, tg_row = make_row("Telegram Username:", self.tg_username_var)
+        def _open_telegram_bot():
+            try:
+                from core.telegram_bot import get_bot_url
+                url = get_bot_url()
+            except Exception:
+                url = "https://t.me/JobAgent_Mhmd7syn_bot"
+            import webbrowser
+            webbrowser.open(url)
+        self.create_button(tg_row, "Open Telegram Bot ↗", _open_telegram_bot, bg="#229ED9", hover_bg="#1b88bd", fg="white", px=10, py=4).pack(side=tk.RIGHT, padx=(8, 0))
 
         def add_toggle(row, entry):
             def toggle():
@@ -741,6 +760,7 @@ class SetupWizard(tk.Tk):
         _, tip_card = self.create_card(self.container, title="🛡️ Security & Privacy Vault:", padx=15, pady=12)
         tips = (
             "• Local Encryption: Credentials are encrypted and saved only in your local .env file using a key in %APPDATA%\\JobAgent.\n"
+            "• Telegram Mobile Sync: Enter your Telegram username (e.g. @username) and open Telegram Web to write /start and link your phone.\n"
             "• Why Gemini Key? Enables AI to read full job descriptions, filter irrelevant roles, and assign smart Match Scores.\n"
             "• Why LinkedIn? Enables scraping high-quality jobs directly. Tip: You may use a secondary 'burner' empty account!"
         )
@@ -912,13 +932,33 @@ try:
     li_email = data.get('li_email', '').strip()
     li_password = data.get('li_pwd', '').strip()
     gemini_key = data.get('gemini_key', '').strip()
+    tg_user = data.get('tg_user', '').strip().lstrip('@')
     enc_email = fernet.encrypt(li_email.encode()).decode() if li_email else ""
     enc_pwd = fernet.encrypt(li_password.encode()).decode() if li_password else ""
     enc_gem = fernet.encrypt(gemini_key.encode()).decode() if gemini_key else ""
-    with open(os.path.join(data['root'], '.env'), 'w', encoding='utf-8') as f:
+    
+    # Preserve static TELEGRAM_BOT_TOKEN and existing TELEGRAM_CHAT_ID from .env
+    env_file = os.path.join(data['root'], '.env')
+    old_token = ""
+    old_chat = ""
+    if os.path.exists(env_file):
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for l in f:
+                if l.strip().startswith('TELEGRAM_BOT_TOKEN'):
+                    old_token = l.split('=', 1)[1].strip().strip('"').strip("'")
+                elif l.strip().startswith('TELEGRAM_CHAT_ID'):
+                    old_chat = l.split('=', 1)[1].strip().strip('"').strip("'")
+
+    with open(env_file, 'w', encoding='utf-8') as f:
         f.write(f'LINKEDIN_EMAIL="{enc_email}"\\n')
         f.write(f'LINKEDIN_PASSWORD="{enc_pwd}"\\n')
         f.write(f'GEMINI_API_KEY="{enc_gem}"\\n')
+        if old_token:
+            f.write(f'TELEGRAM_BOT_TOKEN="{old_token}"\\n')
+        if tg_user:
+            f.write(f'TELEGRAM_USERNAME="{tg_user}"\\n')
+        if old_chat:
+            f.write(f'TELEGRAM_CHAT_ID="{old_chat}"\\n')
     print("SUCCESS: Credentials encrypted and saved to .env")
 except Exception as e:
     print(f"ERROR: {e}")
@@ -927,13 +967,35 @@ except Exception as e:
                     'li_email': self.li_email_var.get(),
                     'li_pwd': self.li_pwd_var.get(),
                     'gemini_key': self.gemini_key_var.get(),
+                    'tg_user': self.tg_username_var.get(),
                     'root': PROJECT_ROOT
                 })
                 res = subprocess.run([venv_py, "-c", encrypt_script], input=payload, capture_output=True, text=True, cwd=PROJECT_ROOT, creationflags=CREATE_NO_WINDOW)
                 if res.stdout: self.log("✓ " + res.stdout.strip())
                 if res.stderr: self.log(res.stderr.strip())
             else:
-                self.log("Keeping existing .env file.")
+                tg_user = self.tg_username_var.get().strip().lstrip("@")
+                if tg_user and os.path.exists(env_path):
+                    try:
+                        with open(env_path, "r", encoding="utf-8") as f:
+                            lines = f.readlines()
+                        updated = False
+                        new_lines = []
+                        for l in lines:
+                            if l.strip().startswith("TELEGRAM_USERNAME"):
+                                new_lines.append(f'TELEGRAM_USERNAME="{tg_user}"\n')
+                                updated = True
+                            else:
+                                new_lines.append(l)
+                        if not updated:
+                            new_lines.append(f'TELEGRAM_USERNAME="{tg_user}"\n')
+                        with open(env_path, "w", encoding="utf-8") as f:
+                            f.writelines(new_lines)
+                        self.log(f"✓ Updated Telegram username to @{tg_user} in existing .env file.")
+                    except Exception as e:
+                        self.log(f"Notice updating Telegram username in .env: {e}")
+                else:
+                    self.log("Keeping existing .env file.")
 
             # Step: Schedule Windows Task
             self.log_queue.put(("progress", 80, "Registering Windows Scheduled Task..."))
@@ -997,7 +1059,7 @@ except Exception as e:
                     self.log(f"Notice: Shortcut creation failed: {res.stderr or res.stdout}")
 
             # Step: Initial First-Run Job Search
-            self.log_queue.put(("progress", 98, "Starting initial background job search..."))
+            self.log_queue.put(("progress", 97, "Starting initial background job search..."))
             self.log("Starting initial automatic job search...")
             try:
                 venv_py = os.path.join(PROJECT_ROOT, "venv", "Scripts", "python.exe")
@@ -1009,6 +1071,34 @@ except Exception as e:
                     self.log("✓ First-run job search started automatically in background.")
             except Exception as e:
                 self.log(f"Notice: Could not auto-start initial scan: {e}")
+
+            # Step: Open Telegram Bot Chat
+            tg_user = self.tg_username_var.get().strip().lstrip("@")
+            if tg_user:
+                self.log_queue.put(("progress", 99, "Opening Telegram bot chat..."))
+                self.log(f"Opening Telegram bot chat for @{tg_user}...")
+                try:
+                    tg_script = """
+import sys, os, webbrowser
+sys.path.insert(0, os.path.abspath('.'))
+try:
+    from core.telegram_bot import get_bot_url
+    url = get_bot_url()
+    webbrowser.open(url)
+    print("OPENED:" + url)
+except Exception as e:
+    print(f"ERROR: {e}")
+"""
+                    res_tg = subprocess.run([venv_py, "-c", tg_script], capture_output=True, text=True, cwd=PROJECT_ROOT, creationflags=CREATE_NO_WINDOW)
+                    out_tg = (res_tg.stdout or "").strip()
+                    if "OPENED:" in out_tg:
+                        opened_url = out_tg.split("OPENED:")[1].strip()
+                        self.log(f"✓ Opened Telegram bot: {opened_url}")
+                        self.log("ℹ Please tap 'Start' in the bot chat so Job Agent can link your mobile chat ID.")
+                    else:
+                        self.log(f"Telegram notice: {out_tg or res_tg.stderr}")
+                except Exception as ex:
+                    self.log(f"Telegram notice: {ex}")
 
             self.log("=========================================")
             self.log("🎉 All setup tasks completed successfully!")
@@ -1050,9 +1140,10 @@ except Exception as e:
                     self.status_label.config(text="✓ First job scan running right now in background!", fg=SUCCESS)
                     self.create_button(self.bottom_prog, "❌ Close", self.destroy, bg="#33334b", hover_bg="#474766", fg=FG_TEXT).pack(side=tk.LEFT)
                     self.create_button(self.bottom_prog, "🖥️ Launch Job Agent Dashboard Now", self.launch_app, bg=SUCCESS, hover_bg="#059669").pack(side=tk.RIGHT)
+                    tg_info = f"\n• Telegram: Bot chat opened for @{self.tg_username_var.get().strip().lstrip('@')} - send /start to activate!" if self.tg_username_var.get().strip() else ""
                     messagebox.showinfo(
                         "Initial Job Search Auto-Started!",
-                        "🎉 Welcome to Job Agent!\n\nSince this is your first time setting up, your initial background job search has been started automatically based on your configured career preferences!\n\nClick 'Launch Job Agent Dashboard Now' to view your live dashboard as new matching jobs and AI scores arrive!"
+                        f"🎉 Welcome to Job Agent!\n\nSince this is your first time setting up, your initial background job search has been started automatically based on your configured career preferences!{tg_info}\n\nClick 'Launch Job Agent Dashboard Now' to view your live dashboard as new matching jobs and AI scores arrive!"
                     )
                 elif msg_type == "error":
                     self.progress_bar.set_progress(100, color=DANGER)

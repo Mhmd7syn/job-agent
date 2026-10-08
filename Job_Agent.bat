@@ -48,7 +48,11 @@ if /I "%updateChoice%"=="N" goto LaunchApp
 
 :LaunchApp
 call venv\Scripts\activate.bat
-start "" "venv\Scripts\pythonw.exe" desktop_app.pyw
+if exist "C:\Users\HP\AppData\Local\Python\pythoncore-3.14-64\job-agent-w.exe" (
+    start "" "C:\Users\HP\AppData\Local\Python\pythoncore-3.14-64\job-agent-w.exe" desktop_app.pyw
+) else (
+    start "" "venv\Scripts\pythonw.exe" desktop_app.pyw
+)
 exit /b 0
 
 :RunSetup

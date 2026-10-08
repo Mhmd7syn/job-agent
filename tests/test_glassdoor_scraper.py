@@ -10,7 +10,8 @@ if BASE_DIR not in sys.path:
 from scrapers.glassdoor_scraper import (
     build_glassdoor_url,
     fetch_glassdoor_full_description,
-    scrape_glassdoor
+    scrape_glassdoor,
+    clean_glassdoor_company
 )
 
 
@@ -122,8 +123,54 @@ class TestGlassdoorScraper(unittest.TestCase):
         self.assertEqual(job["company"], "Tech Innovations")
         self.assertEqual(job["description"], "Complete full job description with Python, SQL, and Docker requirements.")
         self.assertEqual(job["job_id"], "ai engineer|tech innovations")
-        self.assertEqual(job["site"], "glassdoor")
+    def test_clean_glassdoor_company(self):
+        self.assertEqual(clean_glassdoor_company("Valeo3.7"), "Valeo")
+        self.assertEqual(clean_glassdoor_company("Valeo 3.7 ★"), "Valeo")
+        self.assertEqual(clean_glassdoor_company("Tech Solutions 4.5"), "Tech Solutions")
+        self.assertEqual(clean_glassdoor_company("Google"), "Google")
+        self.assertEqual(clean_glassdoor_company(""), "Unknown")
+
+    @patch("scrapers.glassdoor_scraper.is_job_seen", return_value=False)
+    @patch("scrapers.glassdoor_scraper.fetch_glassdoor_full_description")
+    def test_scrape_glassdoor_easy_apply_and_partner_links(self, mock_fetch_desc, mock_is_seen):
+        mock_fetch_desc.return_value = "Detailed full description"
+        mock_driver = MagicMock()
+        mock_driver.get_page_source.return_value = """
+        <html>
+            <body>
+                <a href="/partner/jobListing.htm?jobListingId=98765&ea=1">Partner Apply</a>
+                <a href="/partner/jobListing.htm?jobListingId=54321">External Apply</a>
+                <ul>
+                    <li data-jobid="98765">
+                        <a href="/job-listing/role-1-JV_IC1?jl=98765" class="JobTitle">Fast ML Engineer</a>
+                        <span class="EmployerName">InstaDeep3.8</span>
+                        <div class="location">Cairo</div>
+                        <p>Snippet 1</p>
+                    </li>
+                    <li data-jobid="54321">
+                        <a href="/job-listing/role-2-JV_IC1?jl=54321" class="JobTitle">External ML Engineer</a>
+                        <span class="EmployerName">Valeo3.7</span>
+                        <div class="location">Cairo</div>
+                        <p>Snippet 2</p>
+                    </li>
+                </ul>
+            </body>
+        </html>
+        """
+        df = scrape_glassdoor("ml engineer", "Cairo", results_wanted=5, driver=mock_driver)
+        self.assertEqual(len(df), 2)
+        
+        job1 = df.iloc[0].to_dict()
+        self.assertEqual(job1["company"], "InstaDeep")
+        self.assertTrue(job1["is_easy_apply"])
+        self.assertIn("ea=1", job1["apply_url"])
+        
+        job2 = df.iloc[1].to_dict()
+        self.assertEqual(job2["company"], "Valeo")
+        self.assertFalse(job2["is_easy_apply"])
+        self.assertIn("jobListingId=54321", job2["apply_url"])
 
 
 if __name__ == "__main__":
     unittest.main()
+

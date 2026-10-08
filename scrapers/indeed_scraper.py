@@ -9,6 +9,20 @@ from bs4 import BeautifulSoup
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
+from core.job_utils import normalize_job_dict
+
+def clean_indeed_company(company: str) -> str:
+    """Strips attached employer ratings, stars, and glued location/zip codes from Indeed companies."""
+    if not company:
+        return "Unknown"
+    cleaned = company.strip()
+    # Strip rating suffix e.g. "Valeo3.7" or "Company 4.2 ★" or "4.2"
+    cleaned = re.sub(r'\s*\d+\.\d+\s*★?$', '', cleaned).strip()
+    # Strip glued rating e.g. "Company4.2"
+    cleaned = re.sub(r'([A-Za-z]+)\d+\.\d+.*$', r'\1', cleaned).strip()
+    # Strip glued location e.g. "CroweTallahassee, FL 32301" or "CroweTallahassee, FL"
+    cleaned = re.sub(r'([a-z0-9])([A-Z][a-z]+(?:[\s-][A-Z][a-z]+)*,\s*[A-Z]{2}(?:\s*\d{5})?)', r'\1', cleaned).strip()
+    return cleaned or company
 
 def fetch_indeed_full_description(driver, job_url):
     """Navigates to an Indeed job page and extracts the complete job description text."""
@@ -57,13 +71,16 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
                     continue
                 
                 title = str(row.get('title', 'Unknown'))
-                company = str(row.get('company', 'Unknown'))
+                company = clean_indeed_company(str(row.get('company', 'Unknown')))
                 desc = str(row.get('description', ''))
                 job_type = str(row.get('job_type', 'Not specified'))
                 loc_val = str(row.get('location', location))
                 date_val = row.get('date_posted') or datetime.datetime.now().date()
                 
-                jobs.append({
+                direct_url = str(row.get('job_url_direct') or '').strip() or None
+                is_ea = bool(row.get('is_direct_apply')) if ('is_direct_apply' in row and pd.notna(row.get('is_direct_apply'))) else None
+
+                jobs.append(normalize_job_dict({
                     'title': title,
                     'company': company,
                     'location': loc_val,
@@ -72,8 +89,10 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
                     'description': desc,
                     'is_remote': 'remote' in search_term.lower() or 'remote' in loc_val.lower(),
                     'site': 'indeed',
-                    'date_posted': date_val
-                })
+                    'date_posted': date_val,
+                    'apply_url': direct_url,
+                    'is_easy_apply': is_ea
+                }))
             
             if jobs:
                 logging.info(f"✅ Indeed (JobSpy): Extracted {len(jobs)} jobs with full descriptions.")
@@ -132,7 +151,8 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
                 continue
 
             comp_elem = card.find(['span', 'div'], class_=lambda c: c and any(k in str(c).lower() for k in ['companyname', 'company_location', 'company']))
-            company = comp_elem.text.strip() if comp_elem else "Unknown"
+            raw_company = comp_elem.text.strip() if comp_elem else "Unknown"
+            company = clean_indeed_company(raw_company)
 
             loc_elem = card.find('div', class_=lambda c: c and any(k in str(c).lower() for k in ['companylocation', 'company_location', 'location']))
             loc_val = loc_elem.text.strip() if loc_elem else location
@@ -140,17 +160,21 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
             desc_elem = card.find('div', class_=lambda c: c and any(k in str(c) for k in ['job-snippet', 'underShelfFooter', 'css-9446fg']))
             card_desc = desc_elem.text.strip() if desc_elem else card.get_text(separator=' ', strip=True)
 
-            jobs.append({
+            # Fetch full description if driver is alive
+            full_desc = fetch_indeed_full_description(driver, href) if driver else ""
+            final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
+
+            jobs.append(normalize_job_dict({
                 'title': title,
                 'company': company,
                 'location': loc_val,
                 'job_url': href,
                 'job_type': 'Not specified',
-                'description': card_desc,
+                'description': final_desc,
                 'is_remote': 'remote' in search_term.lower() or 'remote' in str(loc_val).lower(),
                 'site': 'indeed',
                 'date_posted': datetime.datetime.now().date()
-            })
+            }))
             
     except Exception as e:
         logging.error(f"⚠️ Indeed Scraper Error: {e}")

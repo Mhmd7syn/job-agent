@@ -231,3 +231,125 @@ class TestTanqeebConcurrent:
         assert len(df) == 1
         assert df.iloc[0]["title"] == "ML Engineer"
         assert mock_fetch_desc.call_count == 1
+
+
+import unittest
+
+class TestScraperDetailParsers(unittest.TestCase):
+    def test_wuzzuf_json_ld_parsing(self):
+        from scrapers.wuzzuf_scraper import _parse_wuzzuf_soup
+        from bs4 import BeautifulSoup
+
+        html = """
+        <html>
+        <head>
+          <script type="application/ld+json">
+          {
+            "@context": "http://schema.org",
+            "@type": "JobPosting",
+            "title": "Senior Python Engineer",
+            "description": "<p>Develop advanced AI pipelines and microservices using Python and FastAPI.</p>"
+          }
+          </script>
+        </head>
+        </html>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        desc = _parse_wuzzuf_soup(soup)
+        assert "Develop advanced AI pipelines" in desc
+
+    def test_wuzzuf_modern_headers_parsing(self):
+        from scrapers.wuzzuf_scraper import _parse_wuzzuf_soup
+        from bs4 import BeautifulSoup
+
+        html = """
+        <html>
+        <body>
+          <section class="css-5pnqc5">
+            <strong>Job Description</strong>
+            <p>Design and implement scalable distributed services in Python and Kubernetes.</p>
+          </section>
+          <section class="css-5pnqc5">
+            <strong>Job Requirements</strong>
+            <p>Must have 5+ years of experience with Python, Docker, and PostgreSQL databases.</p>
+          </section>
+        </body>
+        </html>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        desc = _parse_wuzzuf_soup(soup)
+        assert "Job Description" in desc
+        assert "scalable distributed services" in desc
+        assert "Job Requirements" in desc
+
+    def test_bayt_json_ld_and_chat_banner_ignore(self):
+        from scrapers.bayt_scraper import _parse_bayt_soup
+        from bs4 import BeautifulSoup
+
+        # JSON-LD test
+        html_json = """
+        <html>
+        <head>
+          <script type="application/ld+json">
+          {
+            "@type": "JobPosting",
+            "title": "Lead Software Engineer",
+            "description": "<p>Leading backend engineering operations, architecture, and code reviews across teams.</p>",
+            "hiringOrganization": {"@type": "Organization", "name": "GlobalTech Corp"}
+          }
+          </script>
+        </head>
+        </html>
+        """
+        soup = BeautifulSoup(html_json, "html.parser")
+        res = _parse_bayt_soup(soup)
+        assert res["company"] == "GlobalTech Corp"
+        assert "Leading backend engineering operations" in res["description"]
+
+        # DOM chat banner ignore test
+        html_dom = """
+        <html>
+        <body>
+          <div class="card-content">Get contacted by recruiters directly with our newest chat feature!</div>
+          <div class="job-description t-break">
+            We are looking for a Senior Architect to scale microservices and handle high concurrency loads across AWS.
+          </div>
+        </body>
+        </html>
+        """
+        soup_dom = BeautifulSoup(html_dom, "html.parser")
+        res_dom = _parse_bayt_soup(soup_dom)
+        assert "Senior Architect" in res_dom["description"]
+        assert "chat feature" not in res_dom["description"].lower()
+
+    def test_tanqeeb_json_ld_parsing(self):
+        from scrapers.tanqeeb_scraper import _parse_tanqeeb_soup
+        from bs4 import BeautifulSoup
+
+        html = """
+        <html>
+        <head>
+          <script type="application/ld+json">
+          {
+            "@type": "JobPosting",
+            "title": "Odoo / Python Developer",
+            "description": "<p>Build custom ERP modules, configure database workflows, and write automated tests.</p>",
+            "hiringOrganization": {"name": "ZADSolutions"}
+          }
+          </script>
+        </head>
+        </html>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        res = _parse_tanqeeb_soup(soup)
+        assert res["company"] == "ZADSolutions"
+        assert "Build custom ERP modules" in res["description"]
+
+    def test_clean_indeed_company(self):
+        from scrapers.indeed_scraper import clean_indeed_company
+
+        assert clean_indeed_company("CroweTallahassee, FL 32301") == "Crowe"
+        assert clean_indeed_company("CroweTallahassee, FL") == "Crowe"
+        assert clean_indeed_company("Valeo3.7") == "Valeo"
+        assert clean_indeed_company("Google 4.5 ★") == "Google"
+        assert clean_indeed_company("Meta") == "Meta"

@@ -9,7 +9,9 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from core.telegram_bot import (
-    clean_url, URL_REGEX, get_state, save_state, process_message
+    clean_url, URL_REGEX, get_state, save_state, process_message,
+    get_bot_token, get_bot_info, resolve_chat_id_for_username,
+    get_bot_username, get_bot_url, get_bot_tme_url
 )
 
 
@@ -25,6 +27,19 @@ class TestTelegramBot(unittest.TestCase):
             except Exception:
                 pass
 
+        # Protect the live .env file and environment variables
+        self.env_file = os.path.join(BASE_DIR, ".env")
+        self.env_backup = None
+        if os.path.exists(self.env_file):
+            with open(self.env_file, "r", encoding="utf-8") as f:
+                self.env_backup = f.read()
+
+        import core.config as app_config
+        self.orig_cfg_user = getattr(app_config, "TELEGRAM_USERNAME", None)
+        self.orig_cfg_chat = getattr(app_config, "TELEGRAM_CHAT_ID", None)
+        self.orig_env_user = os.environ.get("TELEGRAM_USERNAME")
+        self.orig_env_chat = os.environ.get("TELEGRAM_CHAT_ID")
+
     def tearDown(self):
         self.state_patcher.stop()
         if os.path.exists(self.test_state_file):
@@ -32,6 +47,32 @@ class TestTelegramBot(unittest.TestCase):
                 os.remove(self.test_state_file)
             except Exception:
                 pass
+
+        # Restore the live .env file exactly as before the test ran
+        if self.env_backup is not None:
+            with open(self.env_file, "w", encoding="utf-8") as f:
+                f.write(self.env_backup)
+        elif os.path.exists(self.env_file):
+            try:
+                os.remove(self.env_file)
+            except Exception:
+                pass
+
+        import core.config as app_config
+        if self.orig_cfg_user is not None:
+            app_config.TELEGRAM_USERNAME = self.orig_cfg_user
+        if self.orig_cfg_chat is not None:
+            app_config.TELEGRAM_CHAT_ID = self.orig_cfg_chat
+
+        if self.orig_env_user is not None:
+            os.environ["TELEGRAM_USERNAME"] = self.orig_env_user
+        else:
+            os.environ.pop("TELEGRAM_USERNAME", None)
+
+        if self.orig_env_chat is not None:
+            os.environ["TELEGRAM_CHAT_ID"] = self.orig_env_chat
+        else:
+            os.environ.pop("TELEGRAM_CHAT_ID", None)
 
     def test_clean_url(self):
         self.assertEqual(clean_url("https://linkedin.com/jobs/view/12345/"), "https://linkedin.com/jobs/view/12345/")
@@ -425,6 +466,121 @@ class TestTelegramBot(unittest.TestCase):
         reply_text = mock_send.call_args[0][2]
         self.assertIn("Job Saved", reply_text)
         self.assertIn("0.0%", reply_text)
+
+    def test_get_bot_token_from_env(self):
+        with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "token_from_env_123"}):
+            with patch("core.config.TELEGRAM_BOT_TOKEN", "token_from_env_123"):
+                token = get_bot_token()
+                self.assertEqual(token, "token_from_env_123")
+
+    def test_resolve_chat_id_from_state(self):
+        save_state({
+            "known_users": {"myuser": "123456"},
+            "last_seen_chat": {"username": "other", "chat_id": "999"}
+        })
+        self.assertEqual(resolve_chat_id_for_username(username="@myuser"), "123456")
+        self.assertEqual(resolve_chat_id_for_username(username="other"), "999")
+        self.assertIsNone(resolve_chat_id_for_username(username="unknown_user"))
+
+    @patch("core.telegram_bot.requests.get")
+    def test_resolve_chat_id_from_updates(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "ok": True,
+            "result": [
+                {
+                    "update_id": 50,
+                    "message": {
+                        "chat": {"id": 77777},
+                        "from": {"username": "TargetUser", "first_name": "Target"}
+                    }
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+        cid = resolve_chat_id_for_username(bot_token="test_tok", username="@targetuser")
+        self.assertEqual(cid, "77777")
+
+    def test_get_bot_links(self):
+        save_state({
+            "bot_info": {
+                "id": 12345,
+                "username": "CustomTestBot",
+                "token_prefix": "my_token"
+            }
+        })
+        self.assertEqual(get_bot_username("my_token_secret"), "CustomTestBot")
+        self.assertEqual(get_bot_url("my_token_secret"), "https://t.me/CustomTestBot")
+        self.assertEqual(get_bot_tme_url("my_token_secret"), "https://t.me/CustomTestBot")
+
+    @patch("core.telegram_bot.send_message")
+    def test_process_message_start_reply(self, mock_send):
+        msg = {
+            "chat": {"id": 12345678},
+            "from": {"id": 12345678, "username": "newuser"},
+            "text": "/start"
+        }
+        res = process_message("fake_token", msg, allowed_chat_id="12345678")
+        self.assertEqual(res, [])
+        mock_send.assert_called_once()
+        sent_cid = mock_send.call_args[0][1]
+        sent_text = mock_send.call_args[0][2]
+        self.assertEqual(sent_cid, "12345678")
+        self.assertIn("Welcome to Job Agent Mobile Sync!", sent_text)
+        self.assertIn("@newuser", sent_text)
+        self.assertEqual(mock_send.call_args[1].get("parse_mode"), "HTML")
+
+    @patch("core.telegram_bot.send_message")
+    def test_configured_username_authorization(self, mock_send):
+        with patch("core.config.TELEGRAM_USERNAME", "myuser"):
+            msg_auth = {
+                "chat": {"id": 1111},
+                "from": {"username": "MyUser"},
+                "text": "/start"
+            }
+            # Authorized user -> allowed
+            process_message("fake_tok", msg_auth)
+
+            msg_unauth = {
+                "chat": {"id": 2222},
+                "from": {"username": "Hacker"},
+                "text": "https://linkedin.com/jobs/view/123"
+            }
+            res_unauth = process_message("fake_tok", msg_unauth)
+            self.assertEqual(res_unauth, [])
+            mock_send.assert_called()
+            self.assertIn("Unauthorized", mock_send.call_args[0][2])
+
+    @patch("web.app.resolve_chat_id_for_username")
+    def test_web_telegram_config_endpoint(self, mock_resolve):
+        from fastapi.testclient import TestClient
+        from web.app import app
+        mock_resolve.return_value = "998877"
+
+        test_env = os.path.join(BASE_DIR, "output", "test_env_tmp.env")
+        if os.path.exists(test_env):
+            try:
+                os.remove(test_env)
+            except Exception:
+                pass
+
+        try:
+            with patch("web.app.ENV_FILE_PATH", test_env):
+                client = TestClient(app)
+                res = client.post("/api/telegram/config", json={"username": "@johndoe"})
+                self.assertEqual(res.status_code, 200)
+                data = res.json()
+                self.assertEqual(data["status"], "success")
+                self.assertEqual(data["username"], "johndoe")
+                self.assertEqual(data["chat_id"], "998877")
+                self.assertTrue(data.get("bot_url", "").startswith("https://t.me/"))
+        finally:
+            if os.path.exists(test_env):
+                try:
+                    os.remove(test_env)
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

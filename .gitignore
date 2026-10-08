@@ -16,6 +16,7 @@ env/
 
 # User personal configuration override (keep safe from git updates)
 core/config.json
+core/candidate_profile.json
 
 # Log files
 *.log
@@ -31,9 +32,21 @@ downloaded_files/
 
 # Runtime data & alerts
 data/
+core/pending_alerts.json
 
-# Generated screenshots / debug images
+# Scratch and test caches
+scratch/
+.pytest_cache/
+
+# Executables
+*.exe
+
+# Generated screenshots / debug images (exempt static repo assets)
 *.png
+!Dashboard_Photo.png
+!web/static/logo.png
 
-/__pycache__
+# Development tracking queues & tooling
 ISSUES_QUEUE.md
+AUTO_APPLY_QUEUE.md
+graphify-out/

@@ -32,6 +32,7 @@ if os.getenv("GEMINI_API_KEY"):
 
 TELEGRAM_BOT_TOKEN = decrypt_value(os.getenv("TELEGRAM_BOT_TOKEN"))
 TELEGRAM_CHAT_ID = decrypt_value(os.getenv("TELEGRAM_CHAT_ID"))
+TELEGRAM_USERNAME = decrypt_value(os.getenv("TELEGRAM_USERNAME"))
 
 
 config_json_path = os.path.join(os.path.dirname(__file__), 'config.json')
