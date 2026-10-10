@@ -11,7 +11,8 @@ if BASE_DIR not in sys.path:
 
 from web.app import app
 from core.applicant_profile import load_profile, save_profile, get_resume_for_role
-from appliers.email_generator import generate_email_draft, generate_fallback_draft
+from unittest.mock import patch, MagicMock
+from appliers.email_generator import generate_email_draft
 from appliers.gmail_launcher import build_gmail_compose_url, copy_file_to_clipboard, prepare_gmail_launch
 
 
@@ -35,23 +36,53 @@ def test_cv_resolution_for_target_roles():
         assert expected_folder in cv_path, f"CV path should be in folder {expected_folder}"
 
 
-def test_fallback_draft_generation_with_signature():
-    """Verify fallback draft generator creates English draft with personal signature."""
-    sig = "Best regards,\nMohamed Hussein\n+201097344958\nLinkedIn: linkedin.com/in/Mhmd7syn"
-    draft = generate_fallback_draft(
-        job_title="Data Analyst",
-        company="Tech Corp",
-        subject_hint="Application - Data Analyst",
-        candidate_name="Mohamed Hussein",
-        cv_path=None,
-        personal_signature=sig
-    )
-    assert draft["status"] == "success"
-    assert "Data Analyst" in draft["subject"]
-    assert "Dear Hiring Team at Tech Corp" in draft["salutation"]
-    assert "Mohamed Hussein" in draft["body"]
-    assert "+201097344958" in draft["body"]
-    assert draft["has_personal_signature"] is True
+def test_ai_unavailable_discards_and_notifies_telegram():
+    """Verify that when AI client is unavailable, draft generation is discarded and Telegram is notified."""
+    sample_job = {
+        "job_id": "job-test-1",
+        "title": "Data Analyst",
+        "company": "Tech Corp",
+        "location": "Cairo",
+        "description": "Looking for a Data Analyst with SQL and Python skills.",
+        "apply_payload": {"recipient_email": "hr@techcorp.com", "subject_hint": ""}
+    }
+    with patch("appliers.email_generator.client", None), \
+         patch("appliers.email_generator.notify_telegram_candidate") as mock_tg:
+        draft = generate_email_draft(job_data=sample_job)
+        assert draft["status"] == "error"
+        assert draft["reason"] == "ai_unavailable"
+        assert "discarded" in draft["message"].lower()
+        assert "body" not in draft
+        assert mock_tg.called is True
+        tg_call_msg = mock_tg.call_args[0][0]
+        assert "Discarded" in tg_call_msg
+        assert "Data Analyst" in tg_call_msg
+
+
+def test_ai_generation_failure_discards_and_notifies_telegram():
+    """Verify that when Gemini models fail, draft generation is discarded without heuristic fallback."""
+    sample_job = {
+        "job_id": "job-test-2",
+        "title": "ML Engineer",
+        "company": "AI Labs",
+        "location": "Remote",
+        "description": "Looking for ML Engineer with PyTorch experience.",
+        "apply_payload": {"recipient_email": "careers@ailabs.com", "subject_hint": ""}
+    }
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = RuntimeError("API quota exceeded")
+
+    with patch("appliers.email_generator.client", mock_client), \
+         patch("appliers.email_generator.notify_telegram_candidate") as mock_tg:
+        draft = generate_email_draft(job_data=sample_job)
+        assert draft["status"] == "error"
+        assert draft["reason"] == "ai_unavailable"
+        assert "quota exceeded" in draft["message"]
+        assert "body" not in draft
+        assert mock_tg.called is True
+        tg_call_msg = mock_tg.call_args[0][0]
+        assert "Discarded" in tg_call_msg
+        assert "ML Engineer" in tg_call_msg
 
 
 def test_gmail_compose_url_builder():

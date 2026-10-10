@@ -641,6 +641,48 @@ def save_profile_endpoint(profile_data: Dict[str, Any]):
 def scan_resumes_endpoint(base_dir: Optional[str] = None):
     return scan_resume_directory(base_dir)
 
+@app.post("/api/upload-role-resume")
+async def upload_role_resume_endpoint(file: UploadFile = File(...)):
+    """Uploads a role resume PDF/DOCX to data/resumes and returns its saved absolute path."""
+    try:
+        resumes_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "resumes")
+        os.makedirs(resumes_dir, exist_ok=True)
+        safe_filename = os.path.basename(file.filename)
+        dest_path = os.path.join(resumes_dir, safe_filename)
+        with open(dest_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        abs_path = os.path.abspath(dest_path)
+        return {
+            "status": "success",
+            "filename": safe_filename,
+            "file_path": abs_path,
+            "size_kb": round(os.path.getsize(dest_path) / 1024, 1)
+        }
+    except Exception as e:
+        logging.error(f"Error uploading role resume: {e}")
+        return {"status": "error", "error": str(e)}
+
+@app.post("/api/check-resume-file")
+async def check_resume_file_endpoint(req: Dict[str, Any]):
+    """Checks whether a given resume file path exists on disk and returns its metadata."""
+    path = (req.get("path") or "").strip()
+    if not path:
+        return {"exists": False, "filename": "", "size_kb": 0}
+    
+    if not os.path.isabs(path):
+        resolved = os.path.join(os.path.dirname(os.path.dirname(__file__)), path)
+    else:
+        resolved = path
+        
+    exists = os.path.exists(resolved) and os.path.isfile(resolved)
+    size_kb = round(os.path.getsize(resolved) / 1024, 1) if exists else 0
+    return {
+        "exists": exists,
+        "path": os.path.abspath(resolved) if exists else path,
+        "filename": os.path.basename(resolved),
+        "size_kb": size_kb
+    }
+
 @app.get("/api/auto-apply/settings")
 def get_auto_apply_settings_endpoint():
     profile = load_profile()

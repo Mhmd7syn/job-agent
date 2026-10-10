@@ -574,7 +574,7 @@ def get_posts_as_dataframe(term, loc, page=None):
                     'description': job.get('description', ''),
                     'is_remote': 'remote' in str(job.get('location', '')).lower(),
                     'date_posted': job.get('date_posted') or date.today(),
-                    'job_type': 'Not specified',
+                    'job_type': job.get('job_type') or 'Not specified',
                     'site': 'linkedin_posts'
                 })
     else:

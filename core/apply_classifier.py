@@ -202,7 +202,7 @@ def classify_and_extract(job: Dict[str, Any]) -> Dict[str, Any]:
                 "apply_payload": {
                     "recipient_email": recipient,
                     "all_emails": valid_emails,
-                    "subject_hint": subject_hint or f"Application for {job.get('title', 'Position')} - Mohamed Hussein"
+                    "subject_hint": subject_hint or ""
                 }
             }
 

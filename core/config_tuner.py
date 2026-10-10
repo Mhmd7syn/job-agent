@@ -401,7 +401,9 @@ def apply_single_proposal(proposal, config_data):
             target_title = val.get("title", "").strip().lower() if isinstance(val, dict) else str(val).strip().lower()
             existing_titles = [r.get("title", "").strip().lower() for r in roles if isinstance(r, dict)]
             if target_title and target_title not in existing_titles:
-                role_obj = val if isinstance(val, dict) else {"title": str(val).strip(), "english_terms": [str(val).strip()]}
+                role_obj = dict(val) if isinstance(val, dict) else {"title": str(val).strip(), "english_terms": [str(val).strip()]}
+                if "resume_path" not in role_obj:
+                    role_obj["resume_path"] = ""
                 roles.append(role_obj)
                 config_data["ROLES"] = roles
                 return True

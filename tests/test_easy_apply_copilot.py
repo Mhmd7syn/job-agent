@@ -85,7 +85,11 @@ def test_api_prepare_easy_apply_endpoint(client):
     assert data["status"] == "success"
     assert data["title"] == "Junior Data Analyst"
     assert data["attached_cv"]["exists"] is True
-    assert data["attached_cv"]["filename"] == "Mohamed_Hussein_CV.pdf"
+    expected_cv = get_resume_for_role("Junior Data Analyst")
+    if expected_cv:
+        assert data["attached_cv"]["filename"] == os.path.basename(expected_cv)
+    else:
+        assert data["attached_cv"]["filename"] in ["Mohamed_Hussein_CV.pdf", "MohamedHussein_DataAnalyst_Resume.pdf"]
     assert data["contact_preview"]["full_name"] == "Mohamed Hussein"
     assert data["screening_preview"]["requires_sponsorship"] is False
 

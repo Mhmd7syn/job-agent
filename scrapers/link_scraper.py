@@ -359,53 +359,82 @@ def _scrape_wuzzuf(url: str) -> dict:
 
 
 def _scrape_tanqeeb(url: str) -> dict:
-    """Scrapes a Tanqeeb job page."""
+    """Scrapes a Tanqeeb job page. If apply_url is one of our scrapers, delegates to scrape_job_from_url."""
+    from scrapers.tanqeeb_scraper import fetch_tanqeeb_job_details, get_scraped_site_from_url
+
+    details = fetch_tanqeeb_job_details(url)
+    apply_url = (details.get("apply_url") or "").strip()
+    if apply_url and get_scraped_site_from_url(apply_url):
+        logger.info(f"Tanqeeb job points to {apply_url}. Scraping direct link...")
+        try:
+            job = scrape_job_from_url(apply_url)
+            if job:
+                if not job.get("apply_url"):
+                    job["apply_url"] = apply_url
+                return job
+        except Exception as e:
+            logger.warning(f"Direct scrape of apply_url {apply_url} failed: {e}. Falling back to Tanqeeb content.")
+
+    final_url = url
+    final_site = "tanqeeb"
+
     from curl_cffi import requests as c_requests
     
     r = c_requests.get(url, impersonate="chrome120", timeout=10)
-    if r.status_code != 200:
+    if r.status_code != 200 and not details.get("description"):
         raise ValueError(f"Tanqeeb returned status code {r.status_code}")
 
-    soup = BeautifulSoup(r.text, "html.parser")
-    json_ld = extract_json_ld(r.text)
-    if json_ld and json_ld.get("title"):
-        json_ld["site"] = "tanqeeb"
-        json_ld["job_url"] = url
-        return json_ld
+    title = ""
+    company = details.get("company", "")
+    desc = details.get("description", "")
+    page_text = ""
 
-    title_elem = soup.find("h1") or soup.find("h2")
-    title = title_elem.text.strip() if title_elem else ""
+    if r.status_code == 200:
+        soup = BeautifulSoup(r.text, "html.parser")
+        json_ld = extract_json_ld(r.text)
+        if json_ld and json_ld.get("title"):
+            json_ld["site"] = final_site
+            json_ld["job_url"] = final_url
+            if apply_url:
+                json_ld["apply_url"] = apply_url
+            return json_ld
 
-    desc_div = soup.find("div", class_=lambda c: c and any(k in str(c) for k in ["vacancy-desc", "job-description", "card-body", "details-content"]))
-    desc = desc_div.get_text(separator="\n", strip=True) if desc_div else ""
+        title_elem = soup.find("h1") or soup.find("h2")
+        title = title_elem.text.strip() if title_elem else ""
 
-    for s in soup(["script", "style", "nav", "header", "footer"]):
-        s.decompose()
-    page_text = soup.get_text(separator="\n", strip=True)
+        if not desc:
+            desc_div = soup.find("div", class_=lambda c: c and any(k in str(c) for k in ["vacancy-desc", "job-description", "card-body", "details-content"]))
+            desc = desc_div.get_text(separator="\n", strip=True) if desc_div else ""
+
+        for s in soup(["script", "style", "nav", "header", "footer"]):
+            s.decompose()
+        page_text = soup.get_text(separator="\n", strip=True)
 
     if not title or len(desc) < 40:
-        ai_res = extract_job_page_with_ai(page_text[:8000])
+        ai_res = extract_job_page_with_ai((desc or page_text)[:8000]) if (desc or page_text) else {}
         if ai_res and not ai_res.get("error"):
             return {
                 "title": ai_res.get("title", title or "Unknown"),
-                "company": ai_res.get("company", "Unknown"),
+                "company": company or ai_res.get("company", "Unknown"),
                 "location": ai_res.get("location", "Egypt"),
                 "job_type": _fix_job_type(ai_res.get("job_type", "Full-time")),
                 "description": ai_res.get("description", desc or page_text),
                 "date_posted": _parse_relative_date(ai_res.get("date_posted")),
-                "site": "tanqeeb",
-                "job_url": url
+                "site": final_site,
+                "job_url": final_url,
+                "apply_url": apply_url or None
             }
 
     return {
-        "title": title,
-        "company": "Unknown",
+        "title": title or "Job Opportunity",
+        "company": company or "Unknown",
         "location": "Egypt",
         "job_type": "Full-time",
         "description": desc or page_text[:4000],
         "date_posted": datetime.date.today().isoformat(),
-        "site": "tanqeeb",
-        "job_url": url
+        "site": final_site,
+        "job_url": final_url,
+        "apply_url": apply_url or None
     }
 
 
@@ -588,7 +617,7 @@ def scrape_job_from_url(url: str, scraper_type: str = "auto", raw_text: str = ""
     if not raw_job or not raw_job.get("title"):
         raise ValueError("Could not extract job title and details from this link.")
 
-    raw_job["job_url"] = url or raw_job.get("job_url", "")
+    raw_job["job_url"] = raw_job.get("job_url") or url or ""
     raw_job["site"] = raw_job.get("site") or detect_scraper_type(url)
     if is_scholarship or has_scholarship_tag:
         raw_job["is_scholarship"] = True

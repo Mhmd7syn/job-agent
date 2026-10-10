@@ -100,7 +100,11 @@ def test_api_generate_pitch_endpoint(client):
     assert "pitch" in data
     assert len(data["pitch"]) > 20
     assert "attached_cv" in data
-    assert data["attached_cv"]["filename"] == "Mohamed_Hussein_CV.pdf"
+    expected_cv = get_resume_for_role("Teaching & STEM Instructor")
+    if expected_cv:
+        assert data["attached_cv"]["filename"] == os.path.basename(expected_cv)
+    else:
+        assert data["attached_cv"]["filename"] in ["Mohamed_Hussein_CV.pdf", "MohamedHussein_ComputerScienceInstructor_Resume.pdf"]
     assert data["attached_cv"]["exists"] is True
 
 

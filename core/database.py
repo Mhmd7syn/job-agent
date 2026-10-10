@@ -47,8 +47,9 @@ def init_db():
     # Migrate any old 'applied' status
     cursor.execute("UPDATE jobs SET is_applied = 1, status = 'liked' WHERE status = 'applied'")
     
-    # Add index on job_url for high-speed deduplication checks
+    # Add index on job_url and apply_url for high-speed deduplication checks
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_url ON jobs(job_url)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_apply_url ON jobs(apply_url)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_apply_type ON jobs(apply_type)")
     
     conn.commit()
@@ -372,14 +373,17 @@ def get_job_by_id(job_id):
     return dict(row) if row else None
 
 def is_job_seen(job_url: str) -> bool:
-    """Fast pre-AI deduplication check. Returns True if this URL already exists in the DB.
+    """Fast pre-AI deduplication check. Returns True if this URL already exists in the DB (as job_url or apply_url).
     Always returns False on any error so the scraper proceeds safely."""
     if not job_url:
         return False
     try:
         conn = sqlite3.connect(DB_PATH, timeout=5)
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM jobs WHERE job_url = ? LIMIT 1", (job_url,))
+        cursor.execute(
+            "SELECT 1 FROM jobs WHERE job_url = ? OR (apply_url IS NOT NULL AND apply_url != '' AND apply_url = ?) LIMIT 1",
+            (job_url, job_url)
+        )
         found = cursor.fetchone() is not None
         conn.close()
         return found
@@ -387,14 +391,17 @@ def is_job_seen(job_url: str) -> bool:
         return False
 
 def get_job_by_url(job_url: str):
-    """Returns the existing job dictionary if job_url matches, else None."""
+    """Returns the existing job dictionary if job_url matches (as job_url or apply_url), else None."""
     if not job_url:
         return None
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE job_url = ? LIMIT 1", (job_url,))
+        cursor.execute(
+            "SELECT * FROM jobs WHERE job_url = ? OR (apply_url IS NOT NULL AND apply_url != '' AND apply_url = ?) LIMIT 1",
+            (job_url, job_url)
+        )
         row = cursor.fetchone()
         conn.close()
         return dict(row) if row else None

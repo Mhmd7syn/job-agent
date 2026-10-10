@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 from typing import Dict, Any, List, Optional
@@ -6,8 +7,6 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROFILE_PATH = os.path.join(BASE_DIR, "core", "candidate_profile.json")
-
-DEFAULT_RESUME_DIR = r"D:\OneDrive - Faculty of Computer and Information Sciences (Ain Shams University)\my life\CV or Resume"
 
 class PersonalInfo(BaseModel):
     full_name: str = "Mohamed Hussein"
@@ -20,7 +19,8 @@ class PersonalInfo(BaseModel):
     linkedin_url: str = "https://www.linkedin.com/in/mhmd7syn"
     github_url: str = "https://github.com/Mhmd7syn"
     portfolio_url: str = ""
-    resume_base_dir: str = DEFAULT_RESUME_DIR
+    resume_base_dir: str = ""
+    default_resume_path: str = ""
 
 class SmartScreening(BaseModel):
     driving_license: bool = False
@@ -39,6 +39,7 @@ class SmartScreening(BaseModel):
         "Data Analytics & BI": 0,
         "Teaching & STEM Instructor": 3
     })
+    resumes_by_role: Dict[str, str] = Field(default_factory=dict)
 
 class AutoApplySettings(BaseModel):
     enabled: bool = False
@@ -95,15 +96,14 @@ def save_profile(profile_data: Dict[str, Any]) -> bool:
 
 def scan_resume_directory(base_dir: Optional[str] = None) -> Dict[str, Any]:
     """
-    Scans the resume directory where subfolders match role titles.
-    Finds the candidate's PDF resume in each role folder while ignoring
-    Shared/, build scripts, .tex files, and ATS review notes.
+    Scans an optional resume directory where subfolders match role titles.
+    If no base directory is provided or configured, returns an empty result.
     """
-    target_dir = base_dir or load_profile().get("personal_info", {}).get("resume_base_dir", DEFAULT_RESUME_DIR)
+    target_dir = base_dir or load_profile().get("personal_info", {}).get("resume_base_dir", "")
     
     result = {
         "base_dir": target_dir,
-        "exists": os.path.exists(target_dir),
+        "exists": bool(target_dir and os.path.exists(target_dir)),
         "roles_found": {},
         "ignored_items": []
     }
@@ -157,51 +157,126 @@ def scan_resume_directory(base_dir: Optional[str] = None) -> Dict[str, Any]:
 
 def get_resume_for_role(role_title: str) -> Optional[str]:
     """
-    Returns the absolute path to the PDF resume matching the target role title.
-    Uses exact match, role-term synonym mapping, and keyword scoring.
+    Returns the absolute path to the resume matching the target role or job title.
+    Uses the explicit resume settings configured per role in the user settings,
+    without hardcoded role paths or keyword mappings.
     """
-    scan = scan_resume_directory()
-    roles = scan.get("roles_found", {})
+    import core.config as app_config
+
+    roles = getattr(app_config, "ROLES", [])
     if not roles:
-        return None
-        
-    # 1. Exact match
-    if role_title in roles and roles[role_title].get("primary_cv"):
-        return roles[role_title]["primary_cv"]["path"]
-        
-    rt_lower = role_title.lower()
-    
-    # 2. Case-insensitive substring match against folder names
-    for r_name, info in roles.items():
-        if (r_name.lower() in rt_lower or rt_lower in r_name.lower()) and info.get("primary_cv"):
-            return info["primary_cv"]["path"]
-            
-    # 3. Known role alias / keyword mapping
-    role_keywords = {
-        "Data Analytics & BI": ["analyst", "analytics", "bi", "business intelligence", "power bi", "tableau", "reporting"],
-        "Data Science & Machine Learning": ["data scientist", "data science", "machine learning", "ml engineer", "predictive", "nlp", "deep learning"],
-        "Computer Vision & AI": ["computer vision", "vision", "opencv", "yolo", "image processing", "ai engineer"],
-        "Teaching & STEM Instructor": ["instructor", "trainer", "teacher", "teaching", "stem", "robotics", "curriculum", "lecturer"]
-    }
-    
-    # Calculate best match score by keywords
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                    roles = cdata.get("ROLES", [])
+        except Exception as e:
+            logging.error(f"Error loading roles from config: {e}")
+            roles = []
+
+    profile = load_profile()
+    profile_resumes = profile.get("smart_screening", {}).get("resumes_by_role", {})
+    default_resume = profile.get("personal_info", {}).get("default_resume_path", "").strip()
+
+    def _resolve_valid_path(p: Optional[str]) -> Optional[str]:
+        if not p or not str(p).strip():
+            return None
+        clean_p = str(p).strip()
+        if os.path.isabs(clean_p):
+            return clean_p
+        resolved = os.path.join(BASE_DIR, clean_p)
+        return os.path.abspath(resolved)
+
+    if not roles and not profile_resumes:
+        return _resolve_valid_path(default_resume)
+
+    rt_lower = (role_title or "").strip().lower()
+
+    # 1. Exact match against configured role title
+    for r in roles:
+        title = r.get("title", "").strip()
+        if title and title.lower() == rt_lower:
+            cv = r.get("resume_path") or profile_resumes.get(title)
+            if cv:
+                return _resolve_valid_path(cv)
+
+    for prof_title, cv in profile_resumes.items():
+        if prof_title.strip().lower() == rt_lower and cv:
+            return _resolve_valid_path(cv)
+
+    # 2. Case-insensitive substring match on role title
+    for r in roles:
+        title = r.get("title", "").strip()
+        if title:
+            t_lower = title.lower()
+            if t_lower in rt_lower or rt_lower in t_lower:
+                cv = r.get("resume_path") or profile_resumes.get(title)
+                if cv:
+                    return _resolve_valid_path(cv)
+
+    for prof_title, cv in profile_resumes.items():
+        pt_lower = prof_title.strip().lower()
+        if pt_lower and (pt_lower in rt_lower or rt_lower in pt_lower) and cv:
+            return _resolve_valid_path(cv)
+
+    # 3. Match against configured search terms and title keywords from settings
     best_role = None
     best_score = 0
-    for r_name, keywords in role_keywords.items():
-        if r_name in roles and roles[r_name].get("primary_cv"):
-            score = sum(1 for kw in keywords if kw in rt_lower)
-            if score > best_score:
-                best_score = score
-                best_role = r_name
-                
+    rt_tokens = set(re.split(r'[\s&/,\-\+_]+', rt_lower))
+
+    for r in roles:
+        title = r.get("title", "").strip()
+        cv = r.get("resume_path") or profile_resumes.get(title)
+        if not cv:
+            continue
+        terms = r.get("english_terms", r.get("terms", []))
+        score = 0
+
+        # Exact phrase match in search terms (highest priority)
+        for term in terms:
+            term_clean = term.strip().lower()
+            if not term_clean:
+                continue
+            if term_clean in rt_lower:
+                score += len(term_clean) * 5
+            elif rt_lower in term_clean and len(rt_lower) >= 4:
+                score += len(rt_lower) * 3
+
+        # Title words match (e.g., 'instructor', 'analyst', 'vision')
+        title_tokens = [w for w in re.split(r'[\s&/,\-\+_]+', title.lower()) if len(w) >= 3 and w not in {'and', 'the', 'for'}]
+        for tw in title_tokens:
+            if tw in rt_tokens or (len(tw) >= 4 and tw in rt_lower):
+                score += len(tw) * 3
+
+        # Term tokens match
+        for term in terms:
+            for tw in re.split(r'[\s&/,\-\+_]+', term.lower()):
+                if len(tw) >= 4 and tw not in {'and', 'the', 'for', 'with'} and (tw in rt_tokens or tw in rt_lower):
+                    score += len(tw)
+
+        if score > best_score:
+            best_score = score
+            best_role = r
+
     if best_role and best_score > 0:
-        return roles[best_role]["primary_cv"]["path"]
-            
-    # 4. Fallback to any valid CV found
-    for info in roles.values():
-        if info.get("primary_cv"):
-            return info["primary_cv"]["path"]
-            
+        cv = best_role.get("resume_path") or profile_resumes.get(best_role.get("title"))
+        if cv:
+            return _resolve_valid_path(cv)
+
+    # 4. Fallback: default_resume if specified, else the first configured role with a resume
+    if default_resume:
+        return _resolve_valid_path(default_resume)
+
+    for r in roles:
+        cv = r.get("resume_path") or profile_resumes.get(r.get("title"))
+        if cv:
+            return _resolve_valid_path(cv)
+
+    for cv in profile_resumes.values():
+        if cv:
+            return _resolve_valid_path(cv)
+
     return None
 
 def resolve_contextual_screening(job_location: str, job_country: str = "") -> Dict[str, Any]:

@@ -746,6 +746,9 @@ async function loadProfileSettingsUI() {
         const resumeDirEl = document.getElementById('profile-resume-dir');
         if (resumeDirEl) resumeDirEl.value = pInfo.resume_base_dir || '';
 
+        const defResumeEl = document.getElementById('profile-default-resume');
+        if (defResumeEl) defResumeEl.value = pInfo.default_resume_path || '';
+
         const militaryEl = document.getElementById('screening-military');
         if (militaryEl) militaryEl.value = screening.military_status || 'Exempted / Completed';
 
@@ -767,8 +770,12 @@ async function loadProfileSettingsUI() {
         const relocateCb = document.getElementById('screening-relocate-rule');
         if (relocateCb) relocateCb.checked = screening.relocate_outside_home_only !== false;
 
-        // Automatically trigger resume scan preview
-        triggerScanResumesUI(pInfo.resume_base_dir);
+        // Render explicit role resumes overview
+        renderRoleResumesOverview();
+
+        if (pInfo.resume_base_dir) {
+            triggerScanResumesUI(pInfo.resume_base_dir);
+        }
     } catch (e) {
         console.error('Failed to load profile:', e);
     }
@@ -1026,6 +1033,20 @@ async function saveProfileAndApplySettingsFromDOM() {
         pInfo.linkedin_url = document.getElementById('profile-linkedin')?.value.trim() || pInfo.linkedin_url || '';
         pInfo.github_url = document.getElementById('profile-github')?.value.trim() || pInfo.github_url || '';
         pInfo.resume_base_dir = document.getElementById('profile-resume-dir')?.value.trim() || pInfo.resume_base_dir || '';
+        pInfo.default_resume_path = document.getElementById('profile-default-resume')?.value.trim() || pInfo.default_resume_path || '';
+
+        // Synchronize resumes_by_role from configured roles
+        const resumesByRole = {};
+        const rolesContainer = document.getElementById('roles-container');
+        if (rolesContainer) {
+            const roleCards = rolesContainer.querySelectorAll('.role-card');
+            roleCards.forEach(card => {
+                const title = card.querySelector('.role-title-input')?.value.trim();
+                const cv = card.querySelector('.role-resume-input')?.value.trim() || '';
+                if (title) resumesByRole[title] = cv;
+            });
+        }
+        screening.resumes_by_role = resumesByRole;
 
         // 2. Smart Screening
         screening.military_status = document.getElementById('screening-military')?.value.trim() || 'Exempted / Completed';
@@ -1100,11 +1121,13 @@ async function saveSettings() {
         const maxExpStr = card.querySelector('.role-max-exp-input')?.value;
         const maxExp = maxExpStr !== undefined && maxExpStr !== '' ? parseInt(maxExpStr) : 0;
         const enTerms = getTagInputValues('role-en-' + index);
+        const resumePath = card.querySelector('.role-resume-input')?.value.trim() || '';
         if (title || enTerms.length > 0) {
             newRoles.push({
                 title: title || 'Unnamed Role',
                 years_experience: maxExp,
-                english_terms: enTerms
+                english_terms: enTerms,
+                resume_path: resumePath
             });
         }
     });
@@ -1374,6 +1397,178 @@ function getTagInputValues(containerId) {
 // --- Roles UI Logic ---
 let roleIndexCounter = 0;
 
+async function uploadRoleResumeFile(file, inputEl, statusBadgeEl, roleIndex) {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (statusBadgeEl) {
+        statusBadgeEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Uploading...`;
+    }
+
+    try {
+        const res = await fetch('/api/upload-role-resume', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.status === 'success' && data.file_path) {
+            if (inputEl) {
+                inputEl.value = data.file_path;
+            }
+            if (statusBadgeEl) {
+                statusBadgeEl.innerHTML = `<span style="color: var(--success);"><i class="fa-solid fa-circle-check"></i> ${escapeHtml(data.filename)}</span>`;
+            }
+            renderRoleResumesOverview();
+            showToast(`Resume uploaded & attached: ${data.filename}`, 'success', 'fa-check');
+        } else {
+            if (statusBadgeEl) {
+                statusBadgeEl.innerHTML = `<span style="color: var(--danger);"><i class="fa-solid fa-triangle-exclamation"></i> Upload failed</span>`;
+            }
+            showToast(data.error || 'Failed to upload resume', 'danger', 'fa-triangle-exclamation');
+        }
+    } catch (err) {
+        if (statusBadgeEl) {
+            statusBadgeEl.innerHTML = `<span style="color: var(--danger);"><i class="fa-solid fa-triangle-exclamation"></i> Error</span>`;
+        }
+        showToast('Upload error: ' + err.message, 'danger', 'fa-xmark');
+    }
+}
+
+async function handleDefaultResumeUpload(files) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch('/api/upload-role-resume', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.status === 'success' && data.file_path) {
+            const el = document.getElementById('profile-default-resume');
+            if (el) el.value = data.file_path;
+            showToast(`Default fallback resume uploaded: ${data.filename}`, 'success', 'fa-check');
+        } else {
+            showToast(data.error || 'Failed to upload resume', 'danger', 'fa-triangle-exclamation');
+        }
+    } catch (e) {
+        showToast('Upload error: ' + e.message, 'danger', 'fa-xmark');
+    } finally {
+        const inputEl = document.getElementById('default-resume-upload-input');
+        if (inputEl) inputEl.value = '';
+    }
+}
+
+function renderRoleResumesOverview() {
+    const listEl = document.getElementById('role-resumes-overview-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    const rolesContainer = document.getElementById('roles-container');
+    const roleCards = rolesContainer ? rolesContainer.querySelectorAll('.role-card') : [];
+
+    if (!roleCards || roleCards.length === 0) {
+        const cfgRoles = currentConfig?.ROLES || [];
+        if (cfgRoles.length === 0) {
+            listEl.innerHTML = `<div style="color: var(--text-muted); font-size: 0.85rem;"><i class="fa-solid fa-circle-info"></i> No target roles configured yet. Configure roles under <strong>Matching Preferences > Target Roles</strong>.</div>`;
+            return;
+        }
+        cfgRoles.forEach((r, idx) => {
+            const item = createRoleResumeOverviewItem(idx, r.title, r.resume_path || '');
+            listEl.appendChild(item);
+        });
+        return;
+    }
+
+    roleCards.forEach((card, idx) => {
+        const title = card.querySelector('.role-title-input')?.value.trim() || `Role #${idx + 1}`;
+        const resumePath = card.querySelector('.role-resume-input')?.value.trim() || '';
+        const item = createRoleResumeOverviewItem(idx, title, resumePath, card);
+        listEl.appendChild(item);
+    });
+}
+
+function createRoleResumeOverviewItem(idx, title, resumePath, cardEl = null) {
+    const item = document.createElement('div');
+    item.style = 'background: rgba(255, 255, 255, 0.04); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.5rem;';
+    
+    const headerRow = document.createElement('div');
+    headerRow.style = 'display: flex; justify-content: space-between; align-items: center;';
+    
+    const titleSpan = document.createElement('span');
+    titleSpan.style = 'font-weight: 600; color: var(--text-main); font-size: 0.9rem;';
+    titleSpan.innerHTML = `<i class="fa-solid fa-briefcase" style="color: var(--accent); margin-right: 6px;"></i>${escapeHtml(title)}`;
+    
+    const badge = document.createElement('span');
+    badge.style = 'font-size: 0.78rem; font-weight: 500;';
+    if (resumePath) {
+        badge.innerHTML = `<span style="color: var(--success);"><i class="fa-solid fa-circle-check"></i> Resume Assigned</span>`;
+    } else {
+        badge.innerHTML = `<span style="color: var(--warning);"><i class="fa-solid fa-circle-exclamation"></i> Not Assigned</span>`;
+    }
+    
+    headerRow.appendChild(titleSpan);
+    headerRow.appendChild(badge);
+    item.appendChild(headerRow);
+
+    const inputRow = document.createElement('div');
+    inputRow.style = 'display: flex; gap: 0.5rem; align-items: center;';
+
+    const pathInput = document.createElement('input');
+    pathInput.type = 'text';
+    pathInput.style = 'flex: 1; padding: 0.4rem 0.6rem; font-size: 0.82rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; border-radius: 0.25rem;';
+    pathInput.value = resumePath || '';
+    pathInput.placeholder = 'Path to resume (e.g. C:\\...\\Resume.pdf)';
+    pathInput.oninput = () => {
+        if (cardEl) {
+            const cardResumeInput = cardEl.querySelector('.role-resume-input');
+            if (cardResumeInput) {
+                cardResumeInput.value = pathInput.value;
+                const statusBadge = cardEl.querySelector(`#role-resume-status-${cardEl.dataset.index}`);
+                if (statusBadge) {
+                    statusBadge.innerHTML = pathInput.value.trim() ? `<i class="fa-solid fa-circle-check" style="color: var(--success);"></i> Configured` : 'Not set';
+                }
+            }
+        }
+        if (pathInput.value.trim()) {
+            badge.innerHTML = `<span style="color: var(--success);"><i class="fa-solid fa-circle-check"></i> Resume Assigned</span>`;
+        } else {
+            badge.innerHTML = `<span style="color: var(--warning);"><i class="fa-solid fa-circle-exclamation"></i> Not Assigned</span>`;
+        }
+    };
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.pdf,.docx,.doc,.txt';
+    fileInput.style = 'display: none;';
+    fileInput.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const targetInput = cardEl ? cardEl.querySelector('.role-resume-input') : pathInput;
+            const targetBadge = cardEl ? cardEl.querySelector(`#role-resume-status-${cardEl.dataset.index}`) : badge;
+            uploadRoleResumeFile(e.target.files[0], targetInput, targetBadge, idx).then(() => {
+                pathInput.value = targetInput.value;
+                badge.innerHTML = `<span style="color: var(--success);"><i class="fa-solid fa-circle-check"></i> Resume Assigned</span>`;
+            });
+        }
+    };
+
+    const browseBtn = document.createElement('button');
+    browseBtn.type = 'button';
+    browseBtn.className = 'btn btn-secondary btn-sm';
+    browseBtn.style = 'white-space: nowrap; font-size: 0.8rem; padding: 0.4rem 0.75rem;';
+    browseBtn.innerHTML = '<i class="fa-solid fa-file-arrow-up"></i> Upload / Browse';
+    browseBtn.onclick = () => fileInput.click();
+
+    inputRow.appendChild(pathInput);
+    inputRow.appendChild(fileInput);
+    inputRow.appendChild(browseBtn);
+    item.appendChild(inputRow);
+
+    return item;
+}
+
 function renderRolesUI() {
     const container = document.getElementById('roles-container');
     container.innerHTML = '';
@@ -1382,16 +1577,19 @@ function renderRolesUI() {
     
     roles.forEach((role) => {
         const userExp = role.years_experience !== undefined ? role.years_experience : 0;
-        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms || role.terms || [], userExp);
+        const resumePath = role.resume_path || (currentProfileData?.smart_screening?.resumes_by_role?.[role.title]) || '';
+        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms || role.terms || [], userExp, resumePath);
     });
+    renderRoleResumesOverview();
 }
 
 function addRoleUI() {
     const container = document.getElementById('roles-container');
-    addRoleCard(container, roleIndexCounter++, 'New Role', [], 0);
+    addRoleCard(container, roleIndexCounter++, 'New Role', [], 0, '');
+    renderRoleResumesOverview();
 }
 
-function addRoleCard(container, index, title, enTerms, maxExp) {
+function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '') {
     const card = document.createElement('div');
     card.className = 'role-card';
     card.style = 'background: rgba(0, 0, 0, 0.2); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--card-border); position: relative;';
@@ -1401,7 +1599,10 @@ function addRoleCard(container, index, title, enTerms, maxExp) {
     removeBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
     removeBtn.className = 'close-btn';
     removeBtn.style = 'position: absolute; top: 0.5rem; right: 0.5rem; color: var(--danger); font-size: 1rem;';
-    removeBtn.onclick = () => card.remove();
+    removeBtn.onclick = () => {
+        card.remove();
+        renderRoleResumesOverview();
+    };
     card.appendChild(removeBtn);
     
     const titleLabel = document.createElement('label');
@@ -1410,7 +1611,8 @@ function addRoleCard(container, index, title, enTerms, maxExp) {
     titleInput.type = 'text';
     titleInput.className = 'role-title-input';
     titleInput.value = title || '';
-    titleInput.style = 'width: 100%; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+    titleInput.style = 'width: 100%; margin-bottom: 0.8rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+    titleInput.oninput = () => renderRoleResumesOverview();
     
     const maxExpLabel = document.createElement('label');
     maxExpLabel.innerText = "Your Experience (Years)";
@@ -1419,7 +1621,68 @@ function addRoleCard(container, index, title, enTerms, maxExp) {
     maxExpInput.min = '0';
     maxExpInput.className = 'role-max-exp-input';
     maxExpInput.value = maxExp !== undefined ? maxExp : 0;
-    maxExpInput.style = 'width: 100%; margin-bottom: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+    maxExpInput.style = 'width: 100%; margin-bottom: 0.8rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+
+    // Tailored Resume Field for this role
+    const resumeLabel = document.createElement('label');
+    resumeLabel.style = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;';
+    resumeLabel.innerHTML = `
+        <span style="font-weight: 500;"><i class="fa-solid fa-file-pdf" style="color: #ef4444; margin-right: 6px;"></i>Tailored Resume File (PDF / DOCX)</span>
+        <span id="role-resume-status-${index}" style="font-size: 0.78rem; font-weight: normal; color: var(--text-muted);">${resumePath ? '<i class="fa-solid fa-circle-check" style="color: var(--success);"></i> Configured' : 'Not set'}</span>
+    `;
+
+    const resumeRow = document.createElement('div');
+    resumeRow.style = 'display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.8rem;';
+
+    const resumeInput = document.createElement('input');
+    resumeInput.type = 'text';
+    resumeInput.className = 'role-resume-input';
+    resumeInput.value = resumePath || '';
+    resumeInput.placeholder = 'Enter absolute path (e.g. C:\\...\\Resume.pdf) or click Upload';
+    resumeInput.style = 'flex: 1; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem; font-size: 0.85rem;';
+    resumeInput.oninput = () => {
+        const badge = card.querySelector(`#role-resume-status-${index}`);
+        if (badge) {
+            badge.innerHTML = resumeInput.value.trim() ? '<i class="fa-solid fa-circle-check" style="color: var(--success);"></i> Configured' : 'Not set';
+        }
+        renderRoleResumesOverview();
+    };
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.pdf,.docx,.doc,.txt';
+    fileInput.style = 'display: none;';
+    fileInput.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const badge = card.querySelector(`#role-resume-status-${index}`);
+            uploadRoleResumeFile(e.target.files[0], resumeInput, badge, index);
+        }
+    };
+
+    const uploadBtn = document.createElement('button');
+    uploadBtn.type = 'button';
+    uploadBtn.className = 'btn btn-secondary btn-sm';
+    uploadBtn.style = 'white-space: nowrap; padding: 0.5rem 0.8rem; font-size: 0.82rem;';
+    uploadBtn.innerHTML = '<i class="fa-solid fa-file-arrow-up"></i> Upload / Browse';
+    uploadBtn.onclick = () => fileInput.click();
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'btn btn-secondary btn-sm';
+    clearBtn.title = 'Clear resume';
+    clearBtn.style = 'padding: 0.5rem 0.7rem; color: var(--text-muted);';
+    clearBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    clearBtn.onclick = () => {
+        resumeInput.value = '';
+        const badge = card.querySelector(`#role-resume-status-${index}`);
+        if (badge) badge.innerText = 'Not set';
+        renderRoleResumesOverview();
+    };
+
+    resumeRow.appendChild(resumeInput);
+    resumeRow.appendChild(fileInput);
+    resumeRow.appendChild(uploadBtn);
+    resumeRow.appendChild(clearBtn);
 
     const enLabel = document.createElement('label');
     enLabel.innerText = 'Search Terms';
@@ -1430,6 +1693,8 @@ function addRoleCard(container, index, title, enTerms, maxExp) {
     card.appendChild(titleInput);
     card.appendChild(maxExpLabel);
     card.appendChild(maxExpInput);
+    card.appendChild(resumeLabel);
+    card.appendChild(resumeRow);
     card.appendChild(enLabel);
     card.appendChild(enContainer);
     
@@ -2579,11 +2844,7 @@ async function openEmailCopilotModal(jobId) {
 
             const badgeEl = document.getElementById('email-copilot-engine-badge');
             if (badgeEl) {
-                if (data.engine === 'gemini') {
-                    badgeEl.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini AI Tailored';
-                } else {
-                    badgeEl.innerHTML = '<i class="fa-solid fa-file-lines"></i> Template Draft';
-                }
+                badgeEl.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini AI Tailored';
             }
 
             if (outlookBtn) {
@@ -2591,24 +2852,33 @@ async function openEmailCopilotModal(jobId) {
                 outlookBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Open in Outlook (Auto-Attached)';
             }
         } else {
+            const errorMsg = data.detail || data.message || 'AI service is unavailable. Application draft discarded.';
             if (bodyEl) {
-                bodyEl.value = 'Failed to generate draft. Please write your message here.';
-                bodyEl.disabled = false;
+                bodyEl.value = `⚠️ Application Discarded:\n\n${errorMsg}\n\nYou have been notified via Telegram.`;
+                bodyEl.disabled = true;
+            }
+            const badgeEl = document.getElementById('email-copilot-engine-badge');
+            if (badgeEl) {
+                badgeEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b;"></i> Discarded (AI Unavailable)';
             }
             if (outlookBtn) {
-                outlookBtn.disabled = false;
-                outlookBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Open in Outlook (Auto-Attached)';
+                outlookBtn.disabled = true;
+                outlookBtn.innerHTML = '<i class="fa-solid fa-ban"></i> Application Discarded';
             }
         }
     } catch (err) {
         console.error('Error generating draft:', err);
         if (bodyEl) {
-            bodyEl.value = 'Error connecting to server to generate draft. Please enter your email body manually.';
-            bodyEl.disabled = false;
+            bodyEl.value = '⚠️ Application Discarded: Error communicating with AI service. You have been notified via Telegram.';
+            bodyEl.disabled = true;
+        }
+        const badgeEl = document.getElementById('email-copilot-engine-badge');
+        if (badgeEl) {
+            badgeEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #ef4444;"></i> Generation Error';
         }
         if (outlookBtn) {
-            outlookBtn.disabled = false;
-            outlookBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Open in Outlook (Auto-Attached)';
+            outlookBtn.disabled = true;
+            outlookBtn.innerHTML = '<i class="fa-solid fa-ban"></i> Application Discarded';
         }
     }
 }

@@ -275,25 +275,47 @@
                             </div>
                         </div>
 
-                        <!-- SubPane 2.2: Multi-Role Resumes (OneDrive) -->
+                        <!-- SubPane 2.2: Role Resumes & Documents -->
                         <div id="subpane-profile-resumes" class="settings-subsection-pane">
-                            <h3 style="margin-bottom: 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;">📄 Role-Based Resume Folders</h3>
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;">📄 Role Resumes & Documents</h3>
                             <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.8rem;">
-                                Subfolders matching your role titles contain your tailored PDF CVs. The agent automatically attaches the correct CV matching the role applied for.
+                                Explicitly define tailored resume files for each of your target roles. When applying to jobs, the agent matches the job role and automatically attaches the designated resume file.
                             </p>
-                            <div>
-                                <label>Base Resume Directory</label>
-                                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                                    <input type="text" id="profile-resume-dir" style="flex: 1;" placeholder="D:\...\CV or Resume">
-                                    <button type="button" class="btn btn-secondary" onclick="triggerScanResumesUI()" style="white-space: nowrap;">
-                                        <i class="fa-solid fa-arrows-rotate" id="scan-resumes-icon"></i> Scan Folders
+                            
+                            <label style="font-size: 0.88rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.4rem; display: block;">💼 Role Resume Assignments</label>
+                            <div id="role-resumes-overview-list" style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.25rem;"></div>
+
+                            <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
+                                <label style="font-weight: 600; font-size: 0.88rem; color: var(--text-main); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="fa-solid fa-file-shield" style="color: var(--accent);"></i> Default / Fallback Resume (Optional)
+                                </label>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 0.5rem 0;">Used whenever a job does not match any specific configured role.</p>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <input type="text" id="profile-default-resume" style="flex: 1;" placeholder="Absolute path or upload (e.g. C:\Users\...\General_Resume.pdf)">
+                                    <input type="file" id="default-resume-upload-input" accept=".pdf,.docx,.txt" style="display: none;" onchange="handleDefaultResumeUpload(this.files)">
+                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('default-resume-upload-input').click()" style="white-space: nowrap;">
+                                        <i class="fa-solid fa-file-arrow-up"></i> Upload / Browse
                                     </button>
                                 </div>
                             </div>
 
-                            <div id="resume-scan-results" style="display: flex; flex-direction: column; gap: 0.6rem; background: rgba(0,0,0,0.25); border: 1px solid var(--card-border); border-radius: 0.6rem; padding: 1rem;">
-                                <div style="color: var(--text-muted); font-size: 0.85rem;">Click "Scan Folders" to inspect mapped resumes.</div>
-                            </div>
+                            <details style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 0.75rem;">
+                                <summary style="cursor: pointer; font-size: 0.84rem; font-weight: 500; color: var(--text-muted); outline: none;">
+                                    <i class="fa-solid fa-folder-tree" style="margin-right: 5px;"></i> Advanced: Scan Directory for Roles (Optional)
+                                </summary>
+                                <div style="margin-top: 0.8rem;">
+                                    <label style="font-size: 0.82rem;">Base Resume Directory</label>
+                                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                                        <input type="text" id="profile-resume-dir" style="flex: 1;" placeholder="Folder containing role subfolders with PDFs">
+                                        <button type="button" class="btn btn-secondary" onclick="triggerScanResumesUI()" style="white-space: nowrap;">
+                                            <i class="fa-solid fa-arrows-rotate" id="scan-resumes-icon"></i> Scan Folders
+                                        </button>
+                                    </div>
+                                    <div id="resume-scan-results" style="display: flex; flex-direction: column; gap: 0.5rem; background: rgba(0,0,0,0.25); border: 1px solid var(--card-border); border-radius: 0.4rem; padding: 0.75rem; font-size: 0.82rem;">
+                                        <div style="color: var(--text-muted);">Enter a directory and click "Scan Folders" if you want to inspect local folders.</div>
+                                    </div>
+                                </div>
+                            </details>
                         </div>
 
                         <!-- SubPane 2.3: Smart Screening Rules -->

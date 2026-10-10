@@ -129,10 +129,11 @@ def send_smtp_email(
 def notify_telegram_candidate(message: str):
     """Dispatches real-time notification to candidate on Telegram if configured."""
     try:
-        from core.telegram_bot import get_state, send_message
+        from core.telegram_bot import get_state, send_message, get_bot_token
+        from core import config as app_config
         tg_state = get_state()
-        chat_id = tg_state.get("chat_id")
-        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        chat_id = tg_state.get("chat_id") or getattr(app_config, "TELEGRAM_CHAT_ID", None) or os.getenv("TELEGRAM_CHAT_ID")
+        bot_token = get_bot_token() or os.getenv("TELEGRAM_BOT_TOKEN")
         if bot_token and chat_id:
             send_message(bot_token=bot_token, chat_id=chat_id, text=message)
     except Exception:
@@ -247,7 +248,22 @@ def run_email_autopilot_batch(
 
         # Generate draft & resolve role CV
         draft_info = generate_email_draft(job_id=job_id)
-        subject = draft_info.get("subject", f"Application for {title} - Mohamed Hussein")
+        if draft_info.get("status") != "success":
+            err_msg = draft_info.get("message", "AI draft generation unavailable")
+            log_autopilot_activity(
+                f"Discarding email application for '{title}' at {company}: {err_msg}",
+                state
+            )
+            processed_jobs.append({
+                "job_id": job_id,
+                "title": title,
+                "company": company,
+                "status": "discarded",
+                "message": err_msg
+            })
+            continue
+
+        subject = draft_info.get("subject", f"Application: {title} – Mohamed Hussein")
         body = draft_info.get("body", "")
         cv_path = draft_info.get("cv_path") or get_resume_for_role(title)
         cv_name = os.path.basename(cv_path) if cv_path else "Resume.pdf"

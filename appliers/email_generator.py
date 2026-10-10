@@ -36,11 +36,36 @@ else:
     client = None
 
 
+# Clean, centralized prompt templates (easy to inspect, monitor, and tweak)
+EMAIL_SYSTEM_PROMPT = (
+    "You are a professional job application specialist.\n"
+    "Write a concise, tailored email application (100–140 words) in professional business English.\n"
+    "Structure the email as follows:\n"
+    "1. A direct 1-sentence opening stating interest in the role and core fit.\n"
+    "2. 2–3 concise bullet points connecting specific CV achievements to the job requirements.\n"
+    "3. A 1-sentence closing mentioning the attached CV and inviting a discussion.\n"
+    "Do not invent experience, and do not include a subject line or signature block."
+)
+
+EMAIL_USER_PROMPT_TEMPLATE = """Write an email job application for the following position:
+
+Position: {job_title} at {company}
+Location: {location}
+
+Job Description:
+\"\"\"
+{description}
+\"\"\"
+
+Candidate Resume Text:
+\"\"\"
+{cv_text}
+\"\"\"
+"""
+
+
 class EmailDraftSchema(BaseModel):
-    subject: str = Field(description="The exact email subject line. Follows any subject hints or codes specified in the job posting, otherwise 'Application for {job_title} - {candidate_full_name}'.")
-    salutation: str = Field(description="Formal salutation, e.g. 'Dear Hiring Team at {company},' or 'Dear Hiring Manager,'.")
-    body: str = Field(description="The email body in English, including salutation, introductory hook, 2-3 bullet highlights from CV matching JD requirements, CV attachment reference, and sign-off ('Best regards,\n{candidate_full_name}'). Do NOT add synthetic footers, phone numbers, or social links at the end.")
-    key_highlights_used: list[str] = Field(default=[], description="Bullet points of real skills or projects highlighted from the CV.")
+    body: str = Field(description="The concise email application body from greeting to closing statement, without signature block.")
 
 
 def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
@@ -67,81 +92,19 @@ def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def append_signature_safely(body: str, signature: str, candidate_name: str) -> str:
-    """
-    Appends the personal signature to the email body cleanly,
-    preventing duplicate 'Best regards' or sign-offs.
-    """
-    if not signature or not signature.strip():
-        return body.strip()
-
-    body = body.strip()
-    sig = signature.strip()
-
-    closings = ("best regards", "warm regards", "kind regards", "regards", "sincerely", "thank you", "thanks")
-    sig_lower = sig.lower()
-    sig_has_closing = any(sig_lower.startswith(c) for c in closings)
-
-    body_lines = [line.strip() for line in body.split("\n")]
-    while body_lines and not body_lines[-1]:
-        body_lines.pop()
-
-    if sig_has_closing and body_lines:
-        name_parts = [p.lower() for p in candidate_name.split() if len(p) > 2]
-        last_line_is_name = any(part in body_lines[-1].lower() for part in name_parts)
-
-        if len(body_lines) >= 2 and last_line_is_name:
-            if any(body_lines[-2].lower().startswith(c) for c in closings):
-                body_lines = body_lines[:-2]
-        elif any(body_lines[-1].lower().startswith(c) for c in closings):
-            body_lines = body_lines[:-1]
-
-        clean_body = "\n".join(body_lines).strip()
-        return f"{clean_body}\n\n{sig}"
-
-    return f"{body}\n\n{sig}"
-
-
-def generate_fallback_draft(
-    job_title: str,
-    company: str,
-    subject_hint: str,
-    candidate_name: str,
-    cv_path: Optional[str],
-    personal_signature: str = ""
-) -> Dict[str, Any]:
-    """Generates a reliable, clean English template when Gemini AI is unavailable."""
-    subject = subject_hint if subject_hint and len(subject_hint) > 3 else f"Application for {job_title} - {candidate_name}"
-    comp_display = company if company and company.lower() != "unknown" else "the Hiring Team"
-
-    body_paragraphs = [
-        f"Dear Hiring Team at {comp_display},",
-        f"I am writing to express my strong interest in the {job_title} position. With my relevant background and technical experience, I am confident in my ability to deliver immediate value to your team.",
-        "My tailored curriculum vitae is attached as a PDF for your detailed review, highlighting my core competencies, recent projects, and accomplishments.",
-        "I would welcome the opportunity to discuss how my qualifications align with your requirements. Thank you for your time and consideration.",
-        f"Best regards,\n{candidate_name}"
-    ]
-
-    base_body = "\n\n".join(body_paragraphs)
-    full_body = append_signature_safely(base_body, personal_signature, candidate_name)
-
-    return {
-        "status": "success",
-        "engine": "heuristic_fallback",
-        "subject": subject,
-        "salutation": f"Dear Hiring Team at {comp_display},",
-        "body": full_body,
-        "raw_ai_body": base_body,
-        "key_highlights_used": ["Tailored background matching target role", "Attached comprehensive CV"],
-        "attached_cv": {
-            "path": cv_path,
-            "filename": os.path.basename(cv_path) if cv_path else None,
-            "size_kb": round(os.path.getsize(cv_path) / 1024, 1) if cv_path and os.path.exists(cv_path) else 0,
-            "exists": os.path.exists(cv_path) if cv_path else False
-        },
-        "personal_signature": personal_signature,
-        "has_personal_signature": bool(personal_signature and personal_signature.strip())
-    }
+def notify_telegram_candidate(message: str) -> bool:
+    """Dispatches real-time notification to candidate on Telegram if configured."""
+    try:
+        from core.telegram_bot import get_state, send_message, get_bot_token
+        from core import config as app_config
+        tg_state = get_state()
+        chat_id = tg_state.get("chat_id") or getattr(app_config, "TELEGRAM_CHAT_ID", None) or os.getenv("TELEGRAM_CHAT_ID")
+        bot_token = get_bot_token() or os.getenv("TELEGRAM_BOT_TOKEN")
+        if bot_token and chat_id:
+            return send_message(bot_token=bot_token, chat_id=chat_id, text=message)
+    except Exception as e:
+        logger.debug(f"Failed to notify Telegram candidate: {e}")
+    return False
 
 
 def generate_email_draft(
@@ -149,8 +112,8 @@ def generate_email_draft(
     job_data: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Generates a personalized, high-converting cold email draft for a given job.
-    Uses Gemini API with candidate CV context and appends user's 'personal' signature.
+    Generates a personalized, tailored email application draft for an active job opening.
+    Uses Gemini API with candidate CV context and personal signature.
     """
     if not job_data and job_id:
         job_data = get_job_by_id(job_id)
@@ -192,67 +155,48 @@ def generate_email_draft(
         except Exception as e:
             logger.warning(f"Could not extract CV text from {cv_path}: {e}")
 
-    # If no Gemini client, use fallback
+    # If no Gemini client, discard applying and notify via Telegram
     if not client:
-        result = generate_fallback_draft(
-            job_title, company, subject_hint, candidate_name, cv_path, personal_signature
+        err_msg = "Gemini AI client is not initialized or API key is missing."
+        logger.warning(f"Discarding email application for '{job_title}' at '{company}': {err_msg}")
+        notify_telegram_candidate(
+            f"⚠️ Discarded Email Application: AI is unavailable for '{job_title}' at {company}."
         )
-        result["recipient_email"] = recipient_email
-        result["job_id"] = job_id
-        return result
+        return {
+            "status": "error",
+            "reason": "ai_unavailable",
+            "message": f"AI unavailable ({err_msg}). Application for '{job_title}' discarded.",
+            "job_id": job_id,
+            "recipient_email": recipient_email
+        }
 
-    # Build Gemini system prompt and user prompt
-    system_instruction = (
-        "You are an elite career strategist, executive recruiter, and cold outreach specialist.\n"
-        "Your goal is to craft a concise, compelling, high-converting cold email application.\n\n"
-        "CRITICAL RULES:\n"
-        "1. STRICTLY ENGLISH LANGUAGE:\n"
-        "   - ALWAYS write the email application in fluent, idiomatic, professional business English.\n"
-        "   - Even if the job description contains Arabic or is based in an Arab country, NEVER write the email in Arabic.\n"
-        "2. STRICT TRUTHFULNESS & ZERO HALLUCINATIONS:\n"
-        "   - Only reference skills, projects, tools, degrees, or metrics that EXPLICITLY appear in the Candidate CV text provided.\n"
-        "   - NEVER invent past companies, certifications, or accomplishments not in the candidate's CV.\n"
-        "3. CONCISE & PUNCHY (120–160 words total):\n"
-        "   - Recruiters spend less than 15 seconds reading cold emails.\n"
-        "   - Use short paragraphs and 2–3 targeted bullet points connecting specific CV achievements directly to the job requirements.\n"
-        "4. SUBJECT LINE:\n"
-        "   - If the job posting provided a required subject line or code (e.g. '108S-CS' or 'CS Trainer – [Full Name]'), follow that exact format.\n"
-        f"   - Otherwise, default to: 'Application for {job_title} - {candidate_name}'.\n"
-        "5. CALL TO ACTION & SIGN-OFF:\n"
-        "   - Explicitly mention that the tailored CV is attached as a PDF for their review.\n"
-        f"   - Conclude with a brief closing line: 'Best regards,\n{candidate_name}'.\n"
-        "   - Do NOT add synthetic contact footers or placeholder phone/social links at the end, as the candidate's saved personal email signature will be appended directly below."
+    # 1. Deterministic subject line
+    default_subject = f"Application: {job_title} – {candidate_name}"
+    clean_hint = (subject_hint or "").strip()
+    has_specific_code = (
+        clean_hint
+        and len(clean_hint) >= 3
+        and clean_hint.lower() not in [job_title.lower(), "none specified", "none", "application"]
+        and not clean_hint.lower().startswith("application for")
     )
 
-    user_prompt = f"""Generate a cold email application based on the following details:
+    subject = clean_hint if has_specific_code else default_subject
 
----
-### TARGET JOB DETAILS:
-- Job Title: {job_title}
-- Company: {company}
-- Location: {location}
-- Subject Code / Hint: {subject_hint}
-- Job Description:
-\"\"\"
-{description[:4000]}
-\"\"\"
+    # 2. Deterministic signature block
+    if personal_signature:
+        signature = personal_signature.strip()
+    else:
+        contact_line = candidate_email + (f" | {candidate_phone}" if candidate_phone else "")
+        signature = f"Best regards,\n{candidate_name}\n{contact_line}"
 
----
-### CANDIDATE DETAILS:
-- Full Name: {candidate_name}
-- Email: {candidate_email}
-- Phone: {candidate_phone}
-
----
-### CANDIDATE RESUME TEXT:
-\"\"\"
-{cv_text[:6000] if cv_text else "Technical background in software development, data science, and machine learning."}
-\"\"\"
-
----
-### OUTPUT FORMAT:
-Return a valid JSON object matching the EmailDraftSchema schema.
-"""
+    # 3. Simple, transparent prompt formatting
+    user_prompt = EMAIL_USER_PROMPT_TEMPLATE.format(
+        job_title=job_title,
+        company=company,
+        location=location or "Not specified",
+        description=description[:4000],
+        cv_text=cv_text[:6000] if cv_text else "Technical background in software development and data science."
+    )
 
     models_to_try = ['gemini-2.5-flash', 'gemini-flash-lite-latest']
     parsed_draft = None
@@ -265,7 +209,7 @@ Return a valid JSON object matching the EmailDraftSchema schema.
                 model=model_name,
                 contents=user_prompt,
                 config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
+                    system_instruction=EMAIL_SYSTEM_PROMPT,
                     response_mime_type="application/json",
                     response_schema=EmailDraftSchema,
                     temperature=0.2
@@ -279,38 +223,31 @@ Return a valid JSON object matching the EmailDraftSchema schema.
             time.sleep(1)
 
     if not parsed_draft:
-        logger.warning(f"All Gemini models failed ({last_error}). Using heuristic draft.")
-        result = generate_fallback_draft(
-            job_title, company, subject_hint, candidate_name, cv_path, personal_signature
+        err_msg = f"All Gemini models failed ({last_error})."
+        logger.warning(f"Discarding email application for '{job_title}' at '{company}': {err_msg}")
+        notify_telegram_candidate(
+            f"⚠️ Discarded Email Application: AI generation failed for '{job_title}' at {company} ({last_error})."
         )
-        result["recipient_email"] = recipient_email
-        result["job_id"] = job_id
-        return result
+        return {
+            "status": "error",
+            "reason": "ai_unavailable",
+            "message": f"AI generation failed ({err_msg}). Application for '{job_title}' discarded.",
+            "job_id": job_id,
+            "recipient_email": recipient_email
+        }
 
-    raw_ai_body = parsed_draft.get("body", "").strip()
-    salutation = parsed_draft.get("salutation", "").strip()
-    if salutation and not raw_ai_body.startswith(salutation) and not raw_ai_body.lower().startswith("dear"):
-        raw_ai_body = f"{salutation}\n\n{raw_ai_body}"
-
-    # Append the user's saved 'personal' signature cleanly at the end without duplicate sign-offs
-    full_body = append_signature_safely(raw_ai_body, personal_signature, candidate_name)
+    full_body = f"{parsed_draft.get('body', '').strip()}\n\n{signature}"
 
     return {
         "status": "success",
-        "engine": "gemini",
         "job_id": job_id,
         "recipient_email": recipient_email,
-        "subject": parsed_draft.get("subject", f"Application for {job_title} - {candidate_name}"),
-        "salutation": parsed_draft.get("salutation", f"Dear Hiring Team at {company},"),
+        "subject": subject,
         "body": full_body,
-        "raw_ai_body": raw_ai_body,
-        "key_highlights_used": parsed_draft.get("key_highlights_used", []),
         "attached_cv": {
             "path": cv_path,
             "filename": os.path.basename(cv_path) if cv_path else None,
             "size_kb": round(os.path.getsize(cv_path) / 1024, 1) if cv_path and os.path.exists(cv_path) else 0,
             "exists": os.path.exists(cv_path) if cv_path else False
-        },
-        "personal_signature": personal_signature,
-        "has_personal_signature": bool(personal_signature and personal_signature.strip())
+        }
     }

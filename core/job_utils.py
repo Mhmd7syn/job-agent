@@ -35,18 +35,25 @@ def normalize_job_type(raw_type: str = "", title: str = "", desc: str = "", is_s
         return "Scholarship"
     rt = str(raw_type or "").lower().strip()
     t = str(title or "").lower().strip()
-    d = str(desc or "").lower().strip()
-    combined = f"{rt} {t} {d}"
 
-    if any(k in combined for k in ["scholarship", "fellowship", "منحة", "منح", "grant"]):
+    # Prioritize raw_type and title; exclude full job descriptions from combined
+    # to prevent false positives from phrases like 'internal tools', 'international',
+    # or candidate qualifications mentioning 'prior internship experience'.
+    target = f"{rt} {t}".strip()
+    if rt in ["", "nan", "none", "not specified", "unknown"]:
+        target = t.strip()
+
+    combined = target if target else str(desc or "").lower().strip()
+
+    if re.search(r'\b(scholarship|fellowship|grant)\b', combined, re.IGNORECASE) or any(k in combined for k in ["منحة", "منح"]):
         return "Scholarship"
-    if any(k in combined for k in ["intern", "internship", "trainee", "working student"]):
+    if re.search(r'\b(intern|interns|internship|internships|trainee|trainees|working student|co-?op)\b', combined, re.IGNORECASE) or any(k in combined for k in ["تدريب", "متدرب"]):
         return "Internship"
-    if any(k in combined for k in ["part time", "part-time", "دوام جزئي"]):
+    if re.search(r'\b(part[\s-]time)\b', combined, re.IGNORECASE) or "دوام جزئي" in combined:
         return "Part-time"
-    if any(k in combined for k in ["contract", "freelance", "عقد", "حر"]):
+    if re.search(r'\b(contract|contractor|freelance|freelancer|temporary|temp)\b', combined, re.IGNORECASE) or any(k in combined for k in ["عقد", "حر", "مؤقت"]):
         return "Contract"
-    if any(k in combined for k in ["full time", "full-time", "دوام كامل", "permanent"]):
+    if re.search(r'\b(full[\s-]time|permanent)\b', combined, re.IGNORECASE) or "دوام كامل" in combined:
         return "Full-time"
     if rt in ["", "nan", "none", "not specified", "unknown"]:
         return "Not specified"

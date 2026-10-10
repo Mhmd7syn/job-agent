@@ -13,9 +13,27 @@ import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
-from core.job_utils import normalize_job_dict
+from core.job_utils import normalize_job_dict, normalize_site, make_job_id
 
-_IMPERSONATE_PROFILES = ["chrome120", "chrome110", "chrome107", "edge99", "safari15_5"]
+_IMPERSONATE_PROFILES = ["chrome120", "chrome110"]
+
+SCRAPED_PLATFORMS = {
+    'linkedin': ['linkedin.com', 'lnkd.in'],
+    'wuzzuf': ['wuzzuf.net'],
+    'bayt': ['bayt.com'],
+    'glassdoor': ['glassdoor.com'],
+    'indeed': ['indeed.com'],
+}
+
+def get_scraped_site_from_url(url: str):
+    """Returns the scraped platform name if url belongs to one of our target platforms, else None."""
+    if not url:
+        return None
+    url_lower = url.lower()
+    for site, domains in SCRAPED_PLATFORMS.items():
+        if any(d in url_lower for d in domains):
+            return site
+    return None
 
 def fetch_with_retries(url, retries=3, timeout=15):
     for attempt in range(retries):
@@ -30,7 +48,7 @@ def fetch_with_retries(url, retries=3, timeout=15):
             if response.status_code in (403, 429):
                 logging.warning(f"    (Tanqeeb blocked ({response.status_code}). Retrying {attempt+1}/{retries}...)")
         except Exception as e:
-            logging.warning(f"    (Tanqeeb network issue. Retrying {attempt+1}/{retries}...)")
+            logging.warning(f"    (Tanqeeb network issue. Retrying {attempt+1}/{retries}...): {e}")
             time.sleep(1)
     return None
 
@@ -38,6 +56,8 @@ def _parse_tanqeeb_soup(soup):
     import json
     company = ""
     desc = ""
+    apply_url = ""
+
     # 1. Schema.org JSON-LD
     for s in soup.find_all('script', type='application/ld+json'):
         try:
@@ -47,11 +67,13 @@ def _parse_tanqeeb_soup(soup):
                     desc = BeautifulSoup(d['description'], 'html.parser').get_text(separator='\n', strip=True)
                 if d.get('hiringOrganization', {}).get('name'):
                     company = d['hiringOrganization']['name'].strip()
+                if d.get('url') and 'tanqeeb.com' not in d.get('url'):
+                    apply_url = d['url'].strip()
         except Exception:
             pass
 
     if desc and len(desc) > 30:
-        return {'description': desc, 'company': company}
+        return {'description': desc, 'company': company, 'apply_url': apply_url, 'site_name': ''}
 
     # 2. Modern DOM
     desc_div = (
@@ -61,18 +83,46 @@ def _parse_tanqeeb_soup(soup):
     if desc_div:
         text = desc_div.get_text(separator='\n', strip=True)
         if len(text) > 80:
-            return {'description': text, 'company': company}
+            return {'description': text, 'company': company, 'apply_url': apply_url, 'site_name': ''}
 
-    return {'description': '', 'company': company}
+    return {'description': desc, 'company': company, 'apply_url': apply_url, 'site_name': ''}
 
 _TANQEEB_DETAILS_CACHE = {}
 
 def fetch_tanqeeb_job_details(job_url):
-    """Fetches the complete full job description and company from a Tanqeeb job page."""
+    """Fetches the complete full job description, company, and apply URL from Tanqeeb v2 API or DOM."""
     if not job_url or 'egypt.tanqeeb.com/jobs/search' in job_url:
-        return {'description': '', 'company': ''}
+        return {'description': '', 'company': '', 'apply_url': '', 'site_name': ''}
     if job_url in _TANQEEB_DETAILS_CACHE:
         return _TANQEEB_DETAILS_CACHE[job_url]
+
+    # 1. Fast path: Tanqeeb v2 API by extracting job ID
+    m_id = re.search(r'(\d{6,10})', job_url)
+    if m_id:
+        job_id = m_id.group(1).lstrip('0')
+        api_url = f"https://egypt.tanqeeb.com/v2/api/jobs/{job_id}"
+        try:
+            resp = fetch_with_retries(api_url, retries=2, timeout=8)
+            if resp and resp.status_code == 200:
+                data = resp.json().get('data', {})
+                if data:
+                    raw_desc = data.get('description') or ''
+                    desc = BeautifulSoup(raw_desc, 'html.parser').get_text(separator='\n', strip=True) if raw_desc else ''
+                    comp = data.get('company_name') or (data.get('company') or {}).get('name') or ''
+                    apply_url = (data.get('apply_url') or '').strip()
+                    site_name = (data.get('site_name') or '').strip()
+                    res = {
+                        'description': desc,
+                        'company': comp,
+                        'apply_url': apply_url,
+                        'site_name': site_name
+                    }
+                    _TANQEEB_DETAILS_CACHE[job_url] = res
+                    return res
+        except Exception as e:
+            logging.debug(f"Tanqeeb v2 API fetch error for {job_id}: {e}")
+
+    # 2. Fallback: HTML scraping
     try:
         response = fetch_with_retries(job_url, retries=1, timeout=6)
         if response and response.status_code == 200:
@@ -82,7 +132,7 @@ def fetch_tanqeeb_job_details(job_url):
             return res
     except Exception as e:
         logging.debug(f"Tanqeeb full desc fetch error for {job_url}: {e}")
-    return {'description': '', 'company': ''}
+    return {'description': '', 'company': '', 'apply_url': '', 'site_name': ''}
 
 def fetch_tanqeeb_full_description(job_url):
     """Fetches the complete full job description and requirements from a Tanqeeb job page."""
@@ -246,20 +296,52 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
     jobs = []
     def _fetch_desc(job):
         try:
-            full_desc = fetch_tanqeeb_full_description(job['job_url']) if job['job_url'] != base_url else ""
-            if full_desc and len(full_desc) > len(job['description']):
+            job_url = job.get('job_url', '')
+            details = fetch_tanqeeb_job_details(job_url) if job_url and job_url != base_url else {}
+            apply_url = (details.get('apply_url') or '').strip()
+
+            if apply_url and get_scraped_site_from_url(apply_url):
+                # If this apply_url has already been scraped or seen in DB, skip duplicate
+                if is_job_seen(apply_url):
+                    logging.debug(f"Skipping Tanqeeb job already seen via apply link: {apply_url}")
+                    try:
+                        from core.database import save_dropped_jobs
+                        save_dropped_jobs([{'job_url': job_url, 'title': job.get('title', ''), 'company': job.get('company', ''), 'site': 'tanqeeb'}])
+                    except Exception:
+                        pass
+                    return None
+                try:
+                    from scrapers.link_scraper import scrape_job_from_url
+                    scraped_job = scrape_job_from_url(apply_url)
+                    if scraped_job and scraped_job.get('title'):
+                        scraped_job['apply_url'] = apply_url
+                        try:
+                            from core.database import save_dropped_jobs
+                            save_dropped_jobs([{'job_url': job_url, 'title': job.get('title', ''), 'company': job.get('company', ''), 'site': 'tanqeeb'}])
+                        except Exception:
+                            pass
+                        logging.info(f"    (Tanqeeb job '{job.get('title')}' scraped directly via {scraped_job.get('site')}: {apply_url})")
+                        return scraped_job
+                except Exception as e:
+                    logging.debug(f"Direct link scrape failed for {apply_url}: {e}")
+
+            # Standard Tanqeeb fallback
+            full_desc = fetch_tanqeeb_full_description(job_url) if job_url != base_url else ""
+            if full_desc and len(full_desc) > len(job.get('description', '')):
                 job['description'] = full_desc
-            if (job.get('company') in ('Unknown', '', None) or job.get('company', '').lower() in ['linkedin', 'naukri gulf', 'wuzzuf', 'bayt', 'forasna', 'tanqeeb']):
-                details = fetch_tanqeeb_job_details(job['job_url']) if job['job_url'] != base_url else {}
-                if details.get('company'):
-                    job['company'] = details['company']
+            if details.get('company') and (job.get('company') in ('Unknown', '', None) or job.get('company', '').lower() in ['linkedin', 'naukri gulf', 'wuzzuf', 'bayt', 'forasna', 'tanqeeb']):
+                job['company'] = details['company']
+            if apply_url:
+                job['apply_url'] = apply_url
+
         except Exception as e:
-            logging.debug(f"Tanqeeb desc fetch failed for {job['job_url']}: {e}")
+            logging.debug(f"Tanqeeb desc/details fetch failed for {job.get('job_url')}: {e}")
         return normalize_job_dict(job)
 
     if candidates:
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 5)) as executor:
-            jobs = list(executor.map(_fetch_desc, candidates))
+            raw_jobs = list(executor.map(_fetch_desc, candidates))
+            jobs = [j for j in raw_jobs if j is not None]
         
     return pd.DataFrame(jobs)
 
