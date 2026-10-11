@@ -193,14 +193,15 @@ def generate_ats_cover_letter(
     """
     profile = load_profile()
     personal = profile.get("personal_info", {})
-    full_name = personal.get("full_name", "Mohamed Hussein")
-    signature = profile.get("auto_apply_settings", {}).get("email_signature_personal", "")
+    full_name = personal.get("full_name", "")
+    signature = profile.get("auto_apply_settings", {}).get("email_signature_personal", "").strip()
 
     if not signature:
-        email = personal.get("email", "mhmd7syn.contact@gmail.com")
-        phone = personal.get("phone", "+201012345678")
-        linkedin = personal.get("linkedin_url", "https://www.linkedin.com/in/mhmd7syn")
-        signature = f"Best regards,\n{full_name}\n{email} | {phone}\nLinkedIn: {linkedin}"
+        email = personal.get("email", "")
+        phone = personal.get("phone", "")
+        contact_line = f"{email} | {phone}".strip(" |")
+        sig_lines = [p for p in ["Best regards,", full_name, contact_line] if p]
+        signature = "\n".join(sig_lines)
 
     # Try AI generation via Gemini
     if gemini_client and (cv_text or job_description):
@@ -376,15 +377,15 @@ def prepare_ats_application(job_id: str) -> Dict[str, Any]:
             "exists": os.path.exists(cv_path) if cv_path else False
         },
         "quick_copy": {
-            "full_name": personal.get("full_name", "Mohamed Hussein"),
-            "first_name": personal.get("first_name", "Mohamed"),
-            "last_name": personal.get("last_name", "Hussein"),
-            "email": personal.get("email", "mhmd7syn.contact@gmail.com"),
-            "phone": personal.get("phone", "+201012345678"),
-            "city": personal.get("city", "Cairo"),
-            "country": personal.get("country", "Egypt"),
-            "linkedin_url": personal.get("linkedin_url", "https://www.linkedin.com/in/mhmd7syn"),
-            "github_url": personal.get("github_url", "https://github.com/Mhmd7syn"),
+            "full_name": personal.get("full_name", ""),
+            "first_name": personal.get("first_name", ""),
+            "last_name": personal.get("last_name", ""),
+            "email": personal.get("email", ""),
+            "phone": personal.get("phone", ""),
+            "city": personal.get("city", ""),
+            "country": personal.get("country", ""),
+            "linkedin_url": personal.get("linkedin_url", ""),
+            "github_url": personal.get("github_url", ""),
             "portfolio_url": personal.get("portfolio_url", ""),
             "expected_salary_egp": f"{screening.get('expected_salary_egp', 35000):,} EGP/month",
             "expected_salary_usd": f"${screening.get('expected_salary_usd', 1500):,}/month",
@@ -456,7 +457,7 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
     2. Navigates to ATS portal / application form.
     3. Detects platform and applies specialized field mappings:
        - Greenhouse, Lever, Workable, Recruitee, Workday, Google Forms, Universal
-    4. Automatically uploads matched role CV from OneDrive.
+    4. Automatically uploads matched role CV from configuration.
     5. Injects candidate info and screening answers.
     6. STRICTLY PAUSES at the final Submit button for user review!
     """
@@ -560,13 +561,13 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
 
             # 3. Handle Platform-Specific Fields First
             personal = resolver.personal_info
-            full_name = personal.get("full_name", "Mohamed Hussein")
-            first_name = personal.get("first_name", "Mohamed")
-            last_name = personal.get("last_name", "Hussein")
-            email = personal.get("email", "mhmd7syn.contact@gmail.com")
-            phone = personal.get("phone", "+201012345678")
-            linkedin = personal.get("linkedin_url", "https://www.linkedin.com/in/mhmd7syn")
-            github = personal.get("github_url", "https://github.com/Mhmd7syn")
+            full_name = personal.get("full_name", "")
+            first_name = personal.get("first_name", "")
+            last_name = personal.get("last_name", "")
+            email = personal.get("email", "")
+            phone = personal.get("phone", "")
+            linkedin = personal.get("linkedin_url", "")
+            github = personal.get("github_url", "")
 
             # A. Greenhouse
             if session.platform == "greenhouse":

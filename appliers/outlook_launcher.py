@@ -10,18 +10,19 @@ logger = logging.getLogger(__name__)
 
 
 def launch_outlook_compose(
-    recipient: str,
-    subject: str,
-    body: str,
+    recipient: str = "",
+    subject: str = "",
+    body: str = "",
     cv_path: Optional[str] = None,
     raw_body: Optional[str] = None,
     personal_signature: Optional[str] = None,
-    mode: str = "classic"
+    mode: str = "classic",
+    to_email: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Launches Classic Outlook (OUTLOOK.EXE via COM automation) to compose an email:
     - Automatically attaches the tailored CV PDF directly into the compose window.
-    - Preserves existing Outlook signatures (including images/logos) via WordEditor.Range.InsertBefore.
+    - Embeds the official Outlook signature formatted with blue role branding and social links.
     - Displays the compose window on screen for the candidate to review and send.
     """
     if sys.platform != "win32":
@@ -31,11 +32,19 @@ def launch_outlook_compose(
         }
 
     try:
+        from core.email_signature import format_email_body_html, get_signature_from_config
+
+        effective_recipient = recipient or to_email or ""
+        body_to_format = body or raw_body or ""
+        sig_to_use = personal_signature or get_signature_from_config()
+        html_body = format_email_body_html(body_to_format, signature=sig_to_use)
+
         payload = {
-            "recipient": recipient or "",
+            "recipient": effective_recipient,
             "subject": subject or "",
             "body": body or "",
             "raw_body": raw_body or body or "",
+            "html_body": html_body,
             "cv_path": os.path.abspath(cv_path) if (cv_path and os.path.exists(cv_path)) else "",
             "personal_signature": personal_signature or ""
         }
@@ -56,26 +65,14 @@ try {
     if ($data.cv_path -and (Test-Path $data.cv_path)) {
         $mail.Attachments.Add($data.cv_path)
     }
+
+    if ($data.html_body) {
+        $mail.HTMLBody = $data.html_body
+    } else {
+        $mail.Body = $data.body
+    }
+
     $mail.Display()
-
-    # Check whether Outlook already populated a default/personal signature (text or HTML/image)
-    $existingBody = $mail.Body
-    $existingHtml = $mail.HTMLBody
-    $hasExistingSig = ($existingBody -ne $null -and $existingBody.Trim().Length -gt 5) -or ($existingHtml -match "<img|v:imagedata|<table")
-
-    if ($hasExistingSig -and $data.raw_body) {
-        $textToInsert = $data.raw_body + "`r`n`r`n"
-    } else {
-        $textToInsert = $data.body + "`r`n`r`n"
-    }
-
-    $inspector = $mail.GetInspector
-    $editor = $inspector.WordEditor
-    if ($editor) {
-        $editor.Range(0, 0).InsertBefore($textToInsert)
-    } else {
-        $mail.Body = $textToInsert
-    }
     try { $mail.Activate() } catch {}
     Write-Output "SUCCESS"
 } catch {

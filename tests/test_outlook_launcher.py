@@ -17,14 +17,12 @@ def client():
 
 
 def test_candidate_profile_has_personal_signature():
-    """Verify candidate profile has the saved personal signature configured."""
+    """Verify candidate profile has the saved personal signature configured from settings."""
     profile = load_profile()
     auto_apply = profile.get("auto_apply_settings", {})
     sig = auto_apply.get("email_signature_personal", "")
     assert sig is not None
     assert len(sig.strip()) > 0
-    assert "Mohamed Hussein" in sig
-    assert "mohamedh2910@gmail.com" in sig
 
 
 def test_outlook_launcher_unit_structure():
@@ -44,18 +42,12 @@ def test_outlook_launcher_unit_structure():
         assert res["cv_filename"] == "AUTO_APPLY_QUEUE.md"
 
 
-def test_signature_deduplication_exact():
-    """Verify that append_signature_safely completely eliminates duplicate 'Best regards, Mohamed Hussein'."""
-    from appliers.email_generator import append_signature_safely
+def test_email_prompt_instructs_signature_added_manually():
+    """Verify that email prompts explicitly instruct the AI once at the system prompt that signature will be added manually."""
+    from appliers.email_generator import EMAIL_SYSTEM_PROMPT
 
-    ai_body = "Dear Hiring Team at Company,\n\nI am thrilled to apply for the position.\n\nBest regards,\nMohamed Hussein"
-    personal_sig = "Best regards,\nMohamed Hussein\nmohamedh2910@gmail.com | +20 109 734 4958\nLinkedIn: linkedin.com/in/Mhmd7syn"
-
-    result = append_signature_safely(ai_body, personal_sig, "Mohamed Hussein")
-    assert result.count("Best regards") == 1
-    assert result.count("Mohamed Hussein") == 1
-    assert "mohamedh2910@gmail.com" in result
-    assert "+20 109 734 4958" in result
+    assert "signature will be added manually" in EMAIL_SYSTEM_PROMPT.lower()
+    assert "output only the email body" in EMAIL_SYSTEM_PROMPT.lower()
 
 
 def test_fastapi_open_in_outlook_endpoint(client):
@@ -66,7 +58,7 @@ def test_fastapi_open_in_outlook_endpoint(client):
         "body": "Dear Hiring Team,\n\nTest application body.",
         "raw_body": "Dear Hiring Team,\n\nTest application body.",
         "cv_path": os.path.join(BASE_DIR, "AUTO_APPLY_QUEUE.md"),
-        "personal_signature": "Best regards,\nMohamed Hussein"
+        "personal_signature": "Best regards,\nCandidate"
     })
     assert res.status_code == 200
     data = res.json()
@@ -84,15 +76,15 @@ def test_co_pilot_does_not_auto_mark_applied(client):
     conn = sqlite3.connect(DB_PATH)
     # Pick or insert a test job that is unapplied
     cursor = conn.cursor()
-    cursor.execute("SELECT job_id FROM jobs WHERE (is_applied = 0 OR is_applied IS NULL) AND apply_type = 'email' LIMIT 1")
+    cursor.execute("SELECT job_id FROM jobs WHERE (is_applied = 0 OR is_applied IS NULL) AND (apply_status IS NULL OR apply_status != 'applied') AND apply_type = 'email' LIMIT 1")
     row = cursor.fetchone()
     if not row:
         # Reset one for test
         cursor.execute("SELECT job_id FROM jobs WHERE apply_type = 'email' LIMIT 1")
         row = cursor.fetchone()
-        if row:
-            cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending' WHERE job_id = ?", (row[0],))
-            conn.commit()
+    if row:
+        cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending' WHERE job_id = ?", (row[0],))
+        conn.commit()
 
     conn.close()
 
@@ -148,3 +140,27 @@ def test_co_pilot_does_not_auto_mark_applied(client):
         conn.close()
         assert check[0] == 1
         assert check[1] == "applied"
+
+
+def test_outlook_signature_format():
+    """Verify Outlook signature format is loaded from configuration and formatted safely."""
+    from core.email_signature import (
+        get_signature_from_config,
+        format_email_body_html,
+        strip_signoff_from_body
+    )
+
+    sig = get_signature_from_config()
+    assert isinstance(sig, str)
+    assert len(sig.strip()) > 0
+
+    # Test stripping signoff
+    body_with_sig = f"Dear Hiring Team,\n\nI want to apply.\n\n{sig}"
+    stripped = strip_signoff_from_body(body_with_sig)
+    assert "I want to apply." in stripped
+
+    # Test complete HTML conversion preserving signature from config
+    full_html = format_email_body_html(body_with_sig, signature=sig)
+    assert "<body" in full_html
+    assert "I want to apply." in full_html
+

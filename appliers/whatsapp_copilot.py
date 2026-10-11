@@ -202,7 +202,7 @@ def generate_whatsapp_pitch(
 ) -> Dict[str, Any]:
     """
     Generates a tailored, high-converting recruiter WhatsApp outreach pitch strictly in English.
-    Extracts candidate profile context and matched role CV text from OneDrive.
+    Extracts candidate profile context and matched role CV text from configuration.
     """
     if not job_data and job_id:
         job_data = get_job_by_id(job_id)
@@ -229,10 +229,10 @@ def generate_whatsapp_pitch(
     # Load candidate profile
     profile = load_profile()
     personal_info = profile.get("personal_info", {})
-    candidate_name = personal_info.get("full_name", "Mohamed Hussein")
-    candidate_email = personal_info.get("email", "mhmd7syn.contact@gmail.com")
-    candidate_phone = personal_info.get("phone", "+201097344958")
-    linkedin_url = personal_info.get("linkedin_url", "https://linkedin.com/in/Mhmd7syn")
+    candidate_name = personal_info.get("full_name", "").strip()
+    candidate_email = personal_info.get("email", "").strip()
+    candidate_phone = personal_info.get("phone", "").strip()
+    linkedin_url = personal_info.get("linkedin_url", "").strip()
 
     # Locate role-specific resume PDF
     cv_path = get_resume_for_role(job_title)

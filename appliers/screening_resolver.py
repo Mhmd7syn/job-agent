@@ -75,34 +75,36 @@ class ScreeningResolver:
 
         # 2. Contact Information
         if any(k in clean_lbl for k in ["first name", "given name", "forename"]):
-            return self.personal_info.get("first_name", "Mohamed")
+            return self.personal_info.get("first_name", "")
 
         if any(k in clean_lbl for k in ["last name", "family name", "surname"]):
-            return self.personal_info.get("last_name", "Hussein")
+            return self.personal_info.get("last_name", "")
 
         if any(k in clean_lbl for k in ["full name", "your name"]) or clean_lbl == "name":
-            return self.personal_info.get("full_name", "Mohamed Hussein")
+            return self.personal_info.get("full_name", "")
 
         if any(k in clean_lbl for k in ["email", "e-mail"]):
-            return self.personal_info.get("email", "mhmd7syn.contact@gmail.com")
+            return self.personal_info.get("email", "")
 
         if any(k in clean_lbl for k in ["phone", "mobile", "telephone", "contact number"]):
-            raw_phone = self.personal_info.get("phone", "+201012345678")
-            if "code" in clean_lbl:
-                return "+20"
+            raw_phone = self.personal_info.get("phone", "")
+            if "code" in clean_lbl and raw_phone.startswith("+"):
+                # extract country code if phone is formatted like +20...
+                m = re.match(r"^(\+\d{1,3})", raw_phone)
+                return m.group(1) if m else ""
             return raw_phone
 
         if any(k in clean_lbl for k in ["city", "town"]):
-            return self.personal_info.get("city", "Cairo")
+            return self.personal_info.get("city", "")
 
         if any(k in clean_lbl for k in ["country", "nationality"]):
-            return self.personal_info.get("country", "Egypt")
+            return self.personal_info.get("country", "")
 
         if any(k in clean_lbl for k in ["linkedin"]):
-            return self.personal_info.get("linkedin_url", "https://www.linkedin.com/in/mhmd7syn")
+            return self.personal_info.get("linkedin_url", "")
 
         if any(k in clean_lbl for k in ["github", "git"]):
-            return self.personal_info.get("github_url", "https://github.com/Mhmd7syn")
+            return self.personal_info.get("github_url", "")
 
         if any(k in clean_lbl for k in ["portfolio", "website", "personal url"]):
             return self.personal_info.get("portfolio_url") or self.personal_info.get("github_url") or ""

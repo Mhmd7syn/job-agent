@@ -39,12 +39,17 @@ else:
 # Clean, centralized prompt templates (easy to inspect, monitor, and tweak)
 EMAIL_SYSTEM_PROMPT = (
     "You are a professional job application specialist.\n"
-    "Write a concise, tailored email application (100–140 words) in professional business English.\n"
-    "Structure the email as follows:\n"
-    "1. A direct 1-sentence opening stating interest in the role and core fit.\n"
-    "2. 2–3 concise bullet points connecting specific CV achievements to the job requirements.\n"
-    "3. A 1-sentence closing mentioning the attached CV and inviting a discussion.\n"
-    "Do not invent experience, and do not include a subject line or signature block."
+    "Write a concise, tailored email application (100–140 words) in professional business English.\n\n"
+    "Structure the email explicitly into the following distinct sections:\n"
+    "1. Salutation: A professional greeting on its own line.\n"
+    "2. Opening: Exactly 1 direct sentence stating interest in the role and core fit.\n"
+    "3. Key Highlights: 2–3 concise bullet points connecting specific CV achievements to the job requirements.\n"
+    "4. Closing: Exactly 1 sentence mentioning the attached CV and inviting a discussion.\n\n"
+    "CRITICAL FORMATTING & SEPARATION RULES:\n"
+    "- Every section MUST be explicitly separated from adjacent sections by a blank line (double newline).\n"
+    "- Bullet points must each be on their own line with bullet markers (• or -).\n"
+    "- Do not invent experience or skills not present in the CV.\n"
+    "- Do not include a subject line or signature block (signature will be added manually; output only the email body)."
 )
 
 EMAIL_USER_PROMPT_TEMPLATE = """Write an email job application for the following position:
@@ -141,10 +146,10 @@ def generate_email_draft(
     personal_info = profile.get("personal_info", {})
     auto_apply = profile.get("auto_apply_settings", {})
 
-    candidate_name = personal_info.get("full_name", "Mohamed Hussein")
-    candidate_email = personal_info.get("email", "mhmd7syn.contact@gmail.com")
-    candidate_phone = personal_info.get("phone", "")
-    personal_signature = auto_apply.get("email_signature_personal", "")
+    candidate_name = personal_info.get("full_name", "").strip()
+    candidate_email = personal_info.get("email", "").strip()
+    candidate_phone = personal_info.get("phone", "").strip()
+    personal_signature = auto_apply.get("email_signature_personal", "").strip()
 
     # Locate role-specific resume PDF
     cv_path = get_resume_for_role(job_title)
@@ -171,7 +176,7 @@ def generate_email_draft(
         }
 
     # 1. Deterministic subject line
-    default_subject = f"Application: {job_title} – {candidate_name}"
+    default_subject = f"Application: {job_title} – {candidate_name}" if candidate_name else f"Application: {job_title}"
     clean_hint = (subject_hint or "").strip()
     has_specific_code = (
         clean_hint
@@ -182,12 +187,8 @@ def generate_email_draft(
 
     subject = clean_hint if has_specific_code else default_subject
 
-    # 2. Deterministic signature block
-    if personal_signature:
-        signature = personal_signature.strip()
-    else:
-        contact_line = candidate_email + (f" | {candidate_phone}" if candidate_phone else "")
-        signature = f"Best regards,\n{candidate_name}\n{contact_line}"
+    # 2. Deterministic signature block from configuration
+    signature = personal_signature
 
     # 3. Simple, transparent prompt formatting
     user_prompt = EMAIL_USER_PROMPT_TEMPLATE.format(
@@ -236,7 +237,8 @@ def generate_email_draft(
             "recipient_email": recipient_email
         }
 
-    full_body = f"{parsed_draft.get('body', '').strip()}\n\n{signature}"
+    raw_body = parsed_draft.get('body', '').strip()
+    full_body = f"{raw_body}\n\n{signature}" if signature else raw_body
 
     return {
         "status": "success",
@@ -244,6 +246,8 @@ def generate_email_draft(
         "recipient_email": recipient_email,
         "subject": subject,
         "body": full_body,
+        "raw_ai_body": raw_body,
+        "personal_signature": signature,
         "attached_cv": {
             "path": cv_path,
             "filename": os.path.basename(cv_path) if cv_path else None,

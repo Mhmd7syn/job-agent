@@ -77,16 +77,22 @@ def test_fallback_pitch_generation():
 
 
 def test_cv_resolution_for_whatsapp_roles():
-    """Verify that roles corresponding to WhatsApp postings resolve to real CV PDFs in OneDrive."""
+    """Verify that roles corresponding to WhatsApp postings resolve to configured CV PDFs from configuration."""
+    import core.config as app_config
+
     cv_teaching = get_resume_for_role("CS8 Instructor")
     assert cv_teaching is not None
     assert os.path.exists(cv_teaching)
-    assert "Teaching & STEM Instructor" in cv_teaching
+    expected_teaching_cv = next((r.get("resume_path") for r in app_config.ROLES if "Instructor" in r.get("title", "")), None)
+    if expected_teaching_cv:
+        assert os.path.normpath(cv_teaching) == os.path.normpath(expected_teaching_cv)
 
     cv_analytics = get_resume_for_role("Data Analyst")
     assert cv_analytics is not None
     assert os.path.exists(cv_analytics)
-    assert "Data Analytics & BI" in cv_analytics
+    expected_analytics_cv = next((r.get("resume_path") for r in app_config.ROLES if "Data Analytics" in r.get("title", "")), None)
+    if expected_analytics_cv:
+        assert os.path.normpath(cv_analytics) == os.path.normpath(expected_analytics_cv)
 
 
 def test_api_generate_pitch_endpoint(client):

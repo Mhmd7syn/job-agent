@@ -344,6 +344,29 @@ def get_jobs_by_status(status_list):
     
     return [dict(row) for row in rows]
 
+def get_jobs_by_apply_type(apply_type: str, status_list=None):
+    """Returns jobs filtered by apply_type (and optional status list)."""
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    if status_list:
+        placeholders = ','.join('?' for _ in status_list)
+        cursor.execute(f"""
+            SELECT * FROM jobs 
+            WHERE (apply_type = ? OR (apply_channel IS NOT NULL AND apply_channel = ?))
+              AND status IN ({placeholders})
+            ORDER BY relevance_score DESC, date_posted DESC
+        """, [apply_type, apply_type] + list(status_list))
+    else:
+        cursor.execute("""
+            SELECT * FROM jobs 
+            WHERE apply_type = ? OR (apply_channel IS NOT NULL AND apply_channel = ?)
+            ORDER BY relevance_score DESC, date_posted DESC
+        """, (apply_type, apply_type))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
 def update_job_status(job_id, status):
     """Updates the status of a specific job."""
     conn = sqlite3.connect(DB_PATH, timeout=15)

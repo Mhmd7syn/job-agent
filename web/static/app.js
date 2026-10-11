@@ -47,6 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('role-filter').addEventListener('change', applyFiltersAndSort);
     document.getElementById('type-filter').addEventListener('change', applyFiltersAndSort);
     document.getElementById('setup-filter').addEventListener('change', applyFiltersAndSort);
+    const applyMethodFilterEl = document.getElementById('apply-method-filter');
+    if (applyMethodFilterEl) applyMethodFilterEl.addEventListener('change', applyFiltersAndSort);
     document.getElementById('site-filter').addEventListener('change', applyFiltersAndSort);
     document.getElementById('sort-filter').addEventListener('change', applyFiltersAndSort);
 
@@ -129,6 +131,17 @@ async function fetchJobs() {
     }
 }
 
+function getEffectiveApplyType(job) {
+    if (!job) return 'manual';
+    const type = (job.apply_type || '').toLowerCase();
+    const channel = (job.apply_channel || '').toLowerCase();
+    const isEa = job.is_easy_apply === 1 || job.is_easy_apply === true || job.is_easy_apply === '1' || job.is_easy_apply === 'true';
+    if (isEa || type === 'easy_apply' || channel === 'easy_apply') return 'easy_apply';
+    if (type && type !== 'manual') return type;
+    if (channel && channel !== 'manual') return channel;
+    return 'manual';
+}
+
 function applyFiltersAndSort() {
     const searchTerm = document.getElementById('search-input').value.toLowerCase();
     const showNotRelated = document.getElementById('show-not-related').checked;
@@ -136,6 +149,7 @@ function applyFiltersAndSort() {
     const roleFilter = document.getElementById('role-filter').value;
     const typeFilter = document.getElementById('type-filter').value;
     const setupFilter = document.getElementById('setup-filter').value;
+    const applyMethodFilter = document.getElementById('apply-method-filter') ? document.getElementById('apply-method-filter').value : 'all';
     const siteFilter = document.getElementById('site-filter').value;
     const sortFilter = document.getElementById('sort-filter').value;
 
@@ -184,6 +198,17 @@ function applyFiltersAndSort() {
             if (setupFilter === 'remote' && !isRemote) return false;
             if (setupFilter === 'hybrid' && !isHybrid) return false;
             if (setupFilter === 'onsite' && (isRemote || isHybrid)) return false;
+        }
+
+        if (applyMethodFilter !== 'all') {
+            const effType = getEffectiveApplyType(job);
+            if (applyMethodFilter === 'manual') {
+                if (effType !== 'manual' && ['email', 'whatsapp', 'easy_apply', 'form', 'platform', 'social_post', 'job_board'].includes(effType)) {
+                    return false;
+                }
+            } else if (effType !== applyMethodFilter) {
+                return false;
+            }
         }
 
         if (siteFilter !== 'all') {
@@ -322,7 +347,7 @@ function createJobCard(job) {
 
     // Channel Badge
     let channelTagHtml = '';
-    const applyType = (job.apply_type || 'manual').toLowerCase();
+    const applyType = getEffectiveApplyType(job);
     let cardPayload = {};
     if (job.apply_payload) {
         try {
@@ -1017,18 +1042,18 @@ async function saveProfileAndApplySettingsFromDOM() {
         const autoApply = currentProfileData?.auto_apply_settings || {};
 
         // 1. Personal Info
-        const fullName = document.getElementById('profile-full-name')?.value.trim() || pInfo.full_name || 'Mohamed Hussein';
+        const fullName = document.getElementById('profile-full-name')?.value.trim() || pInfo.full_name || '';
         const parts = fullName.split(' ');
         pInfo.full_name = fullName;
-        pInfo.first_name = parts[0] || 'Mohamed';
-        pInfo.last_name = parts.slice(1).join(' ') || 'Hussein';
+        pInfo.first_name = parts[0] || '';
+        pInfo.last_name = parts.slice(1).join(' ') || '';
         pInfo.email = document.getElementById('profile-email')?.value.trim() || pInfo.email || '';
         pInfo.phone = document.getElementById('profile-phone')?.value.trim() || pInfo.phone || '';
         
-        const cityCountry = document.getElementById('profile-city-country')?.value.trim() || 'Cairo, Egypt';
+        const cityCountry = document.getElementById('profile-city-country')?.value.trim() || (pInfo.city ? `${pInfo.city}, ${pInfo.country || ''}` : '');
         const ccParts = cityCountry.split(',');
-        pInfo.city = ccParts[0]?.trim() || 'Cairo';
-        pInfo.country = ccParts[1]?.trim() || 'Egypt';
+        pInfo.city = ccParts[0]?.trim() || '';
+        pInfo.country = ccParts[1]?.trim() || '';
         
         pInfo.linkedin_url = document.getElementById('profile-linkedin')?.value.trim() || pInfo.linkedin_url || '';
         pInfo.github_url = document.getElementById('profile-github')?.value.trim() || pInfo.github_url || '';
@@ -2362,7 +2387,7 @@ function openJobDetailsModal(jobId) {
         }
     }
 
-    const applyType = (job.apply_type || 'manual').toLowerCase();
+    const applyType = getEffectiveApplyType(job);
     let primaryActionUrl = '';
 
     // Render Apply Details Box
@@ -2381,8 +2406,8 @@ function openJobDetailsModal(jobId) {
             channelTitle = 'Direct HR Email Application';
             channelBadgeClass = 'tag-channel-email';
             channelIcon = 'fa-solid fa-envelope';
-            const email = payload.recipient_email || 'HR Email specified in description';
-            const subject = payload.subject_hint || `Application for ${job.title} - Mohamed Hussein`;
+            const candSuffix = currentProfileData?.personal_info?.full_name ? ` - ${currentProfileData.personal_info.full_name}` : '';
+            const subject = payload.subject_hint || `Application for ${job.title}${candSuffix}`;
             primaryActionUrl = payload.recipient_email ? `mailto:${payload.recipient_email}` : '';
             detailRows = `
                 <div class="detail-row">
@@ -2394,7 +2419,7 @@ function openJobDetailsModal(jobId) {
                     <span class="detail-value"><em>${escapeHtml(subject)}</em></span>
                 </div>
                 <div class="detail-row" style="font-size: 0.8rem; color: #93c5fd;">
-                    <i class="fa-solid fa-paperclip"></i> Auto-attaches tailored role PDF from your OneDrive resume folder.
+                    <i class="fa-solid fa-paperclip"></i> Auto-attaches tailored role PDF from your configured role resume.
                 </div>
             `;
             if (copilotBtn) {
@@ -2680,7 +2705,7 @@ function launchCoPilotApply() {
         }
     }
 
-    const applyType = (job.apply_type || 'manual').toLowerCase();
+    const applyType = getEffectiveApplyType(job);
 
     if (applyType === 'email') {
         openEmailCopilotModal(job.job_id);
@@ -2721,29 +2746,6 @@ function launchCoPilotApply() {
     }
 }
 
-function copyCurrentJobText() {
-    if (!currentModalJobText) return;
-    navigator.clipboard.writeText(currentModalJobText).then(() => {
-        showToast('Job text copied to clipboard!', 'success', 'fa-copy');
-    }).catch(err => {
-        console.error('Failed to copy to clipboard:', err);
-        showToast('Failed to copy text', 'danger', 'fa-circle-xmark');
-    });
-}
-
-function copyJobTextById(jobId) {
-    const job = allJobs.find(j => String(j.job_id) === String(jobId));
-    if (!job || !job.description) {
-        showToast('No job text available to copy', 'info', 'fa-circle-info');
-        return;
-    }
-    navigator.clipboard.writeText(job.description).then(() => {
-        showToast('Job post text copied to clipboard!', 'success', 'fa-copy');
-    }).catch(err => {
-        console.error('Failed to copy to clipboard:', err);
-        showToast('Failed to copy text', 'danger', 'fa-circle-xmark');
-    });
-}
 
 // ==========================================
 // Direct Email Co-Pilot Modal & Actions
@@ -2787,12 +2789,13 @@ async function openEmailCopilotModal(jobId) {
     const recipEl = document.getElementById('email-copilot-recipient');
     if (recipEl) recipEl.value = payload.recipient_email || '';
 
+    const candSuffix = currentProfileData?.personal_info?.full_name ? ` - ${currentProfileData.personal_info.full_name}` : '';
     const subEl = document.getElementById('email-copilot-subject');
-    if (subEl) subEl.value = payload.subject_hint || `Application for ${job.title} - Mohamed Hussein`;
+    if (subEl) subEl.value = payload.subject_hint || `Application for ${job.title}${candSuffix}`;
     
     const bodyEl = document.getElementById('email-copilot-body');
     if (bodyEl) {
-        bodyEl.value = '⏳ Drafting tailored cold email with Gemini AI...\n\nAnalyzing job requirements and extracting relevant highlights from your role CV in OneDrive...';
+        bodyEl.value = '⏳ Drafting tailored cold email with Gemini AI...\n\nAnalyzing job requirements and extracting relevant highlights from your configured role CV...';
         bodyEl.disabled = true;
     }
 
@@ -2821,7 +2824,7 @@ async function openEmailCopilotModal(jobId) {
 
         if (data.status === 'success' || data.body) {
             if (recipEl) recipEl.value = data.recipient_email || payload.recipient_email || '';
-            if (subEl) subEl.value = data.subject || `Application for ${job.title} - Mohamed Hussein`;
+            if (subEl) subEl.value = data.subject || (payload.subject_hint || `Application for ${job.title}${candSuffix}`);
             if (bodyEl) {
                 bodyEl.value = data.body || '';
                 bodyEl.disabled = false;
@@ -2838,7 +2841,7 @@ async function openEmailCopilotModal(jobId) {
             if (cvFilenameEl) cvFilenameEl.textContent = cvInfo.filename || 'Mohamed_Hussein_CV.pdf';
             if (cvMetaEl) {
                 const sizeText = cvInfo.size_kb ? `${cvInfo.size_kb} KB` : '';
-                const pathText = cvInfo.path || 'OneDrive resume folder';
+                const pathText = cvInfo.path || 'Configured role resume';
                 cvMetaEl.textContent = `${sizeText ? sizeText + ' • ' : ''}${pathText}`;
             }
 
@@ -3104,7 +3107,7 @@ async function openWhatsAppCopilotModal(jobId) {
 
     const pitchEl = document.getElementById('whatsapp-copilot-pitch');
     if (pitchEl) {
-        pitchEl.value = '⏳ Drafting tailored WhatsApp outreach pitch with Gemini AI...\n\nAnalyzing job requirements and extracting relevant highlights from your role CV in OneDrive...';
+        pitchEl.value = '⏳ Drafting tailored WhatsApp outreach pitch with Gemini AI...\n\nAnalyzing job requirements and extracting relevant highlights from your configured role CV...';
         pitchEl.disabled = true;
     }
 
@@ -3159,7 +3162,7 @@ async function openWhatsAppCopilotModal(jobId) {
             if (cvFilenameEl) cvFilenameEl.textContent = cvInfo.filename || 'Mohamed_Hussein_CV.pdf';
             if (cvMetaEl) {
                 const sizeText = cvInfo.size_kb ? `${cvInfo.size_kb} KB` : '';
-                const pathText = cvInfo.path || 'OneDrive resume folder';
+                const pathText = cvInfo.path || 'Configured role resume';
                 cvMetaEl.textContent = `${sizeText ? sizeText + ' • ' : ''}${pathText}`;
             }
 
@@ -3485,20 +3488,21 @@ async function openEasyApplyCopilotModal(jobId) {
 
             const contact = data.contact_preview || {};
             const nameEl = document.getElementById('easy-apply-contact-name');
-            if (nameEl) nameEl.textContent = contact.full_name || 'Mohamed Hussein';
+            if (nameEl) nameEl.textContent = contact.full_name || '—';
 
             const detailsEl = document.getElementById('easy-apply-contact-details');
             if (detailsEl) detailsEl.textContent = `${contact.email || ''} • ${contact.phone || ''}`;
 
             const locEl = document.getElementById('easy-apply-contact-location');
-            if (locEl) locEl.innerHTML = `<i class="fa-solid fa-location-dot"></i> ${contact.city || 'Cairo'}, ${contact.country || 'Egypt'}`;
+            const locText = [contact.city, contact.country].filter(Boolean).join(', ');
+            if (locEl) locEl.innerHTML = `<i class="fa-solid fa-location-dot"></i> ${locText || '—'}`;
 
             const cvInfo = data.attached_cv || {};
             const cvFileEl = document.getElementById('easy-apply-cv-filename');
-            if (cvFileEl) cvFileEl.textContent = cvInfo.filename || 'Mohamed_Hussein_CV.pdf';
+            if (cvFileEl) cvFileEl.textContent = cvInfo.filename || 'Resume.pdf';
 
             const cvMetaEl = document.getElementById('easy-apply-cv-meta');
-            if (cvMetaEl) cvMetaEl.textContent = cvInfo.path || 'OneDrive role resume folder';
+            if (cvMetaEl) cvMetaEl.textContent = cvInfo.path || 'Configured role resume';
 
             const screening = data.screening_preview || {};
             const sponsorEl = document.getElementById('easy-apply-preview-sponsor');
@@ -3831,15 +3835,15 @@ function hideAtsCopilotModal() {
 function copyAtsField(fieldKey, btnEl) {
     let val = '';
     const qc = currentAtsQuickCopy || {};
-    if (fieldKey === 'full_name') val = qc.full_name || 'Mohamed Hussein';
-    else if (fieldKey === 'email') val = qc.email || 'mhmd7syn.contact@gmail.com';
-    else if (fieldKey === 'phone') val = qc.phone || '+201012345678';
-    else if (fieldKey === 'linkedin') val = qc.linkedin_url || 'https://www.linkedin.com/in/mhmd7syn';
-    else if (fieldKey === 'github') val = qc.github_url || 'https://github.com/Mhmd7syn';
-    else if (fieldKey === 'location') val = `${qc.city || 'Cairo'}, ${qc.country || 'Egypt'}`;
-    else if (fieldKey === 'salary') val = qc.expected_salary_egp || '35000 EGP';
-    else if (fieldKey === 'notice') val = qc.notice_period || '30 days';
-    else if (fieldKey === 'sponsorship') val = qc.sponsorship_statement || 'Authorized for domestic; require visa for international';
+    if (fieldKey === 'full_name') val = qc.full_name || '';
+    else if (fieldKey === 'email') val = qc.email || '';
+    else if (fieldKey === 'phone') val = qc.phone || '';
+    else if (fieldKey === 'linkedin') val = qc.linkedin_url || '';
+    else if (fieldKey === 'github') val = qc.github_url || '';
+    else if (fieldKey === 'location') val = [qc.city, qc.country].filter(Boolean).join(', ');
+    else if (fieldKey === 'salary') val = qc.expected_salary_egp || qc.expected_salary_usd || '';
+    else if (fieldKey === 'notice') val = qc.notice_period || '';
+    else if (fieldKey === 'sponsorship') val = qc.sponsorship_statement || '';
 
     if (!val) return;
 

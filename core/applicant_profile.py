@@ -9,15 +9,15 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROFILE_PATH = os.path.join(BASE_DIR, "core", "candidate_profile.json")
 
 class PersonalInfo(BaseModel):
-    full_name: str = "Mohamed Hussein"
-    first_name: str = "Mohamed"
-    last_name: str = "Hussein"
-    email: str = "mhmd7syn.contact@gmail.com"
-    phone: str = "+201012345678"
-    city: str = "Cairo"
-    country: str = "Egypt"
-    linkedin_url: str = "https://www.linkedin.com/in/mhmd7syn"
-    github_url: str = "https://github.com/Mhmd7syn"
+    full_name: str = ""
+    first_name: str = ""
+    last_name: str = ""
+    email: str = ""
+    phone: str = ""
+    city: str = ""
+    country: str = ""
+    linkedin_url: str = ""
+    github_url: str = ""
     portfolio_url: str = ""
     resume_base_dir: str = ""
     default_resume_path: str = ""
@@ -56,7 +56,7 @@ class AutoApplySettings(BaseModel):
     smtp_port: int = 465
     smtp_email: str = ""
     smtp_app_password: str = ""
-    email_signature_personal: str = "Best regards,\nMohamed Hussein\nmohamedh2910@gmail.com | +20 109 734 4958\nLinkedIn: linkedin.com/in/Mhmd7syn"
+    email_signature_personal: str = ""
     whatsapp_mode: str = "deep_link"  # 'deep_link' (co-pilot) or 'web_automation' (auto-pilot)
     whatsapp_default_language: str = "auto"  # 'auto', 'arabic', 'english'
 

@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.database import (
     get_jobs_by_status, update_job_status, get_job_by_id, toggle_job_applied,
-    delete_job_by_id, save_or_update_job
+    delete_job_by_id, save_or_update_job, get_jobs_by_apply_type
 )
 from core.config_tuner import analyze_job_and_tune_config
 from core.cv_parser import parse_cv_with_ai
@@ -61,14 +61,22 @@ def on_shutdown():
         logging.error(f"Error stopping Telegram Bot: {e}")
 
 @app.get("/api/jobs")
-def get_jobs(background_tasks: BackgroundTasks):
-    """Returns all jobs so the frontend can filter them by status."""
+def get_jobs(background_tasks: BackgroundTasks, apply_type: Optional[str] = None):
+    """Returns all jobs so the frontend can filter them by status and optional apply_type."""
     global _last_rescore_date
     today_str = datetime.now().strftime("%Y-%m-%d")
     if _last_rescore_date != today_str:
         background_tasks.add_task(rescore_all_jobs)
         _last_rescore_date = today_str
     jobs = get_jobs_by_status(['pending', 'liked', 'not_related'])
+    if apply_type and apply_type != "all":
+        target = apply_type.lower()
+        if target == "easy_apply":
+            jobs = [j for j in jobs if (j.get("apply_type") or "").lower() == "easy_apply" or (j.get("apply_channel") or "").lower() == "easy_apply" or j.get("is_easy_apply") in (1, True, "1", "true")]
+        elif target == "manual":
+            jobs = [j for j in jobs if (j.get("apply_type") or "manual").lower() == "manual" and (j.get("apply_channel") or "").lower() not in ("email", "whatsapp", "easy_apply", "form", "platform", "social_post", "job_board") and not j.get("is_easy_apply")]
+        else:
+            jobs = [j for j in jobs if (j.get("apply_type") or "").lower() == target or (j.get("apply_channel") or "").lower() == target]
     return {"jobs": jobs}
 
 class AddJobByUrlRequest(BaseModel):

@@ -134,11 +134,11 @@ def prepare_easy_apply(job_id: str) -> Dict[str, Any]:
             "exists": os.path.exists(cv_path) if cv_path else False
         },
         "contact_preview": {
-            "full_name": personal.get("full_name", "Mohamed Hussein"),
-            "email": personal.get("email", "mhmd7syn.contact@gmail.com"),
-            "phone": personal.get("phone", "+201012345678"),
-            "city": personal.get("city", "Cairo"),
-            "country": personal.get("country", "Egypt")
+            "full_name": personal.get("full_name", ""),
+            "email": personal.get("email", ""),
+            "phone": personal.get("phone", ""),
+            "city": personal.get("city", ""),
+            "country": personal.get("country", "")
         },
         "screening_preview": {
             "requires_sponsorship": contextual.get("requires_visa_sponsorship", False),

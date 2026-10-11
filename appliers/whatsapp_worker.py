@@ -40,7 +40,7 @@ def run_whatsapp_autopilot_batch(
     1. Enforces strict anti-ban daily limits and human-like pacing.
     2. Queries highest relevance unapplied WhatsApp jobs.
     3. Formulates strictly professional English AI recruiter pitch.
-    4. Attaches matched role CV PDF from OneDrive.
+    4. Attaches matched role CV PDF from configuration.
     5. Dispatches application and tracks completion in database.
     """
     profile = load_profile()

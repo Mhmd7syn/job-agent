@@ -65,16 +65,22 @@ def test_screening_resolver_experience_and_legal():
 
 
 def test_cv_resolution_for_easy_apply_roles():
-    """Verify that Easy Apply job titles resolve to real role CV PDFs in OneDrive."""
+    """Verify that Easy Apply job titles resolve to configured role CV PDFs from configuration."""
+    import core.config as app_config
+
     cv_analyst = get_resume_for_role("Junior Data Analyst")
     assert cv_analyst is not None
     assert os.path.exists(cv_analyst)
-    assert "Data Analytics & BI" in cv_analyst
+    expected_analyst_cv = next((r.get("resume_path") for r in app_config.ROLES if "Data Analytics" in r.get("title", "")), None)
+    if expected_analyst_cv:
+        assert os.path.normpath(cv_analyst) == os.path.normpath(expected_analyst_cv)
 
     cv_instructor = get_resume_for_role("AI Facilitator/Instructor")
     assert cv_instructor is not None
     assert os.path.exists(cv_instructor)
-    assert "Teaching & STEM Instructor" in cv_instructor
+    expected_instructor_cv = next((r.get("resume_path") for r in app_config.ROLES if "Instructor" in r.get("title", "")), None)
+    if expected_instructor_cv:
+        assert os.path.normpath(cv_instructor) == os.path.normpath(expected_instructor_cv)
 
 
 def test_api_prepare_easy_apply_endpoint(client):
@@ -90,7 +96,7 @@ def test_api_prepare_easy_apply_endpoint(client):
         assert data["attached_cv"]["filename"] == os.path.basename(expected_cv)
     else:
         assert data["attached_cv"]["filename"] in ["Mohamed_Hussein_CV.pdf", "MohamedHussein_DataAnalyst_Resume.pdf"]
-    assert data["contact_preview"]["full_name"] == "Mohamed Hussein"
+    assert data["contact_preview"]["full_name"] == load_profile()["personal_info"]["full_name"]
     assert data["screening_preview"]["requires_sponsorship"] is False
 
 

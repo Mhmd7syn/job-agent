@@ -12,6 +12,7 @@ from appliers.ats_copilot import (
     mark_ats_applied
 )
 from core.database import DB_PATH
+from core.applicant_profile import load_profile
 
 client = TestClient(app)
 
@@ -100,7 +101,7 @@ def test_api_prepare_ats_endpoint():
     assert "attached_cv" in data
     assert data["attached_cv"]["filename"] is not None
     assert "quick_copy" in data
-    assert data["quick_copy"]["full_name"] == "Mohamed Hussein"
+    assert data["quick_copy"]["full_name"] == load_profile()["personal_info"]["full_name"]
     assert "expected_salary_egp" in data["quick_copy"]
     assert "cover_letter" in data
     assert len(data["cover_letter"]) > 100

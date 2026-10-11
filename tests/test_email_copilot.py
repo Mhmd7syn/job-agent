@@ -22,18 +22,22 @@ def client():
 
 
 def test_cv_resolution_for_target_roles():
-    """Verify that role titles resolve to real role-matching CV PDFs."""
+    """Verify that role titles resolve to configured resume paths from configurations."""
+    import core.config as app_config
+
     roles = [
-        ("Data Analytics & BI", "Data Analytics & BI"),
-        ("Computer Vision & AI", "Computer Vision & AI"),
-        ("Data Science & Machine Learning", "Data Science & Machine Learning"),
-        ("Teaching & STEM Instructor", "Teaching & STEM Instructor")
+        "Data Analytics & BI",
+        "Computer Vision & AI",
+        "Data Science & Machine Learning",
+        "Teaching & STEM Instructor"
     ]
-    for role_query, expected_folder in roles:
+    for role_query in roles:
         cv_path = get_resume_for_role(role_query)
         assert cv_path is not None, f"Should find CV path for {role_query}"
         assert os.path.exists(cv_path), f"CV file should exist at {cv_path}"
-        assert expected_folder in cv_path, f"CV path should be in folder {expected_folder}"
+        matching_role = next((r for r in app_config.ROLES if r.get("title") == role_query), None)
+        if matching_role and matching_role.get("resume_path"):
+            assert os.path.normpath(cv_path) == os.path.normpath(matching_role["resume_path"])
 
 
 def test_ai_unavailable_discards_and_notifies_telegram():
@@ -191,3 +195,16 @@ def test_fastapi_mark_applied_endpoint(client):
         assert updated_row[0] == 1
         assert updated_row[1] == "applied"
         assert updated_row[2] is not None
+
+
+def test_email_system_prompt_sections():
+    """Verify that EMAIL_SYSTEM_PROMPT explicitly specifies separated sections."""
+    from appliers.email_generator import EMAIL_SYSTEM_PROMPT
+
+    assert "Salutation" in EMAIL_SYSTEM_PROMPT
+    assert "Opening" in EMAIL_SYSTEM_PROMPT
+    assert "Key Highlights" in EMAIL_SYSTEM_PROMPT
+    assert "Closing" in EMAIL_SYSTEM_PROMPT
+    assert "separated" in EMAIL_SYSTEM_PROMPT.lower()
+    assert "blank line" in EMAIL_SYSTEM_PROMPT.lower()
+

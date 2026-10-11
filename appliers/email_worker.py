@@ -98,8 +98,13 @@ def send_smtp_email(
     msg = MIMEMultipart()
     msg["From"] = sender_email
     msg["To"] = recipient_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+    from core.email_signature import format_email_body_html
+
+    msg_alt = MIMEMultipart("alternative")
+    msg_alt.attach(MIMEText(body, "plain", "utf-8"))
+    html_content = format_email_body_html(body, append_signature=True)
+    msg_alt.attach(MIMEText(html_content, "html", "utf-8"))
+    msg.attach(msg_alt)
 
     if cv_path and os.path.exists(cv_path):
         try:
@@ -150,7 +155,7 @@ def run_email_autopilot_batch(
     1. Checks daily quota & rate limiters.
     2. Queries highest relevance unapplied email jobs.
     3. Generates tailored cold email drafts & subject hints.
-    4. Automatically attaches role CV PDF from OneDrive.
+    4. Automatically attaches role CV PDF from configuration.
     5. Dispatches via SMTP (or Outlook automation).
     6. Updates database records and sends Telegram notification.
     """
@@ -262,8 +267,9 @@ def run_email_autopilot_batch(
                 "message": err_msg
             })
             continue
-
-        subject = draft_info.get("subject", f"Application: {title} – Mohamed Hussein")
+        cand_name = profile.get("personal_info", {}).get("full_name", "").strip()
+        default_subj = f"Application: {title} – {cand_name}" if cand_name else f"Application: {title}"
+        subject = draft_info.get("subject", default_subj)
         body = draft_info.get("body", "")
         cv_path = draft_info.get("cv_path") or get_resume_for_role(title)
         cv_name = os.path.basename(cv_path) if cv_path else "Resume.pdf"
