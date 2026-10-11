@@ -89,6 +89,7 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
             except Exception as e:
                 logger.error(f"Email batch error in master cycle: {e}")
                 results["email_batch"] = {"status": "error", "message": str(e)}
+                notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Email batch failed ({str(e)[:100]}).")
 
         # 2. Run WhatsApp Auto-Pilot Batch
         if channels.get("whatsapp", True) or force:
@@ -98,12 +99,20 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
             except Exception as e:
                 logger.error(f"WhatsApp batch error in master cycle: {e}")
                 results["whatsapp_batch"] = {"status": "error", "message": str(e)}
+                notify_telegram_candidate(f"⚠️ Auto-Pilot Error: WhatsApp batch failed ({str(e)[:100]}).")
 
         # 3. Process Autonomous Easy Apply & ATS candidates with HITL loop
         if channels.get("easy_apply", True) or channels.get("platform", True) or force:
             log_autopilot_activity("Processing Easy Apply & ATS candidate queue...", state)
-            ea_results = _process_autonomous_form_jobs(min_score=settings.get("min_relevance_score", 70), dry_run=dry_run, state=state)
-            results["easy_apply_batch"] = ea_results
+            try:
+                ea_results = _process_autonomous_form_jobs(min_score=settings.get("min_relevance_score", 70), dry_run=dry_run, state=state)
+                results["easy_apply_batch"] = ea_results
+                if ea_results.get("status") == "error":
+                    notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Form jobs error ({ea_results.get('message', '')[:100]}).")
+            except Exception as e:
+                logger.error(f"Form jobs error in master cycle: {e}")
+                results["easy_apply_batch"] = {"status": "error", "message": str(e)}
+                notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Form jobs batch failed ({str(e)[:100]}).")
 
         log_autopilot_activity("=== [Master Auto-Pilot Cycle Completed] ===", state)
         save_autopilot_state(state)

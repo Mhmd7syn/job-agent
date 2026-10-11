@@ -74,10 +74,13 @@ def test_simulated_whatsapp_batch_execution():
     conn.close()
 
     try:
-        with patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=True):
+        with patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=True), \
+             patch("appliers.whatsapp_worker.notify_telegram_candidate") as mock_tg:
             res = run_whatsapp_autopilot_batch(force=True, dry_run=False, batch_limit=1)
             assert res["status"] == "success"
             assert res["processed_count"] >= 1
+            # Must NOT spam Telegram on success
+            mock_tg.assert_not_called()
 
             # Verify DB was updated
             conn = sqlite3.connect(DB_PATH)
@@ -93,6 +96,40 @@ def test_simulated_whatsapp_batch_execution():
             assert "sent_whatsapp" in payload_data
     finally:
         # Restore original state
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending', apply_payload = ? WHERE job_id = ?", (orig_payload, job_id))
+        conn.commit()
+        conn.close()
+
+
+def test_whatsapp_batch_failure_notifies_telegram():
+    """Verifies that a WhatsApp delivery failure triggers a Telegram failure alert."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT job_id, apply_payload FROM jobs WHERE apply_type = 'whatsapp' LIMIT 1")
+    row = cursor.fetchone()
+    conn.close()
+
+    assert row is not None
+    job_id, orig_payload = row
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending', relevance_score = 95 WHERE job_id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+
+    try:
+        with patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=False), \
+             patch("appliers.whatsapp_worker.notify_telegram_candidate") as mock_tg:
+
+            res = run_whatsapp_autopilot_batch(force=True, dry_run=False, batch_limit=1)
+            assert res["status"] == "success"
+            assert res["processed_count"] == 0
+            mock_tg.assert_called_once()
+            assert "Failed" in mock_tg.call_args[0][0]
+    finally:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending', apply_payload = ? WHERE job_id = ?", (orig_payload, job_id))

@@ -342,7 +342,6 @@ def run_email_autopilot_batch(
             state["total_applied_all_time"] += 1
 
             log_autopilot_activity(f"✓ Successfully dispatched email to {recipient_email} for '{title}'!", state)
-            notify_telegram_candidate(f"🎯 Auto-Pilot: Applied via Email to {title} at {company} ({recipient_email})!")
 
             processed_jobs.append({
                 "job_id": job_id,
@@ -360,6 +359,7 @@ def run_email_autopilot_batch(
                 time.sleep(jitter)
         else:
             log_autopilot_activity(f"Failed to send email to {recipient_email} for '{title}'.", state)
+            notify_telegram_candidate(f"⚠️ Auto-Pilot Failed: Could not send email for '{title}' at {company} ({recipient_email}).")
             processed_jobs.append({
                 "job_id": job_id,
                 "title": title,

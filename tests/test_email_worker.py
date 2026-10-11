@@ -92,11 +92,14 @@ def test_simulated_email_batch_execution():
 
     try:
         with patch("appliers.email_worker.send_smtp_email", return_value=True), \
-             patch("appliers.email_worker.launch_outlook_compose", return_value={"status": "success"}):
+             patch("appliers.email_worker.launch_outlook_compose", return_value={"status": "success"}), \
+             patch("appliers.email_worker.notify_telegram_candidate") as mock_tg:
 
             res = run_email_autopilot_batch(force=True, dry_run=False, batch_limit=1)
             assert res["status"] == "success"
             assert res["processed_count"] >= 1
+            # Must NOT spam Telegram on success
+            mock_tg.assert_not_called()
 
             # Check DB was updated
             conn = sqlite3.connect(DB_PATH)
@@ -117,3 +120,39 @@ def test_simulated_email_batch_execution():
         cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending', apply_payload = ? WHERE job_id = ?", (orig_payload, job_id))
         conn.commit()
         conn.close()
+
+
+def test_email_batch_failure_notifies_telegram():
+    """Verifies that an email delivery failure triggers a Telegram failure alert."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT job_id, apply_payload FROM jobs WHERE apply_type = 'email' LIMIT 1")
+    row = cursor.fetchone()
+    conn.close()
+
+    assert row is not None
+    job_id, orig_payload = row
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending', relevance_score = 95 WHERE job_id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+
+    try:
+        with patch("appliers.email_worker.send_smtp_email", return_value=False), \
+             patch("appliers.email_worker.launch_outlook_compose", return_value={"status": "error"}), \
+             patch("appliers.email_worker.notify_telegram_candidate") as mock_tg:
+
+            res = run_email_autopilot_batch(force=True, dry_run=False, batch_limit=1)
+            assert res["status"] == "success"
+            assert res["processed_count"] == 0
+            mock_tg.assert_called_once()
+            assert "Failed" in mock_tg.call_args[0][0]
+    finally:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending', apply_payload = ? WHERE job_id = ?", (orig_payload, job_id))
+        conn.commit()
+        conn.close()
+

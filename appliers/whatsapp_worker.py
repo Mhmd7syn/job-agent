@@ -198,7 +198,6 @@ def run_whatsapp_autopilot_batch(
             state["total_applied_all_time"] = state.get("total_applied_all_time", 0) + 1
 
             log_autopilot_activity(f"✓ Successfully sent WhatsApp application to {phone} for '{title}'!", state)
-            notify_telegram_candidate(f"🎯 Auto-Pilot: Sent WhatsApp application to {title} at {company} ({phone})!")
 
             processed_jobs.append({
                 "job_id": job_id,
@@ -216,6 +215,7 @@ def run_whatsapp_autopilot_batch(
                 time.sleep(delay)
         else:
             log_autopilot_activity(f"Failed to send WhatsApp message to {phone} for '{title}'.", state)
+            notify_telegram_candidate(f"⚠️ Auto-Pilot Failed: Could not send WhatsApp message for '{title}' at {company} ({phone}).")
             processed_jobs.append({
                 "job_id": job_id,
                 "title": title,
