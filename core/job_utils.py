@@ -264,8 +264,6 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
     )
     job_url = str(raw_job.get("job_url") or "").strip()
     workplace_setup = raw_job.get("workplace_setup") or extracted_setup
-    if "4474321249" in job_url or "junior-data-analyst-at-metlife-egypt" in job_url:
-        workplace_setup = "Hybrid"
 
     is_scholarship = (
         raw_job.get("is_scholarship") is True
@@ -274,15 +272,12 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
         or any(k in f"{title} {desc}".lower() for k in ["scholarship", "fellowship", "منحة"])
     )
 
-    if "4474321249" in job_url or "junior-data-analyst-at-metlife-egypt" in job_url:
-        job_type = "Not specified"
-    else:
-        job_type = normalize_job_type(
-            raw_job.get("job_type", "Not specified"),
-            title=title,
-            desc=desc,
-            is_scholarship=is_scholarship
-        )
+    job_type = normalize_job_type(
+        raw_job.get("job_type", "Not specified"),
+        title=title,
+        desc=desc,
+        is_scholarship=is_scholarship
+    )
 
     is_remote = (workplace_setup == "Remote") or normalize_is_remote(
         location=f"{raw_location} {location}",

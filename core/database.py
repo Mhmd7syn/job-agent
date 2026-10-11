@@ -152,9 +152,10 @@ def save_job(job_dict):
         UPDATE jobs 
         SET relevance_score = ?, apply_type = ?, apply_payload = ?,
             apply_url = COALESCE(NULLIF(?, ''), apply_url),
-            is_easy_apply = COALESCE(?, is_easy_apply)
+            is_easy_apply = COALESCE(?, is_easy_apply),
+            workplace_setup = COALESCE(NULLIF(?, ''), workplace_setup)
         WHERE job_id = ? AND status = 'pending'
-    """, (job_dict.get('relevance_score', 0), apply_type, apply_payload, apply_url, is_easy_apply, job_dict.get('job_id', '')))
+    """, (job_dict.get('relevance_score', 0), apply_type, apply_payload, apply_url, is_easy_apply, job_dict.get('workplace_setup', ''), job_dict.get('job_id', '')))
 
     conn.commit()
     conn.close()

@@ -144,8 +144,11 @@ class LinkedInSession:
             self.page = self._context.pages[0] if self._context.pages else self._context.new_page()
             Stealth().apply_stealth_sync(self.page)
             # Warm-up: confirm login state once for the whole session
-            self.page.goto('https://www.linkedin.com/feed/', wait_until='domcontentloaded')
-            auto_login_if_needed(self.page)
+            try:
+                self.page.goto('https://www.linkedin.com/feed/', wait_until='commit', timeout=15000)
+                auto_login_if_needed(self.page)
+            except Exception as fe:
+                logging.debug(f"Feed warm-up non-critical error: {fe}")
         except Exception as e:
             logging.error(f"⚠️ Failed to create LinkedIn session: {e}")
             self._cleanup()
@@ -460,11 +463,25 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                 loc_val = page.evaluate("() => document.querySelector('.jobs-unified-top-card__bullet, .topcard__flavor--bullet, .job-details-jobs-unified-top-card__bullet')?.innerText.trim() || ''")
                 desc = page.evaluate("() => document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerText.trim() || ''")
                 setup_val = page.evaluate("""() => {
-                    const topCard = document.querySelector('.jobs-unified-top-card, .job-details-jobs-unified-top-card, .topcard');
-                    const text = topCard ? topCard.innerText : '';
-                    if (/\\bhybrid\\b/i.test(text)) return 'Hybrid';
-                    if (/\\bremote\\b/i.test(text)) return 'Remote';
-                    if (/\\bon-?site\\b/i.test(text)) return 'On-site';
+                    const main = document.querySelector('main') || document.body;
+                    const chips = Array.from(main.querySelectorAll('span, button, div, a, li')).filter(el => {
+                        const txt = (el.innerText || '').trim();
+                        return el.children.length === 0 && /^(?:Hybrid|Remote|On-site|Onsite|حضوري|هجين|عن بعد)$/i.test(txt);
+                    });
+                    for (const chip of chips) {
+                        const t = chip.innerText.trim();
+                        if (/hybrid|هجين/i.test(t)) return 'Hybrid';
+                        if (/remote|عن بعد/i.test(t)) return 'Remote';
+                        if (/on-?site|حضوري/i.test(t)) return 'On-site';
+                    }
+                    const topText = (main.innerText || '').slice(0, 1500);
+                    const m = topText.match(/\\b(Hybrid|Remote|On-site|Onsite)\\b/i);
+                    if (m) {
+                        const val = m[1].toLowerCase();
+                        if (val === 'hybrid') return 'Hybrid';
+                        if (val === 'remote') return 'Remote';
+                        if (val.includes('site')) return 'On-site';
+                    }
                     return null;
                 }""")
 
@@ -477,9 +494,6 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                         company = json_ld.get('company', company)
                         loc_val = json_ld.get('location', loc_val)
                         desc = json_ld.get('description', desc)
-
-                if "4474321249" in job_url or "junior-data-analyst-at-metlife-egypt" in job_url:
-                    setup_val = "Hybrid"
 
                 if title and title not in ("Unknown", "Not specified"):
                     is_rem = (setup_val == 'Remote') or ('remote' in str(loc_val).lower() or 'remote' in location.lower())

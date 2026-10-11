@@ -57,6 +57,7 @@ from core.job_utils import (
     normalize_is_remote as _fix_is_remote,
     extract_company_from_desc as _extract_company_from_desc,
     parse_job_date as _parse_relative_date,
+    extract_location_and_setup,
     normalize_job_dict,
     score_job_dict,
 )
@@ -73,6 +74,7 @@ def _scrape_linkedin_job(url: str) -> dict:
     clean_url = url.split("?")[0]
     m_id = re.search(r'(?:currentJobId=|/jobs/view/|/jobs/view/\D*?)(\d{8,12})', url)
     job_id_num = m_id.group(1) if m_id else None
+    guest_res = None
 
     # 1. Try public guest API detail endpoint
     if job_id_num:
@@ -126,18 +128,14 @@ def _scrape_linkedin_job(url: str) -> dict:
                     if "easy apply" in btn_text:
                         is_ea = True
 
-                if "4474321249" in clean_url or "junior-data-analyst-at-metlife-egypt" in clean_url:
-                    wp_setup = "Hybrid"
-                    fixed_job_type = "Not specified"
-                else:
-                    wp_setup = None
-                    fixed_job_type = _fix_job_type(emp_type, title, desc)
+                fixed_job_type = _fix_job_type(emp_type, title, desc)
 
                 if title and len(title) > 2:
-                    res_job = {
+                    clean_l, extracted_setup = extract_location_and_setup(loc_val, title, desc)
+                    guest_res = {
                         "title": title,
                         "company": company,
-                        "location": loc_val,
+                        "location": clean_l or loc_val,
                         "job_type": fixed_job_type,
                         "description": desc,
                         "date_posted": _parse_relative_date(date_str),
@@ -146,19 +144,28 @@ def _scrape_linkedin_job(url: str) -> dict:
                         "apply_url": apply_url,
                         "is_easy_apply": is_ea
                     }
-                    if wp_setup:
-                        res_job["workplace_setup"] = wp_setup
-                    return res_job
+                    if extracted_setup in ("Hybrid", "Remote"):
+                        guest_res["workplace_setup"] = extracted_setup
+                        return guest_res
         except Exception as e:
             logger.debug(f"LinkedIn guest API fetch failed: {e}")
 
-    # 2. Fallback to Playwright persistent session
+    # 2. Enrich or fallback via Playwright persistent session
     try:
         from scrapers.playwright_scraper import LinkedInSession
         with LinkedInSession() as page:
             if page:
-                page.goto(url, wait_until="domcontentloaded", timeout=15000)
-                page.wait_for_timeout(1000)
+                for nav_attempt in range(2):
+                    try:
+                        page.goto(clean_url, wait_until="domcontentloaded", timeout=15000)
+                        page.wait_for_timeout(1500)
+                        break
+                    except Exception as pe:
+                        if nav_attempt == 0:
+                            page.wait_for_timeout(2000)
+                        else:
+                            raise pe
+
                 # Click see more if present
                 try:
                     see_more = page.query_selector('.show-more-less-html__button, button[aria-label*="more" i]')
@@ -167,77 +174,136 @@ def _scrape_linkedin_job(url: str) -> dict:
                 except Exception:
                     pass
 
-                title = page.evaluate("() => document.querySelector('.jobs-unified-top-card__job-title, .top-card-layout__title, h1')?.innerText.trim() || ''")
-                company = page.evaluate("() => document.querySelector('.jobs-unified-top-card__company-name, .topcard__org-name-link, .job-details-jobs-unified-top-card__company-name')?.innerText.trim() || ''")
-                loc_val = page.evaluate("() => document.querySelector('.jobs-unified-top-card__bullet, .topcard__flavor--bullet, .job-details-jobs-unified-top-card__bullet')?.innerText.trim() || ''")
-                desc = page.evaluate("() => document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerText.trim() || ''")
+                pw_extracted = page.evaluate("""() => {
+                    const main = document.querySelector('main') || document.body;
 
-                # Extract apply button link directly from DOM
-                apply_info = page.evaluate("""() => {
+                    // Setup detection
+                    let setup = null;
+                    const chips = Array.from(main.querySelectorAll('span, button, div, a, li')).filter(el => {
+                        const txt = (el.innerText || '').trim();
+                        return el.children.length === 0 && /^(?:Hybrid|Remote|On-site|Onsite|حضوري|هجين|عن بعد)$/i.test(txt);
+                    });
+                    for (const chip of chips) {
+                        const t = chip.innerText.trim();
+                        if (/hybrid|هجين/i.test(t)) { setup = 'Hybrid'; break; }
+                        if (/remote|عن بعد/i.test(t)) { setup = 'Remote'; break; }
+                        if (/on-?site|حضوري/i.test(t)) { setup = 'On-site'; break; }
+                    }
+                    if (!setup) {
+                        const topText = (main.innerText || '').slice(0, 1500);
+                        const m = topText.match(/\\b(Hybrid|Remote|On-site|Onsite)\\b/i);
+                        if (m) {
+                            const val = m[1].toLowerCase();
+                            if (val === 'hybrid') setup = 'Hybrid';
+                            else if (val === 'remote') setup = 'Remote';
+                            else if (val.includes('site')) setup = 'On-site';
+                        }
+                    }
+
+                    // Title
+                    let title = document.querySelector('h1, .jobs-unified-top-card__job-title, .top-card-layout__title')?.innerText.trim() || '';
+                    if (!title) {
+                        const docTitle = document.title || '';
+                        if (docTitle.includes('|')) {
+                            const cand = docTitle.split('|')[0].trim();
+                            if (cand && !/^(LinkedIn|Jobs|Feed)/i.test(cand)) title = cand;
+                        }
+                    }
+
+                    // Company
+                    let comp = document.querySelector('.jobs-unified-top-card__company-name, .topcard__org-name-link, .job-details-jobs-unified-top-card__company-name, a[href*="/company/"]')?.innerText.trim() || '';
+                    if (!comp) {
+                        const docTitle = document.title || '';
+                        const parts = docTitle.split('|').map(s => s.trim());
+                        if (parts.length >= 2 && !/linkedin/i.test(parts[1])) comp = parts[1];
+                    }
+
+                    // Location
+                    const locEls = Array.from(main.querySelectorAll('span, div, li')).filter(el => {
+                        const t = (el.innerText || '').trim();
+                        return el.children.length === 0 && /(?:Cairo|Egypt|Giza|Alexandria|Remote)/i.test(t);
+                    });
+                    let loc = locEls.length > 0 ? locEls[0].innerText.trim() : (document.querySelector('.jobs-unified-top-card__bullet, .topcard__flavor--bullet')?.innerText.trim() || '');
+
+                    // Description
+                    const desc = document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerText.trim() || '';
+
+                    // Apply info
+                    let applyHref = null;
+                    let isEasy = null;
                     let applyAnchor = document.querySelector('a.jobs-apply-button, a[href*="/safety/go/"], a[aria-label*="Apply to"], a.apply-button');
                     if (applyAnchor && applyAnchor.href) {
-                        return { type: 'anchor', href: applyAnchor.href, is_easy: false };
+                        applyHref = applyAnchor.href;
+                        isEasy = false;
                     }
                     let applyBtn = document.querySelector('button.jobs-apply-button, button[class*="apply"]');
                     if (applyBtn) {
                         let text = applyBtn.innerText.trim().toLowerCase();
                         let dataUrl = applyBtn.getAttribute('data-apply-url');
-                        return { type: 'button', href: dataUrl, is_easy: text.includes('easy apply') };
+                        applyHref = applyHref || dataUrl;
+                        isEasy = text.includes('easy apply');
                     }
-                    for (let a of document.querySelectorAll('a[href*="/safety/go/"]')) {
-                        return { type: 'safety_anchor', href: a.href, is_easy: false };
-                    }
-                    return null;
+
+                    return {
+                        title,
+                        company: comp,
+                        location: loc,
+                        description: desc,
+                        setup,
+                        applyHref,
+                        isEasy
+                    };
                 }""")
+
+                # Resolve apply url
                 apply_url = None
-                is_ea = None
-                if apply_info:
-                    href = apply_info.get("href")
-                    is_ea = apply_info.get("is_easy", False)
-                    if href:
-                        if "/safety/go/" in href or "url=" in href:
-                            import urllib.parse
-                            parsed = urllib.parse.urlparse(href)
-                            params = urllib.parse.parse_qs(parsed.query)
-                            apply_url = params.get("url", [href])[0]
-                        else:
-                            apply_url = href
+                raw_pw_href = pw_extracted.get("applyHref")
+                if raw_pw_href:
+                    if "/safety/go/" in raw_pw_href or "url=" in raw_pw_href:
+                        parsed = urllib.parse.urlparse(raw_pw_href)
+                        params = urllib.parse.parse_qs(parsed.query)
+                        apply_url = params.get("url", [raw_pw_href])[0]
+                    else:
+                        apply_url = raw_pw_href
 
-                setup_val = page.evaluate("""() => {
-                    const topCard = document.querySelector('.jobs-unified-top-card, .job-details-jobs-unified-top-card, .topcard');
-                    const text = topCard ? topCard.innerText : '';
-                    if (/\\bhybrid\\b/i.test(text)) return 'Hybrid';
-                    if (/\\bremote\\b/i.test(text)) return 'Remote';
-                    if (/\\bon-?site\\b/i.test(text)) return 'On-site';
-                    return null;
-                }""")
+                pw_setup = pw_extracted.get("setup")
+                pw_is_easy = pw_extracted.get("isEasy")
 
-                if "4474321249" in clean_url or "junior-data-analyst-at-metlife-egypt" in clean_url:
-                    setup_val = "Hybrid"
-                    fixed_pw_job_type = "Not specified"
-                else:
-                    fixed_pw_job_type = _fix_job_type("", title, desc)
+                if guest_res:
+                    if pw_setup:
+                        guest_res["workplace_setup"] = pw_setup
+                    if apply_url and not guest_res.get("apply_url"):
+                        guest_res["apply_url"] = apply_url
+                    if pw_is_easy is not None and guest_res.get("is_easy_apply") is None:
+                        guest_res["is_easy_apply"] = pw_is_easy
+                    if pw_extracted.get("location"):
+                        clean_loc, _ = extract_location_and_setup(pw_extracted["location"])
+                        if clean_loc:
+                            guest_res["location"] = clean_loc
+                    return guest_res
 
+                title = pw_extracted.get("title")
                 if title:
-                    pw_res = {
+                    comp = pw_extracted.get("company") or "Unknown"
+                    pw_loc = pw_extracted.get("location") or "Not specified"
+                    clean_loc, extracted_setup = extract_location_and_setup(pw_loc, title, pw_extracted.get("description", ""))
+                    return {
                         "title": title,
-                        "company": company or "Unknown",
-                        "location": loc_val or "Not specified",
-                        "job_type": fixed_pw_job_type,
-                        "description": desc,
+                        "company": comp,
+                        "location": clean_loc or pw_loc,
+                        "job_type": _fix_job_type("", title, pw_extracted.get("description", "")),
+                        "description": pw_extracted.get("description") or "",
                         "date_posted": datetime.date.today().isoformat(),
                         "site": "linkedin",
                         "job_url": clean_url,
                         "apply_url": apply_url,
-                        "is_easy_apply": is_ea
+                        "is_easy_apply": pw_is_easy,
+                        "workplace_setup": pw_setup or extracted_setup or "On-site"
                     }
-                    if setup_val:
-                        pw_res["workplace_setup"] = setup_val
-                    return pw_res
     except Exception as e:
         logger.warning(f"Playwright fallback for LinkedIn job failed: {e}")
 
-    return {}
+    return guest_res or {}
 
 
 def _scrape_linkedin_post(url: str, raw_text: str = "") -> dict:

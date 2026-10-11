@@ -355,11 +355,10 @@ function createJobCard(job) {
     }
     const setupTagHtml = `<div class="tag"><i class="${setupIcon}"></i>${escapeHtml(setupText)}</div>`;
 
-    // Job Type Badge
+    // Job Type Badge (omit uninformative Full-time / Not specified tags)
     let typeTagHtml = '';
     const jt = (job.job_type || '').trim();
-    const isMetlife = String(job.job_url || '').includes('4474321249') || String(job.job_id || '').includes('metlife egypt');
-    if (jt && jt.toLowerCase() !== 'not specified' && !(isMetlife && jt.toLowerCase() === 'full-time')) {
+    if (jt && !['not specified', 'full-time'].includes(jt.toLowerCase())) {
         const isScholarship = jt.toLowerCase() === 'scholarship';
         const typeTagIcon = isScholarship ? 'fa-solid fa-graduation-cap' : 'fa-solid fa-clock';
         const typeTagClass = isScholarship ? 'tag tag-scholarship' : 'tag';
@@ -2393,8 +2392,7 @@ function openJobDetailsModal(jobId) {
 
         let typeTagModalHtml = '';
         const modalJt = (job.job_type || '').trim();
-        const isMetlifeJob = String(job.job_url || '').includes('4474321249') || String(job.job_id || '').includes('metlife egypt');
-        if (modalJt && modalJt.toLowerCase() !== 'not specified' && !(isMetlifeJob && modalJt.toLowerCase() === 'full-time')) {
+        if (modalJt && !['not specified', 'full-time'].includes(modalJt.toLowerCase())) {
             const isScholarship = modalJt.toLowerCase() === 'scholarship';
             const typeTagIcon = isScholarship ? 'fa-solid fa-graduation-cap' : 'fa-solid fa-clock';
             const typeTagClass = isScholarship ? 'tag tag-scholarship' : 'tag';
