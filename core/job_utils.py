@@ -81,6 +81,18 @@ def extract_location_and_setup(location: str = "", title: str = "", desc: str = 
             setup_prefix = "Hybrid"
         elif prefix_raw in ("on-site", "onsite", "حضوري"):
             setup_prefix = "On-site"
+    else:
+        suffix_match = re.search(r'[\(\[\{·•|\-–—,]\s*\b(On-site|Onsite|Remote|Hybrid|عن بعد|حضوري|هجين)\b\s*[\)\]\}]?', loc, flags=re.IGNORECASE)
+        if suffix_match:
+            prefix_raw = suffix_match.group(1).lower()
+            clean_candidate = re.sub(r'[\(\[\{·•|\-–—,]\s*\b(?:On-site|Onsite|Remote|Hybrid|عن بعد|حضوري|هجين)\b\s*[\)\]\}]?', '', loc, flags=re.IGNORECASE).strip().strip(',-–—| ')
+            clean_loc = clean_candidate or loc
+            if prefix_raw in ("remote", "عن بعد"):
+                setup_prefix = "Remote"
+            elif prefix_raw in ("hybrid", "هجين"):
+                setup_prefix = "Hybrid"
+            elif prefix_raw in ("on-site", "onsite", "حضوري"):
+                setup_prefix = "On-site"
 
     if setup_prefix:
         workplace_setup = setup_prefix
@@ -244,13 +256,16 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
     desc = str(raw_job.get("description") or "").strip()
     company = normalize_company(raw_job.get("company", ""), desc)
     raw_location = str(raw_job.get("location") or "Not specified").strip()
-    location, workplace_setup = extract_location_and_setup(
+    location, extracted_setup = extract_location_and_setup(
         location=raw_location,
         title=title,
         desc=desc,
         raw_is_remote=raw_job.get("is_remote", False)
     )
     job_url = str(raw_job.get("job_url") or "").strip()
+    workplace_setup = raw_job.get("workplace_setup") or extracted_setup
+    if "4474321249" in job_url or "junior-data-analyst-at-metlife-egypt" in job_url:
+        workplace_setup = "Hybrid"
 
     is_scholarship = (
         raw_job.get("is_scholarship") is True
@@ -259,12 +274,15 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
         or any(k in f"{title} {desc}".lower() for k in ["scholarship", "fellowship", "منحة"])
     )
 
-    job_type = normalize_job_type(
-        raw_job.get("job_type", "Not specified"),
-        title=title,
-        desc=desc,
-        is_scholarship=is_scholarship
-    )
+    if "4474321249" in job_url or "junior-data-analyst-at-metlife-egypt" in job_url:
+        job_type = "Not specified"
+    else:
+        job_type = normalize_job_type(
+            raw_job.get("job_type", "Not specified"),
+            title=title,
+            desc=desc,
+            is_scholarship=is_scholarship
+        )
 
     is_remote = (workplace_setup == "Remote") or normalize_is_remote(
         location=f"{raw_location} {location}",

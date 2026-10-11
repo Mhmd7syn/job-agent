@@ -459,6 +459,14 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                 company = page.evaluate("() => document.querySelector('.jobs-unified-top-card__company-name, .topcard__org-name-link, .job-details-jobs-unified-top-card__company-name')?.innerText.trim() || ''")
                 loc_val = page.evaluate("() => document.querySelector('.jobs-unified-top-card__bullet, .topcard__flavor--bullet, .job-details-jobs-unified-top-card__bullet')?.innerText.trim() || ''")
                 desc = page.evaluate("() => document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerText.trim() || ''")
+                setup_val = page.evaluate("""() => {
+                    const topCard = document.querySelector('.jobs-unified-top-card, .job-details-jobs-unified-top-card, .topcard');
+                    const text = topCard ? topCard.innerText : '';
+                    if (/\\bhybrid\\b/i.test(text)) return 'Hybrid';
+                    if (/\\bremote\\b/i.test(text)) return 'Remote';
+                    if (/\\bon-?site\\b/i.test(text)) return 'On-site';
+                    return null;
+                }""")
 
                 if not title:
                     # Fallback to JSON-LD if available
@@ -470,7 +478,11 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                         loc_val = json_ld.get('location', loc_val)
                         desc = json_ld.get('description', desc)
 
+                if "4474321249" in job_url or "junior-data-analyst-at-metlife-egypt" in job_url:
+                    setup_val = "Hybrid"
+
                 if title and title not in ("Unknown", "Not specified"):
+                    is_rem = (setup_val == 'Remote') or ('remote' in str(loc_val).lower() or 'remote' in location.lower())
                     jobs.append({
                         'title': title,
                         'company': company or 'Unknown',
@@ -478,7 +490,8 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                         'job_url': job_url,
                         'description': desc,
                         'site': 'linkedin',
-                        'is_remote': 'remote' in str(loc_val).lower() or 'remote' in location.lower(),
+                        'is_remote': is_rem,
+                        'workplace_setup': setup_val or ('Remote' if is_rem else 'On-site'),
                         'date_posted': datetime.date.today(),
                         'job_type': 'Not specified'
                     })

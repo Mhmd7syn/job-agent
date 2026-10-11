@@ -59,6 +59,10 @@ class TestJobUtils(unittest.TestCase):
         self.assertEqual(loc, "Cairo, Egypt")
         self.assertEqual(setup, "Remote")
 
+        loc, setup = extract_location_and_setup("Cairo, Egypt (Hybrid)")
+        self.assertEqual(loc, "Cairo, Egypt")
+        self.assertEqual(setup, "Hybrid")
+
     def test_make_job_id_deterministic(self):
         id1 = make_job_id("Junior Python Developer", "Vodafone Egypt")
         id2 = make_job_id("junior python developer!", "Vodafone, Egypt.")

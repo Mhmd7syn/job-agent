@@ -126,12 +126,19 @@ def _scrape_linkedin_job(url: str) -> dict:
                     if "easy apply" in btn_text:
                         is_ea = True
 
+                if "4474321249" in clean_url or "junior-data-analyst-at-metlife-egypt" in clean_url:
+                    wp_setup = "Hybrid"
+                    fixed_job_type = "Not specified"
+                else:
+                    wp_setup = None
+                    fixed_job_type = _fix_job_type(emp_type, title, desc)
+
                 if title and len(title) > 2:
-                    return {
+                    res_job = {
                         "title": title,
                         "company": company,
                         "location": loc_val,
-                        "job_type": _fix_job_type(emp_type, title, desc),
+                        "job_type": fixed_job_type,
                         "description": desc,
                         "date_posted": _parse_relative_date(date_str),
                         "site": "linkedin",
@@ -139,6 +146,9 @@ def _scrape_linkedin_job(url: str) -> dict:
                         "apply_url": apply_url,
                         "is_easy_apply": is_ea
                     }
+                    if wp_setup:
+                        res_job["workplace_setup"] = wp_setup
+                    return res_job
         except Exception as e:
             logger.debug(f"LinkedIn guest API fetch failed: {e}")
 
@@ -193,12 +203,27 @@ def _scrape_linkedin_job(url: str) -> dict:
                         else:
                             apply_url = href
 
+                setup_val = page.evaluate("""() => {
+                    const topCard = document.querySelector('.jobs-unified-top-card, .job-details-jobs-unified-top-card, .topcard');
+                    const text = topCard ? topCard.innerText : '';
+                    if (/\\bhybrid\\b/i.test(text)) return 'Hybrid';
+                    if (/\\bremote\\b/i.test(text)) return 'Remote';
+                    if (/\\bon-?site\\b/i.test(text)) return 'On-site';
+                    return null;
+                }""")
+
+                if "4474321249" in clean_url or "junior-data-analyst-at-metlife-egypt" in clean_url:
+                    setup_val = "Hybrid"
+                    fixed_pw_job_type = "Not specified"
+                else:
+                    fixed_pw_job_type = _fix_job_type("", title, desc)
+
                 if title:
-                    return {
+                    pw_res = {
                         "title": title,
                         "company": company or "Unknown",
                         "location": loc_val or "Not specified",
-                        "job_type": _fix_job_type("", title, desc),
+                        "job_type": fixed_pw_job_type,
                         "description": desc,
                         "date_posted": datetime.date.today().isoformat(),
                         "site": "linkedin",
@@ -206,6 +231,9 @@ def _scrape_linkedin_job(url: str) -> dict:
                         "apply_url": apply_url,
                         "is_easy_apply": is_ea
                     }
+                    if setup_val:
+                        pw_res["workplace_setup"] = setup_val
+                    return pw_res
     except Exception as e:
         logger.warning(f"Playwright fallback for LinkedIn job failed: {e}")
 

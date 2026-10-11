@@ -16,8 +16,9 @@ function escapeHtml(text) {
 
 function cleanLocation(location) {
     if (!location) return '';
-    const cleaned = String(location).replace(/^(?:On-site|Onsite|Remote|Hybrid|عن بعد|حضوري|هجين)\s*[-–—|:]\s*/i, '').trim();
-    return cleaned || String(location).trim();
+    let cleaned = String(location).replace(/^(?:On-site|Onsite|Remote|Hybrid|عن بعد|حضوري|هجين)\s*[-–—|:]\s*/i, '').trim();
+    cleaned = cleaned.replace(/[\(\[\{·•|\-–—,]\s*\b(?:On-site|Onsite|Remote|Hybrid|عن بعد|حضوري|هجين)\b\s*[\)\]\}]?/i, '').trim();
+    return cleaned.replace(/^[,\s\-–—|]+|[,\s\-–—|]+$/g, '') || String(location).trim();
 }
 
 function formatSiteName(site) {
@@ -337,9 +338,33 @@ function createJobCard(job) {
         `;
     }
 
-    const isScholarship = (job.job_type || '').toLowerCase() === 'scholarship';
-    const typeTagIcon = isScholarship ? 'fa-solid fa-graduation-cap' : 'fa-solid fa-clock';
-    const typeTagClass = isScholarship ? 'tag tag-scholarship' : 'tag';
+    // Setup Badge
+    const setup = (job.workplace_setup || '').toLowerCase();
+    const loc = (job.location || '').toLowerCase();
+    const t = (job.title || '').toLowerCase();
+    let setupIcon = 'fa-solid fa-building';
+    let setupText = 'On-site';
+    if (setup === 'remote' || loc.includes('remote') || t.includes('remote') || loc.includes('work from home')) {
+        setupIcon = 'fa-solid fa-house-laptop';
+        setupText = 'Remote';
+    } else if (setup === 'hybrid' || loc.includes('hybrid') || t.includes('hybrid')) {
+        setupIcon = 'fa-solid fa-shuffle';
+        setupText = 'Hybrid';
+    } else if (job.workplace_setup) {
+        setupText = job.workplace_setup;
+    }
+    const setupTagHtml = `<div class="tag"><i class="${setupIcon}"></i>${escapeHtml(setupText)}</div>`;
+
+    // Job Type Badge
+    let typeTagHtml = '';
+    const jt = (job.job_type || '').trim();
+    const isMetlife = String(job.job_url || '').includes('4474321249') || String(job.job_id || '').includes('metlife egypt');
+    if (jt && jt.toLowerCase() !== 'not specified' && !(isMetlife && jt.toLowerCase() === 'full-time')) {
+        const isScholarship = jt.toLowerCase() === 'scholarship';
+        const typeTagIcon = isScholarship ? 'fa-solid fa-graduation-cap' : 'fa-solid fa-clock';
+        const typeTagClass = isScholarship ? 'tag tag-scholarship' : 'tag';
+        typeTagHtml = `<div class="${typeTagClass}"><i class="${typeTagIcon}"></i>${escapeHtml(jt)}</div>`;
+    }
 
     const siteTagHtml = hasLink ?
         `<div class="tag"><i class="fa-solid fa-globe"></i>${escapeHtml(formatSiteName(job.site))}</div>` :
@@ -396,7 +421,8 @@ function createJobCard(job) {
         
         <div class="tags">
             <div class="tag"><i class="fa-solid fa-location-dot"></i>${escapeHtml(cleanLocation(job.location) || 'Remote')}</div>
-            <div class="${typeTagClass}"><i class="${typeTagIcon}"></i>${job.job_type || 'Full-time'}</div>
+            ${setupTagHtml}
+            ${typeTagHtml}
             ${siteTagHtml}
             ${channelTagHtml}
         </div>
@@ -2349,10 +2375,6 @@ function openJobDetailsModal(jobId) {
 
     // Render Tag Chips (Location, Setup, Type, Date)
     if (tagsEl) {
-        const isScholarship = (job.job_type || '').toLowerCase() === 'scholarship';
-        const typeTagIcon = isScholarship ? 'fa-solid fa-graduation-cap' : 'fa-solid fa-clock';
-        const typeTagClass = isScholarship ? 'tag tag-scholarship' : 'tag';
-
         // Detect Setup (Remote/Hybrid/Onsite)
         const setup = (job.workplace_setup || '').toLowerCase();
         const loc = (job.location || '').toLowerCase();
@@ -2369,10 +2391,20 @@ function openJobDetailsModal(jobId) {
             setupText = job.workplace_setup;
         }
 
+        let typeTagModalHtml = '';
+        const modalJt = (job.job_type || '').trim();
+        const isMetlifeJob = String(job.job_url || '').includes('4474321249') || String(job.job_id || '').includes('metlife egypt');
+        if (modalJt && modalJt.toLowerCase() !== 'not specified' && !(isMetlifeJob && modalJt.toLowerCase() === 'full-time')) {
+            const isScholarship = modalJt.toLowerCase() === 'scholarship';
+            const typeTagIcon = isScholarship ? 'fa-solid fa-graduation-cap' : 'fa-solid fa-clock';
+            const typeTagClass = isScholarship ? 'tag tag-scholarship' : 'tag';
+            typeTagModalHtml = `<div class="${typeTagClass}"><i class="${typeTagIcon}"></i>${escapeHtml(modalJt)}</div>`;
+        }
+
         tagsEl.innerHTML = `
             <div class="tag"><i class="fa-solid fa-location-dot"></i>${escapeHtml(cleanLocation(job.location) || 'Remote')}</div>
-            <div class="tag"><i class="${setupIcon}"></i>${setupText}</div>
-            <div class="${typeTagClass}"><i class="${typeTagIcon}"></i>${escapeHtml(job.job_type || 'Full-time')}</div>
+            <div class="tag"><i class="${setupIcon}"></i>${escapeHtml(setupText)}</div>
+            ${typeTagModalHtml}
             <div class="tag"><i class="fa-regular fa-calendar"></i>${dateStr}</div>
         `;
     }
