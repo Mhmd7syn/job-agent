@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 from core.job_utils import normalize_job_dict
+from scrapers.common import extract_json_ld_job, fetch_page_content
 
 
 def clean_glassdoor_company(company: str) -> str:
@@ -40,28 +41,13 @@ def fetch_glassdoor_job_details(driver, job_url: str) -> dict:
         soup = BeautifulSoup(page_source, 'html.parser')
         
         # 1. Look in JSON-LD
-        for s in soup.find_all('script', type='application/ld+json'):
-            txt = s.text or s.string or ""
-            try:
-                data = json.loads(txt)
-                items = data if isinstance(data, list) else [data] if isinstance(data, dict) else []
-                for item in items:
-                    if isinstance(item, dict) and item.get('@type') == 'JobPosting':
-                        if item.get('description'):
-                            clean_desc = BeautifulSoup(item['description'], 'html.parser').get_text(separator='\n', strip=True)
-                            if len(clean_desc) > 30:
-                                details['description'] = clean_desc
-                        org = item.get('hiringOrganization', {})
-                        if isinstance(org, dict) and org.get('name'):
-                            details['company'] = org['name'].strip()
-                        if 'directApply' in item:
-                            details['is_easy_apply'] = bool(item['directApply'])
-                        if details['description']:
-                            break
-                if details['description']:
-                    break
-            except Exception:
-                pass
+        json_ld = extract_json_ld_job(soup)
+        if json_ld.get('description'):
+            details['description'] = json_ld['description']
+        if json_ld.get('company'):
+            details['company'] = json_ld['company']
+        if json_ld.get('is_easy_apply') is not None:
+            details['is_easy_apply'] = json_ld['is_easy_apply']
                 
         # 2. Fallback to DOM description container
         if not details['description']:
@@ -142,32 +128,22 @@ def fetch_glassdoor_full_description(job_url: str, driver=None) -> str:
         if det.get('description'):
             return det['description']
 
-    try:
-        from curl_cffi import requests as c_requests
-        resp = c_requests.get(job_url, impersonate="chrome120", timeout=5)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.content, 'html.parser')
-            # 1. Look for description container
-            desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in [
-                'jobDescriptionContent', 'JobDetails_jobDescription', 'desc', 'JobDetails_jobDetailsContainer'
-            ])) or soup.find('div', id='JobDescriptionContainer') or soup.find('section', class_=lambda c: c and 'job-description' in str(c))
-            if desc_div:
-                text = desc_div.get_text(separator='\n', strip=True)
-                if len(text) > 80:
-                    return text
+    html = fetch_page_content(job_url, timeout=5)
+    if html:
+        soup = BeautifulSoup(html, 'html.parser')
+        # 1. Look for description container
+        desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in [
+            'jobDescriptionContent', 'JobDetails_jobDescription', 'desc', 'JobDetails_jobDetailsContainer'
+        ])) or soup.find('div', id='JobDescriptionContainer') or soup.find('section', class_=lambda c: c and 'job-description' in str(c))
+        if desc_div:
+            text = desc_div.get_text(separator='\n', strip=True)
+            if len(text) > 80:
+                return text
 
-            # 2. Check JSON-LD fallback
-            for s in soup.find_all('script', type='application/ld+json'):
-                try:
-                    data = json.loads(s.string or "")
-                    if isinstance(data, dict) and data.get('@type') == 'JobPosting' and data.get('description'):
-                        clean_desc = BeautifulSoup(data['description'], 'html.parser').get_text(separator='\n', strip=True)
-                        if len(clean_desc) > 80:
-                            return clean_desc
-                except Exception:
-                    pass
-    except Exception as e:
-        logging.debug(f"Glassdoor full description fetch failed for {job_url}: {e}")
+        # 2. Check JSON-LD fallback
+        json_ld = extract_json_ld_job(soup)
+        if json_ld.get('description') and len(json_ld['description']) > 80:
+            return json_ld['description']
     return ""
 
 

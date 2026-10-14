@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-from core.database import DB_PATH, get_job_by_id
+from core.database import DB_PATH, get_job_by_id, record_job_applied
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
 from core.cv_parser import extract_text_from_file
 from appliers.screening_resolver import ScreeningResolver
@@ -708,31 +708,15 @@ def mark_ats_applied(job_id: str) -> Dict[str, Any]:
     if not job:
         return {"status": "error", "message": f"Job not found: {job_id}"}
 
-    now = time.strftime("%Y-%m-%d %H:%M:%S")
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE jobs
-            SET is_applied = 1,
-                applied_at = ?,
-                apply_status = 'applied'
-            WHERE job_id = ?
-        """, (now, job_id))
-        conn.commit()
-        conn.close()
-
-        # Update active session status if running
+    res = record_job_applied(job_id=job_id, channel="ats", extra_payload={"applied_by": "user_confirmation"})
+    if res.get("status") == "success":
         session = get_ats_session(job_id)
         if session:
             session.status = "completed"
             session.log("✓ Application confirmed and marked as applied by candidate.")
-
         return {
             "status": "success",
             "message": f"Job '{job.get('title')}' successfully marked as applied!",
-            "applied_at": now
+            "applied_at": res.get("applied_at")
         }
-    except Exception as e:
-        logger.error(f"Error marking job {job_id} as applied: {e}")
-        return {"status": "error", "message": str(e)}
+    return res

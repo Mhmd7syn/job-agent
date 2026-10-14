@@ -11,19 +11,13 @@ import concurrent.futures
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 from core.job_utils import normalize_job_dict
+from scrapers.common import fetch_page_content, extract_json_ld_job, fetch_details_concurrently
 
 def _parse_wuzzuf_soup(soup):
-    import json
     # 1. Schema.org JSON-LD
-    for s in soup.find_all('script', type='application/ld+json'):
-        try:
-            d = json.loads(s.string or '{}')
-            if d.get('@type') == 'JobPosting' and d.get('description'):
-                clean = BeautifulSoup(d['description'], 'html.parser').get_text(separator='\n', strip=True)
-                if len(clean) > 30:
-                    return clean
-        except Exception:
-            pass
+    json_ld = extract_json_ld_job(soup)
+    if json_ld.get('description') and len(json_ld['description']) > 30:
+        return json_ld['description']
 
     # 2. Modern section headers: Job Description & Job Requirements
     content_parts = []
@@ -56,30 +50,12 @@ def fetch_wuzzuf_full_description(job_url, driver=None):
     if not job_url:
         return ""
 
-    try:
-        from curl_cffi import requests as c_requests
-        resp = c_requests.get(
-            job_url,
-            impersonate="chrome120",
-            timeout=6
-        )
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.content, 'html.parser')
-            desc = _parse_wuzzuf_soup(soup)
-            if desc:
-                return desc
-    except Exception as e:
-        logging.debug(f"Wuzzuf HTTP fetch failed for {job_url}: {e}")
-
-    if driver is not None:
-        try:
-            driver.uc_open_with_reconnect(job_url, 3)
-            soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
-            desc = _parse_wuzzuf_soup(soup)
-            if desc:
-                return desc
-        except Exception as e:
-            logging.debug(f"Wuzzuf driver fetch failed for {job_url}: {e}")
+    html = fetch_page_content(job_url, driver=driver, timeout=6)
+    if html:
+        soup = BeautifulSoup(html, 'html.parser')
+        desc = _parse_wuzzuf_soup(soup)
+        if desc:
+            return desc
 
     return ""
 
@@ -219,8 +195,7 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
             return normalize_job_dict(job)
 
         if candidates:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 5)) as executor:
-                jobs = list(executor.map(_fetch_desc, candidates))
+            jobs = fetch_details_concurrently(candidates, _fetch_desc, max_workers=5)
             
     except Exception as e:
         logging.error(f"⚠️ Wuzzuf Scraper Error: {e}")

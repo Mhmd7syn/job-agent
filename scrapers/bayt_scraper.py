@@ -11,22 +11,13 @@ from bs4 import BeautifulSoup
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 from core.job_utils import normalize_job_dict
+from scrapers.common import fetch_page_content, extract_json_ld_job, fetch_details_concurrently
 
 def _parse_bayt_soup(soup):
-    import json
-    company = ""
-    desc = ""
     # 1. Schema.org JSON-LD
-    for s in soup.find_all('script', type='application/ld+json'):
-        try:
-            d = json.loads(s.string or '{}')
-            if d.get('@type') == 'JobPosting':
-                if d.get('description'):
-                    desc = BeautifulSoup(d['description'], 'html.parser').get_text(separator='\n', strip=True)
-                if d.get('hiringOrganization', {}).get('name'):
-                    company = d['hiringOrganization']['name'].strip()
-        except Exception:
-            pass
+    json_ld = extract_json_ld_job(soup)
+    desc = json_ld.get('description', '')
+    company = json_ld.get('company', '')
 
     if desc and len(desc) > 30:
         return {'description': desc, 'company': company}
@@ -49,32 +40,14 @@ def fetch_bayt_job_details(job_url, driver=None):
         return {'description': '', 'company': ''}
     if job_url in _BAYT_DETAILS_CACHE:
         return _BAYT_DETAILS_CACHE[job_url]
-    try:
-        from curl_cffi import requests as c_requests
-        resp = c_requests.get(
-            job_url,
-            impersonate="chrome120",
-            timeout=6
-        )
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.content, 'html.parser')
-            res = _parse_bayt_soup(soup)
-            if res.get('description'):
-                _BAYT_DETAILS_CACHE[job_url] = res
-                return res
-    except Exception as e:
-        logging.debug(f"Bayt HTTP fetch failed for {job_url}: {e}")
 
-    if driver is not None:
-        try:
-            driver.uc_open_with_reconnect(job_url, 3)
-            soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
-            res = _parse_bayt_soup(soup)
-            if res.get('description'):
-                _BAYT_DETAILS_CACHE[job_url] = res
-                return res
-        except Exception as e:
-            logging.debug(f"Bayt driver fetch failed for {job_url}: {e}")
+    html = fetch_page_content(job_url, driver=driver, timeout=6)
+    if html:
+        soup = BeautifulSoup(html, 'html.parser')
+        res = _parse_bayt_soup(soup)
+        if res.get('description'):
+            _BAYT_DETAILS_CACHE[job_url] = res
+            return res
 
     return {'description': '', 'company': ''}
 
@@ -85,30 +58,7 @@ def fetch_bayt_full_description(job_url, driver=None):
 
 def _fetch_bayt_page(url, driver=None):
     """Fetches a Bayt page via fast HTTP first, with driver fallback for Cloudflare."""
-    try:
-        from curl_cffi import requests as c_requests
-        resp = c_requests.get(url, impersonate="chrome120", timeout=8)
-        if resp.status_code == 200 and len(resp.text) > 10000 and "has-pointer-d" in resp.text:
-            return resp.text
-    except Exception as e:
-        logging.debug(f"Bayt fast HTTP fetch failed: {e}")
-
-    if driver is not None:
-        try:
-            driver.uc_open_with_reconnect(url, 4)
-            try:
-                driver.uc_gui_click_captcha()
-            except Exception:
-                pass
-            try:
-                driver.wait_for_element('li.has-pointer-d', timeout=8)
-            except Exception:
-                pass
-            return driver.get_page_source()
-        except Exception as e:
-            logging.error(f"⚠️ Bayt driver error: {e}")
-
-    return None
+    return fetch_page_content(url, driver=driver, timeout=8, min_length=10000, check_str="has-pointer-d")
 
 def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver=None):
     jobs = []
@@ -225,8 +175,7 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver
             return normalize_job_dict(job)
 
         if candidates:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 5)) as executor:
-                jobs = list(executor.map(_fetch_desc, candidates))
+            jobs = fetch_details_concurrently(candidates, _fetch_desc, max_workers=5)
             
     except Exception as e:
         logging.error(f"⚠️ Bayt parsing error: {e}")

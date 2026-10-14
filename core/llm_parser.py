@@ -51,99 +51,22 @@ def extract_json_ld(html_content: str) -> dict | None:
     Returns a dict on success, or None to signal Gemini fallback is needed.
     """
     try:
-        soup = BeautifulSoup(html_content, 'html.parser')
-        scripts = soup.find_all('script', type='application/ld+json')
-        for script in scripts:
-            if not script.string:
-                continue
-            try:
-                data = json.loads(script.string)
-            except json.JSONDecodeError:
-                continue
-
-            # Handle both single objects and @graph arrays
-            candidates = []
-            if isinstance(data, list):
-                candidates = data
-            elif isinstance(data, dict):
-                if data.get('@type') == 'JobPosting':
-                    candidates = [data]
-                elif '@graph' in data:
-                    candidates = data['@graph']
-
-            for item in candidates:
-                if not isinstance(item, dict):
-                    continue
-                if item.get('@type') != 'JobPosting':
-                    continue
-
-                # Map Schema.org fields → internal schema
-                title = item.get('title', '') or item.get('name', '')
-                
-                # Company: hiringOrganization.name or plain string
-                org = item.get('hiringOrganization', {})
-                if isinstance(org, dict):
-                    company = org.get('name', 'Unknown')
-                elif isinstance(org, str):
-                    company = org
-                else:
-                    company = 'Unknown'
-
-                # Location: jobLocation.address or plain string
-                loc_raw = item.get('jobLocation', {})
-                if isinstance(loc_raw, list):
-                    loc_raw = loc_raw[0] if loc_raw else {}
-                if isinstance(loc_raw, dict):
-                    addr = loc_raw.get('address', {})
-                    if isinstance(addr, dict):
-                        location = ', '.join(filter(None, [
-                            addr.get('addressLocality', ''),
-                            addr.get('addressRegion', ''),
-                            addr.get('addressCountry', '')
-                        ])) or 'Unknown'
-                    elif isinstance(addr, str):
-                        location = addr
-                    else:
-                        location = 'Unknown'
-                elif isinstance(loc_raw, str):
-                    location = loc_raw
-                else:
-                    location = 'Unknown'
-
-                # Employment type normalisation
-                emp_type_raw = item.get('employmentType', 'Not specified')
-                if isinstance(emp_type_raw, list):
-                    emp_type_raw = emp_type_raw[0] if emp_type_raw else 'Not specified'
-                emp_map = {
-                    'FULL_TIME': 'Full-time', 'PART_TIME': 'Part-time',
-                    'CONTRACTOR': 'Contract', 'TEMPORARY': 'Temporary',
-                    'INTERN': 'Internship', 'VOLUNTEER': 'Volunteer',
-                    'PER_DIEM': 'Per Diem', 'OTHER': 'Not specified',
-                }
-                job_type = emp_map.get(str(emp_type_raw).upper(), str(emp_type_raw).title())
-
-                # Date posted – prefer datePosted, fall back to validThrough
-                date_posted = item.get('datePosted', '') or item.get('validThrough', '')
-                if date_posted and 'T' in date_posted:
-                    date_posted = date_posted.split('T')[0]
-
-                # Description: strip HTML tags from Schema.org description
-                desc_raw = item.get('description', '')
-                if desc_raw:
-                    desc_raw = BeautifulSoup(desc_raw, 'html.parser').get_text(separator=' ', strip=True)
-
-                if not title:
-                    continue  # Skip malformed entries
-
-                logging.debug(f"    ⚡ JSON-LD hit: '{title}' @ '{company}' (zero tokens)")
-                return {
-                    'title': title,
-                    'company': company,
-                    'location': location,
-                    'job_type': job_type,
-                    'description': desc_raw,
-                    'date_posted': date_posted,
-                }
+        from scrapers.common import extract_json_ld_job
+        res = extract_json_ld_job(html_content)
+        title = res.get('title')
+        if title:
+            date_posted = res.get('date_posted', '')
+            if date_posted and 'T' in date_posted:
+                date_posted = date_posted.split('T')[0]
+            logging.debug(f"    ⚡ JSON-LD hit: '{title}' @ '{res.get('company', 'Unknown')}' (zero tokens)")
+            return {
+                'title': title,
+                'company': res.get('company') or 'Unknown',
+                'location': res.get('location') or 'Unknown',
+                'job_type': res.get('job_type') or 'Not specified',
+                'description': res.get('description') or '',
+                'date_posted': date_posted,
+            }
     except Exception as e:
         logging.debug(f"JSON-LD extraction error (non-fatal): {e}")
     return None

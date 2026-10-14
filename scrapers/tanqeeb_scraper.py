@@ -14,6 +14,7 @@ import concurrent.futures
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 from core.job_utils import normalize_job_dict
+from scrapers.common import extract_json_ld_job, fetch_details_concurrently
 
 _IMPERSONATE_PROFILES = ["chrome120", "chrome110"]
 
@@ -53,24 +54,13 @@ def fetch_with_retries(url, retries=3, timeout=15):
     return None
 
 def _parse_tanqeeb_soup(soup):
-    import json
-    company = ""
-    desc = ""
-    apply_url = ""
-
     # 1. Schema.org JSON-LD
-    for s in soup.find_all('script', type='application/ld+json'):
-        try:
-            d = json.loads(s.string or '{}')
-            if d.get('@type') == 'JobPosting':
-                if d.get('description'):
-                    desc = BeautifulSoup(d['description'], 'html.parser').get_text(separator='\n', strip=True)
-                if d.get('hiringOrganization', {}).get('name'):
-                    company = d['hiringOrganization']['name'].strip()
-                if d.get('url') and 'tanqeeb.com' not in d.get('url'):
-                    apply_url = d['url'].strip()
-        except Exception:
-            pass
+    json_ld = extract_json_ld_job(soup)
+    company = json_ld.get('company', '')
+    desc = json_ld.get('description', '')
+    apply_url = json_ld.get('apply_url', '')
+    if 'tanqeeb.com' in apply_url:
+        apply_url = ''
 
     if desc and len(desc) > 30:
         return {'description': desc, 'company': company, 'apply_url': apply_url, 'site_name': ''}
@@ -339,9 +329,8 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
         return normalize_job_dict(job)
 
     if candidates:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates), 5)) as executor:
-            raw_jobs = list(executor.map(_fetch_desc, candidates))
-            jobs = [j for j in raw_jobs if j is not None]
+        raw_jobs = fetch_details_concurrently(candidates, _fetch_desc, max_workers=5)
+        jobs = [j for j in raw_jobs if j is not None]
         
     return pd.DataFrame(jobs)
 

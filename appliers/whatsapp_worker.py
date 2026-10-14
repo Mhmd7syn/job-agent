@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-from core.database import DB_PATH
+from core.database import DB_PATH, record_job_applied
 from core.applicant_profile import load_profile, get_resume_for_role
 from appliers.whatsapp_copilot import generate_whatsapp_pitch, normalize_phone_number
 from core.quota_manager import (
@@ -179,18 +179,8 @@ def run_whatsapp_autopilot_batch(
                 "cv_attached": cv_name
             }
 
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute("""
-                UPDATE jobs
-                SET is_applied = 1,
-                    apply_status = 'applied',
-                    applied_at = ?,
-                    apply_payload = ?
-                WHERE job_id = ?
-            """, (now_str, json.dumps(payload, ensure_ascii=False), job_id))
-            conn.commit()
-            conn.close()
+            # Update DB record
+            record_job_applied(job_id=job_id, channel="sent_whatsapp", extra_payload=payload["sent_whatsapp"])
 
             success_count += 1
             state["whatsapp_sent_today"] = state.get("whatsapp_sent_today", 0) + 1
