@@ -38,30 +38,36 @@ See how to browse curated jobs, switch platforms, and customize your AI matching
 - **Python 3.9+** installed and added to your system `PATH`.
 - **Windows OS** (required for the desktop app, scheduled tasks, and automation scripts).
 
-## Setup — Graphical Installation
+## Installation & Setup
 
-### One-File Installation
-No need to clone or download the full repository manually.
+### Quick Start (Windows)
 
-1. Download **`setup_ui.pyw`**
-2. Double-click it — a sleek, dark-mode **GUI Installation Wizard** will launch.
-3. The wizard handles everything:
-   - **📁 Installation Directory**: Browse and choose where to install. The wizard downloads and sets up all files directly into your chosen folder.
-   - **Python Environment**: Creates an isolated virtual environment (`venv`) and installs all dependencies automatically.
-   - **Lightweight Auto-Updates**: Sets up shallow Git updates (`--depth=1`) so you always stay current effortlessly.
-   - **📄 AI CV Import**: Click **"Auto-Tune from My CV / Resume (AI)"** to upload your resume (PDF, DOCX, or TXT). Gemini AI will analyze it and auto-fill your target roles, experience level, keywords, and profile brief — in seconds.
-   - **Personalize Your Search**: Customize locations, cities, seniority levels, and target roles to match your preferences — without touching any code or repository defaults.
-   - **Secure Credentials**: Stores your LinkedIn and Gemini API key locally using Fernet encryption.
-   - **Automation**: Registers a Windows Scheduled Task for background scraping and creates a Desktop shortcut for easy access.
+1. Clone the repository:
+   ```cmd
+   git clone <repository-url>
+   cd job-agent
+   ```
+2. Double-click **`Job_Agent.bat`** (or run it from terminal). On first launch, it will:
+   - Create an isolated virtual environment (`venv`).
+   - Upgrade `pip` and install all dependencies from `requirements.txt`.
+   - Launch the Job Agent desktop application.
+
+### Manual Setup
+
+If you prefer setting up manually:
+```cmd
+python -m venv venv
+call venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python desktop_app.pyw
+```
 
 ### Live Settings & Dashboard Customization
 Job Agent has **no hardcoded parameters** — everything is configurable from the dashboard. All locations, job sites, seniority levels, scraping intervals, and retention periods are stored in `core/config.json`.
 
 - Open the dashboard, click **Settings** (⚙) to view and edit every parameter live.
 - Click **"Import Skills & Preferences from CV"** at any time to re-analyze an updated resume and retune your AI matching profile on the fly.
-
-### Uninstallation
-To cleanly remove all scheduled tasks, shortcuts, encryption keys, virtual environments, and scraped data, double-click **`uninstall_ui.pyw`** to launch the GUI Uninstaller.
 
 ## How to Use
 

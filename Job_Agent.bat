@@ -56,6 +56,9 @@ if exist "%LOCALAPPDATA%\Python\pythoncore-3.14-64\job-agent-w.exe" (
 exit /b 0
 
 :RunSetup
-echo Virtual environment not found. Starting setup wizard...
-call Setup_Job_Agent.bat
-exit /b 0
+echo Setting up Python virtual environment...
+python -m venv venv
+call venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+goto LaunchApp

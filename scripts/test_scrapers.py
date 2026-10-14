@@ -4,7 +4,7 @@ import logging
 
 # Ensure the root directory is in sys.path
 __test__ = False
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scrapers.wuzzuf_scraper import scrape_wuzzuf
 from scrapers.tanqeeb_scraper import scrape_tanqeeb
