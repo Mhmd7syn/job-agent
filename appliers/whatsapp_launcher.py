@@ -1,9 +1,7 @@
 import os
 import sys
 import time
-import json
 import logging
-import urllib.parse
 import subprocess
 import threading
 import tempfile
@@ -12,8 +10,8 @@ from typing import Optional, Dict, Any
 logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-from appliers.gmail_launcher import copy_file_to_clipboard, reveal_in_explorer
-from appliers.whatsapp_copilot import normalize_phone_number, build_whatsapp_desktop_url, build_wa_me_url, build_whatsapp_web_url
+from appliers.gmail_launcher import copy_file_to_clipboard
+from appliers.whatsapp_copilot import normalize_phone_number, build_whatsapp_desktop_url, build_wa_me_url
 
 
 def _inject_attachment_async(delay_seconds: float = 2.5):

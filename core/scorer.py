@@ -31,9 +31,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
         config = load_latest_config()
 
     title = str(row.get('title', '')).lower()
-    raw_title = str(row.get('title', ''))
     desc = str(row.get('description', '')).lower()
-    raw_desc = str(row.get('description', ''))
     company = str(row.get('company', '')).lower()
     job_type_val = str(row.get('job_type', '')).lower()
     career_level_val = str(row.get('career_level', '')).lower() if 'career_level' in row else ''

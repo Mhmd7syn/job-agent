@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.database import (
     get_jobs_by_status, update_job_status, get_job_by_id, toggle_job_applied,
-    delete_job_by_id, save_or_update_job, get_jobs_by_apply_type
+    delete_job_by_id, save_or_update_job
 )
 from core.config_tuner import analyze_job_and_tune_config
 from core.cv_parser import parse_cv_with_ai
@@ -27,8 +27,8 @@ from core.scorer import rescore_all_jobs
 from scrapers.link_scraper import scrape_job_from_url
 import core.config as app_config
 from core.telegram_bot import (
-    sync_queued_telegram_jobs, stop_bot_thread, is_bot_running, get_latest_chat_id_from_telegram,
-    get_and_clear_new_telegram_jobs, get_bot_token, get_bot_info, resolve_chat_id_for_username,
+    sync_queued_telegram_jobs, stop_bot_thread, get_latest_chat_id_from_telegram,
+    get_bot_token, resolve_chat_id_for_username,
     get_bot_url, get_bot_username
 )
 
@@ -99,9 +99,6 @@ def add_job_by_url_endpoint(req: AddJobByUrlRequest):
             raw_text=raw_text,
             is_scholarship=req.is_scholarship
         )
-        is_scholarship = req.is_scholarship or job_dict.get('job_type') == 'Scholarship'
-        score = job_dict.get('relevance_score', 0)
-
         saved_job, is_new = save_or_update_job(job_dict, force_pending=True)
         return {
             "status": "success",

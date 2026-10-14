@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import ctypes
 import uuid
 from core.llm_parser import client
 from pydantic import BaseModel, Field
@@ -36,12 +35,6 @@ def format_config_for_prompt(config_data):
     - SITES: {json.dumps(config_data.get('SITES', []))}
     - USER_BRIEF: {json.dumps(config_data.get('USER_BRIEF', ''))}
     """
-
-def ask_user_permission(title, message):
-    """Shows a YES/NO message box. Returns True if YES, False if NO."""
-    style = 4 | 32 | 262144
-    result = ctypes.windll.user32.MessageBoxW(0, message, title, style)
-    return result == 6  # 6 is IDYES
 
 def save_proposals(new_proposals):
     """
@@ -80,27 +73,6 @@ def save_proposals(new_proposals):
         json.dump(existing_proposals, f, indent=2, ensure_ascii=False)
 
     return added_count
-
-def save_pending_alert(title, message, updates):
-    """Legacy helper maintained for backward compatibility. Converts updates to proposals."""
-    proposals = []
-    for category, items in updates.items():
-        if not items:
-            continue
-        field_name = category.upper()
-        if category in ['resume_keywords', 'exclude_keywords', 'favorite_companies', 'excluded_companies']:
-            for item in items:
-                proposals.append({
-                    "id": f"prop_{uuid.uuid4().hex[:8]}",
-                    "source": title,
-                    "field": field_name,
-                    "type": "add",
-                    "value": str(item).lower().strip(),
-                    "display_name": f"{field_name.replace('_', ' ').title()}: {item}",
-                    "reason": message.split('\n')[0]
-                })
-    if proposals:
-        save_proposals(proposals)
 
 class ConfigUpdateSchema(BaseModel):
     resume_keywords_add: list[str] = Field(default=[], description="New high-priority core skills missing in config that should be added. Extract atomic, single standalone skills only (e.g., 'python', 'sql', 'instructor'). DO NOT extract compounded/combined skills or combinations like 'python mentor', 'python instructor', or 'sql developer' when base skills already exist or can be atomic.")

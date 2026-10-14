@@ -5,6 +5,7 @@ import logging
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 import datetime
+from bs4 import BeautifulSoup
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root
 env_path = os.path.join(BASE_DIR, '.env')
@@ -50,7 +51,6 @@ def extract_json_ld(html_content: str) -> dict | None:
     Returns a dict on success, or None to signal Gemini fallback is needed.
     """
     try:
-        from bs4 import BeautifulSoup
         soup = BeautifulSoup(html_content, 'html.parser')
         scripts = soup.find_all('script', type='application/ld+json')
         for script in scripts:

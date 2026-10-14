@@ -1,24 +1,11 @@
-from core.database import save_job, get_jobs_by_status, get_liked_jobs, cleanup_old_jobs, save_dropped_jobs
-from core.scorer import calculate_score, is_valid_job, load_latest_config
-from core.job_utils import (
-    process_scraped_batch,
-    make_job_id as _make_job_id,
-    normalize_is_remote as fix_is_remote,
-    normalize_job_type as fix_job_type,
-    normalize_company as fix_company,
-)
+from core.database import cleanup_old_jobs
+from core.job_utils import process_scraped_batch
 from scrapers.glassdoor_scraper import scrape_glassdoor
 from scrapers.bayt_scraper import scrape_bayt
 from scrapers.tanqeeb_scraper import scrape_tanqeeb
 from scrapers.wuzzuf_scraper import scrape_wuzzuf
 from scrapers.selenium_scraper import SeleniumSession
-from core.config import (
-    SITES, RESULTS_PER_TERM, HOURS_OLD, SEARCH_TERMS, LOCATION,
-    EXCLUDE_KEYWORDS, EXCLUDED_COMPANIES, FAVORITE_COMPANIES,
-    RESUME_KEYWORDS, GLOBAL_REMOTE_KEYWORDS,
-    RESTRICTED_REMOTE_KEYWORDS, TARGET_LOCATIONS, TARGET_LEVELS,
-    MAX_JOBS_TO_SEND, ROLES
-)
+from core.config import SITES, RESULTS_PER_TERM, HOURS_OLD, SEARCH_TERMS, LOCATION
 import pandas as pd
 import sys
 import time
@@ -285,8 +272,6 @@ if sys.stdout is not None and getattr(sys.stdout, 'encoding', None) and sys.stdo
 def main(run_start_time=None, reload_cfg=False):
 
     import concurrent.futures
-    import re
-    from datetime import date
     from tqdm import tqdm
     if reload_cfg:
         import core.config as cfg
@@ -476,11 +461,6 @@ def main(run_start_time=None, reload_cfg=False):
     if sb_sites:
         logging.info("🚀 [Phase 3/3] Starting Browser Scrapers (Wuzzuf, Glassdoor, Indeed)...")
         with tqdm(total=total_searches, desc="[Browser Scrapers]", unit="search") as pbar:
-            try:
-                from scrapers.selenium_scraper import SeleniumSession
-            except ImportError:
-                SeleniumSession = None
-
             sb_ctx = SeleniumSession() if SeleniumSession else contextlib.nullcontext(None)
             with sb_ctx as sb_driver:
                 if is_sb_driver_alive(sb_driver):

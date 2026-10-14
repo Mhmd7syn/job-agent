@@ -147,8 +147,6 @@ def generate_email_draft(
     auto_apply = profile.get("auto_apply_settings", {})
 
     candidate_name = personal_info.get("full_name", "").strip()
-    candidate_email = personal_info.get("email", "").strip()
-    candidate_phone = personal_info.get("phone", "").strip()
     personal_signature = auto_apply.get("email_signature_personal", "").strip()
 
     # Locate role-specific resume PDF
@@ -205,7 +203,6 @@ def generate_email_draft(
 
     for model_name in models_to_try:
         try:
-            from google.genai import types
             response = client.models.generate_content(
                 model=model_name,
                 contents=user_prompt,

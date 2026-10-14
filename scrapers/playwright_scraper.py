@@ -1,5 +1,4 @@
 import os
-import time
 import json
 import re
 import urllib.parse
@@ -10,7 +9,7 @@ from playwright_stealth import Stealth
 import sys
 import logging
 import pandas as pd
-from core.llm_parser import extract_job_page_with_ai, extract_feed_posts_with_ai, extract_json_ld
+from core.llm_parser import extract_feed_posts_with_ai, extract_json_ld
 from core.database import is_job_seen
 
 LOGIN_FAILED = False
@@ -26,9 +25,6 @@ load_dotenv(dotenv_path=env_path)
 
 def launch_persistent_browser(playwright_instance, user_data_dir, headless=True, **kwargs):
     """Launch browser persistently using local Google Chrome or Microsoft Edge to save disk space and bypass anti-bot checks."""
-    channels = ["chrome", "msedge", None]
-    last_exception = None
-    
     default_args = [
         "--disable-blink-features=AutomationControlled",
         "--disable-infobars",

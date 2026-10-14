@@ -13,7 +13,7 @@ import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
-from core.job_utils import normalize_job_dict, normalize_site, make_job_id
+from core.job_utils import normalize_job_dict
 
 _IMPERSONATE_PROFILES = ["chrome120", "chrome110"]
 

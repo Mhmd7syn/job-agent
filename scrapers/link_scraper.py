@@ -2,7 +2,6 @@ import os
 import sys
 import re
 import json
-import time
 import logging
 import datetime
 import urllib.parse
@@ -14,7 +13,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from core.llm_parser import extract_json_ld, extract_job_page_with_ai, extract_feed_posts_with_ai
-from core.scorer import calculate_score, load_latest_config
+from core.scorer import load_latest_config
 
 # Setup logger
 logger = logging.getLogger("link_scraper")
@@ -54,8 +53,6 @@ def detect_scraper_type(url: str) -> str:
 from core.job_utils import (
     make_job_id as _make_job_id,
     normalize_job_type as _fix_job_type,
-    normalize_is_remote as _fix_is_remote,
-    extract_company_from_desc as _extract_company_from_desc,
     parse_job_date as _parse_relative_date,
     extract_location_and_setup,
     normalize_job_dict,
@@ -713,7 +710,7 @@ def scrape_job_from_url(url: str, scraper_type: str = "auto", raw_text: str = ""
 
     raw_job["job_url"] = raw_job.get("job_url") or url or ""
     raw_job["site"] = raw_job.get("site") or detect_scraper_type(url)
-    if is_scholarship or has_scholarship_tag:
+    if has_scholarship_tag:
         raw_job["is_scholarship"] = True
 
     job_dict = normalize_job_dict(raw_job)

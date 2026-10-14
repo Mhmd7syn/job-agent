@@ -1,11 +1,9 @@
 import os
-import sys
-import time
 import json
 import logging
 import threading
 import sqlite3
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -23,7 +21,6 @@ from appliers.email_worker import (
     notify_telegram_candidate
 )
 from appliers.whatsapp_worker import run_whatsapp_autopilot_batch
-from appliers.screening_resolver import ScreeningResolver
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +155,6 @@ def _process_autonomous_form_jobs(min_score: int = 70, dry_run: bool = False, st
         job_id = job.get("job_id")
         title = job.get("title", "")
         company = job.get("company", "")
-        apply_type = job.get("apply_type")
-
-        resolver = ScreeningResolver(job_title=title, job_location=job.get("location", ""), company=company)
         cv_path = get_resume_for_role(title)
 
         if dry_run:

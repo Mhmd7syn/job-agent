@@ -93,7 +93,6 @@ def backfill_job_classifications():
     return updated_count
 
 def save_job(job_dict):
-    import json
     from core.apply_classifier import classify_and_extract
 
     conn = sqlite3.connect(DB_PATH, timeout=15)
@@ -378,9 +377,6 @@ def toggle_job_applied(job_id, is_applied):
     conn.commit()
     conn.close()
 
-def get_liked_jobs():
-    return get_jobs_by_status(['liked'])
-
 def get_job_by_id(job_id):
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
@@ -455,14 +451,8 @@ def cleanup_old_jobs(days=90):
     return deleted_count
 
 
-def cleanup_old_jobs_by_months(months=3):
-    """Bulk deletes jobs older than the specified number of months (1, 3, 6)."""
-    days = months * 30
-    return cleanup_old_jobs(days=days)
-
 def update_job_apply_status(job_id: str, apply_status: str, channel: str = None, payload: dict = None, is_applied: int = None):
     """Updates auto-apply progress and metadata for a job."""
-    import json
     conn = sqlite3.connect(DB_PATH, timeout=15)
     cursor = conn.cursor()
     now = datetime.now().isoformat()

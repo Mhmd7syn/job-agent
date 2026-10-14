@@ -566,11 +566,6 @@ def process_message(bot_token: str, message: Dict[str, Any], allowed_chat_id: Op
                         })
                         continue
 
-                score = round(job_dict.get("relevance_score", 0), 1)
-                title = job_dict.get("title") or "Unknown Title"
-                company = job_dict.get("company") or "Unknown Company"
-                location = job_dict.get("location") or "Not Specified"
-
                 saved_job, is_new = save_or_update_job(job_dict, force_pending=force_pending)
 
                 title = saved_job.get("title") or "Unknown Title"

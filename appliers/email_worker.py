@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import json
 import random
@@ -9,7 +8,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 from dotenv import load_dotenv

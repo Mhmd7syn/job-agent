@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import json
 import logging
@@ -228,7 +227,6 @@ Instructions:
 6. Return ONLY the cover letter body text (do not include salutation or signature, as they are appended automatically).
 """
         try:
-            from google.genai import types
             response = gemini_client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
@@ -665,7 +663,6 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
                 "input[type='submit']",
                 "button:has-text('Submit Application')",
                 "button:has-text('Submit application')",
-                "button:has-text('Submit Application')",
                 "button:has-text('Send Application')",
                 "button:has-text('Submit')",
                 "button:has-text('Apply Now')"

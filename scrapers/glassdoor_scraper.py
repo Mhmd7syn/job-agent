@@ -6,7 +6,6 @@ import pandas as pd
 import datetime
 import logging
 import re
-import concurrent.futures
 from bs4 import BeautifulSoup
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

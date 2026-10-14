@@ -1,14 +1,11 @@
 import os
 import sys
-import requests
 import urllib.parse
 from bs4 import BeautifulSoup
 import pandas as pd
-import time
 import re
 import datetime
 import logging
-import random
 import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

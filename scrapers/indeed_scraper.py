@@ -34,7 +34,6 @@ def fetch_indeed_full_description(driver, job_url):
             driver.wait_for_element('div#jobDescriptionText, div.jobsearch-JobComponent', timeout=6)
         except Exception:
             pass
-        from bs4 import BeautifulSoup
         soup = BeautifulSoup(driver.get_page_source(), 'html.parser')
         desc_div = soup.find('div', id='jobDescriptionText') or soup.find('div', class_=lambda c: c and 'jobsearch-JobComponent' in c)
         if desc_div:
@@ -123,7 +122,6 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
         except Exception:
             pass
             
-        from bs4 import BeautifulSoup
         html_content = driver.get_page_source()
         soup = BeautifulSoup(html_content, 'html.parser')
         

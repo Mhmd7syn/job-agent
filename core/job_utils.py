@@ -1,7 +1,7 @@
 import re
 import hashlib
 from datetime import date, datetime, timedelta
-from typing import Any, Optional, Dict, List, Tuple
+from typing import Any, Optional, Tuple
 import pandas as pd
 
 GENERIC_COMPANY_NAMES = {

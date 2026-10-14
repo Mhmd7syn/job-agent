@@ -7,8 +7,6 @@ Provides:
 - Helpers to expand categories/keywords and determine exclusions
 """
 
-import re
-
 CAREER_LEVEL_CATEGORIES = [
     "Intern / Student",
     "Fresh Graduate / Entry-level",

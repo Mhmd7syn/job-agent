@@ -44,8 +44,6 @@ if not os.path.exists(config_json_path) and os.path.exists(default_json_path):
 _config_data = {}
 ROLES = []
 SEARCH_TERMS = []
-ARABIC_SEARCH_TERMS = []
-SITES_FOR_ARABIC = []
 RESUME_KEYWORDS = []
 EXCLUDE_KEYWORDS = []
 EXCLUDED_COMPANIES = []
@@ -66,7 +64,7 @@ MIN_MATCHED_SKILLS = 2
 
 def reload_config():
     """Reloads config.json and updates all module-level configuration variables in globals()."""
-    global ROLES, SEARCH_TERMS, ARABIC_SEARCH_TERMS, SITES_FOR_ARABIC
+    global ROLES, SEARCH_TERMS
     global RESUME_KEYWORDS, EXCLUDE_KEYWORDS, EXCLUDED_COMPANIES, FAVORITE_COMPANIES
     global LOCATION, TARGET_LOCATIONS, TARGET_LEVELS, LEVEL_EXCLUDE, SITES
     global RESULTS_PER_TERM, HOURS_OLD, MAX_JOBS_TO_SEND, USER_BRIEF
@@ -87,8 +85,6 @@ def reload_config():
 
     if not SEARCH_TERMS:
         SEARCH_TERMS = _config_data.get("SEARCH_TERMS", [])
-    ARABIC_SEARCH_TERMS = []
-    SITES_FOR_ARABIC = []
 
     RESUME_KEYWORDS = _config_data.get("RESUME_KEYWORDS", [])
     EXCLUDE_KEYWORDS = _config_data.get("EXCLUDE_KEYWORDS", [])
@@ -131,16 +127,6 @@ I am looking for suitable roles matching my skills and experience.
 
     # Scraper Specific Configurations
     MIN_MATCHED_SKILLS = _config_data.get("MIN_MATCHED_SKILLS", 2)
-
-    import sys
-    ja = sys.modules.get("job_agent")
-    if ja is not None:
-        ja.ROLES = ROLES
-        ja.SEARCH_TERMS = SEARCH_TERMS
-        ja.SITES = SITES
-        ja.LOCATION = LOCATION
-        ja.RESULTS_PER_TERM = RESULTS_PER_TERM
-        ja.HOURS_OLD = HOURS_OLD
 
     return _config_data
 

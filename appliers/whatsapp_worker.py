@@ -1,12 +1,11 @@
 import os
-import sys
 import time
 import json
 import random
 import logging
 import sqlite3
 import urllib.parse
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 from dotenv import load_dotenv
