@@ -11,7 +11,7 @@ if BASE_DIR not in sys.path:
 
 from web.app import app
 from core.database import DB_PATH
-from core.applicant_profile import get_resume_for_role
+from core.applicant_profile import get_resume_for_role, load_profile
 from appliers.screening_resolver import ScreeningResolver
 from appliers.easy_apply_copilot import prepare_easy_apply, get_session, EasyApplySession, ACTIVE_SESSIONS
 
