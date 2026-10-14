@@ -263,11 +263,12 @@ Instructions:
 
 # Active ATS Session Tracking
 class AtsSession:
-    def __init__(self, job_id: str, portal_url: str, title: str, company: str, platform_meta: Dict[str, Any], cv_path: Optional[str]):
+    def __init__(self, job_id: str, portal_url: str, title: str, company: str, platform_meta: Dict[str, Any], cv_path: Optional[str], location: str = ""):
         self.job_id = job_id
         self.portal_url = portal_url
         self.title = title
         self.company = company
+        self.location = location
         self.platform = platform_meta.get("platform_key", "universal")
         self.platform_name = platform_meta.get("name", "Company ATS")
         self.cv_path = cv_path
@@ -416,6 +417,7 @@ def launch_ats_session(job_id: str, headed: bool = True) -> Dict[str, Any]:
     company = job.get("company", "")
     job_url = job.get("job_url", "")
     desc = job.get("description", "")
+    location = job.get("location", "")
 
     payload = job.get("apply_payload", {})
     if isinstance(payload, str):
@@ -434,7 +436,8 @@ def launch_ats_session(job_id: str, headed: bool = True) -> Dict[str, Any]:
         title=job_title,
         company=company,
         platform_meta=platform_meta,
-        cv_path=cv_path
+        cv_path=cv_path,
+        location=location
     )
 
     with ATS_SESSIONS_LOCK:
@@ -480,7 +483,7 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
 
     resolver = ScreeningResolver(
         job_title=session.title,
-        job_location=session.company,
+        job_location=session.location,
         company=session.company
     )
 

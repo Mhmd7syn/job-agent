@@ -50,16 +50,20 @@ class WhatsAppPitchSchema(BaseModel):
     )
 
 
-def normalize_phone_number(raw_phone: str) -> str:
+def normalize_phone_number(raw_phone: str, country: str = "") -> str:
     """
     Normalizes Egyptian, Gulf, and international numbers into clean E.164 digits without leading +.
     e.g. '01097748566' -> '201097748566'
          '+20 10 9774 8566' -> '201097748566'
-         '0501234567' -> '966501234567'
+         '0501234567' -> '966501234567' (or '971501234567' if country indicates UAE)
     """
     if not raw_phone:
         return ""
     digits = re.sub(r'\D', '', str(raw_phone))
+
+    # Strip international dialling prefix 00
+    if digits.startswith("00") and len(digits) >= 12:
+        digits = digits[2:]
 
     # Egyptian local format (11 digits starting with 01)
     if len(digits) == 11 and digits.startswith("01"):
@@ -69,21 +73,17 @@ def normalize_phone_number(raw_phone: str) -> str:
     if len(digits) == 12 and digits.startswith("201"):
         return digits
 
-    # Egyptian with 0020 prefix
-    if len(digits) == 14 and digits.startswith("00201"):
-        return digits[2:]
+    # Already has Gulf country code (Saudi: 9665..., UAE: 9715...)
+    if len(digits) == 12:
+        if digits.startswith("9665") or digits.startswith("9715"):
+            return digits
 
-    # Saudi format (starting with 05 -> 9665)
+    # Gulf local format (10 digits starting with 05)
     if len(digits) == 10 and digits.startswith("05"):
+        c_lower = country.strip().lower()
+        if any(c in c_lower for c in ["uae", "emirates", "dubai", "abu dhabi", "sharjah"]):
+            return "971" + digits[1:]
         return "966" + digits[1:]
-    if len(digits) == 12 and digits.startswith("9665"):
-        return digits
-
-    # UAE format (starting with 05 -> 9715)
-    if len(digits) == 10 and digits.startswith("05"):
-        return "971" + digits[1:]
-    if len(digits) == 12 and digits.startswith("9715"):
-        return digits
 
     # General international number (10 to 15 digits)
     if 10 <= len(digits) <= 15:

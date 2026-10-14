@@ -167,9 +167,9 @@ def run_whatsapp_autopilot_batch(
                 headed=headed
             )
         except Exception as err:
-            logger.warning(f"Playwright WhatsApp error: {err}. Falling back to simulated dispatch for testing...")
-            send_success = True
-            dispatch_method = "simulated_dispatch"
+            logger.error(f"Playwright WhatsApp error: {err}")
+            send_success = False
+            dispatch_method = "failed"
 
         if send_success:
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

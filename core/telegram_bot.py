@@ -79,7 +79,8 @@ def send_message(bot_token: str, chat_id: int | str, text: str, parse_mode: Opti
             # Fallback without parse_mode if formatting error occurred
             if parse_mode:
                 payload.pop("parse_mode", None)
-                requests.post(url, json=payload, timeout=10)
+                fallback_resp = requests.post(url, json=payload, timeout=10)
+                return bool(fallback_resp.json().get("ok"))
         return bool(data.get("ok"))
     except Exception as e:
         logger.error(f"Failed to send Telegram message: {e}")

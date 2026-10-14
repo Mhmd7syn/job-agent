@@ -85,12 +85,11 @@ def parse_cv_with_ai(file_path, api_key=None):
     if not raw_text:
         return {"error": "Extracted text is empty. Could not read CV contents."}
         
-    # Attempt AI parsing if key exists
     key = api_key or os.getenv("GEMINI_API_KEY")
-    if not key:
+    if key:
         try:
             from core.config import decrypt_value
-            key = decrypt_value(os.getenv("GEMINI_API_KEY"))
+            key = decrypt_value(key)
         except Exception:
             pass
 

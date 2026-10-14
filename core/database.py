@@ -55,12 +55,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-    # Automatically ensure existing jobs have accurate classifications
-    try:
-        backfill_job_classifications()
-    except Exception as e:
-        print(f"Warning during backfill_job_classifications: {e}")
-
 def backfill_job_classifications():
     """Classifies all existing jobs in the database to populate apply_type and apply_payload, and cleans company names."""
     import re

@@ -308,10 +308,9 @@ def run_email_autopilot_batch(
                 send_success = launch_res.get("status") == "success"
                 delivery_method = "outlook_com"
             except Exception as out_err:
-                logger.warning(f"Outlook automation error: {out_err}")
-                # Fallback delivery simulator for testing without live credentials
-                send_success = True
-                delivery_method = "simulated_dispatch"
+                logger.error(f"Outlook automation error: {out_err}")
+                send_success = False
+                delivery_method = "failed"
 
         if send_success:
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

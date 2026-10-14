@@ -20,12 +20,13 @@ logger = logging.getLogger(__name__)
 
 # Active session tracking
 class EasyApplySession:
-    def __init__(self, job_id: str, job_url: str, title: str, company: str, site: str, cv_path: Optional[str]):
+    def __init__(self, job_id: str, job_url: str, title: str, company: str, site: str, cv_path: Optional[str], location: str = ""):
         self.job_id = job_id
         self.job_url = job_url
         self.title = title
         self.company = company
         self.site = site
+        self.location = location
         self.cv_path = cv_path
         self.cv_filename = os.path.basename(cv_path) if cv_path else None
         self.status = "idle"  # idle, launching, navigating, modal_opened, prefilling, paused_for_review, completed, error
@@ -164,6 +165,7 @@ def launch_easy_apply_session(job_id: str, headed: bool = True) -> Dict[str, Any
     company = job.get("company", "")
     site = job.get("site", "")
     job_url = job.get("job_url", "")
+    location = job.get("location", "")
     payload = job.get("apply_payload", {})
     if isinstance(payload, str):
         try:
@@ -180,7 +182,8 @@ def launch_easy_apply_session(job_id: str, headed: bool = True) -> Dict[str, Any
         title=job_title,
         company=company,
         site=site,
-        cv_path=cv_path
+        cv_path=cv_path,
+        location=location
     )
 
     with SESSIONS_LOCK:
@@ -224,7 +227,7 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
 
     resolver = ScreeningResolver(
         job_title=session.title,
-        job_location=session.company,
+        job_location=session.location,
         company=session.company
     )
 
@@ -431,19 +434,21 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
                     session.log("⏸ CO-PILOT PAUSE: Form pre-filled & CV attached!")
                     session.log("👉 Please review in the open Chrome browser and click Submit.")
                     session.log("==================================================")
-                    return
+                    break
 
                 if not found_next:
                     # No next button found, might be a single-page modal or reached end
                     session.status = "paused_for_review"
                     session.current_step = "Form pre-filled. Please inspect and proceed."
                     session.log("Form ready. Please inspect the open browser window.")
-                    return
+                    break
 
-            # If reached max steps
+            # Keep browser session open while user reviews (up to 15 minutes)
             session.status = "paused_for_review"
-            session.current_step = "Paused for manual review."
-            session.log("Reached review threshold. Please check the open Chrome window.")
+            for _ in range(90):
+                if session.status in ("completed", "closed", "error"):
+                    break
+                time.sleep(10)
 
     except Exception as e:
         session.status = "error"

@@ -450,21 +450,25 @@ def run_scraper():
             except OSError:
                 pass
 
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script_path = os.path.join(root_dir, "job_agent.py")
     python_exe = sys.executable
     candidate_job_agent = os.path.join(os.path.dirname(sys.executable), "job-agent.exe")
     alt_job_agent = r"C:\Users\HP\AppData\Local\Python\pythoncore-3.14-64\job-agent.exe"
     if os.path.exists(candidate_job_agent):
-        python_exe = candidate_job_agent
+        cmd = [candidate_job_agent]
     elif os.path.exists(alt_job_agent):
-        python_exe = alt_job_agent
+        cmd = [alt_job_agent]
+    else:
+        cmd = [python_exe, script_path]
     
     creationflags = 0
     if os.name == 'nt':
         creationflags = 0x08000000
         
     scraper_process = subprocess.Popen(
-        [python_exe, script_path],
-        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        cmd,
+        cwd=root_dir,
         creationflags=creationflags
     )
     return {"status": "started"}
