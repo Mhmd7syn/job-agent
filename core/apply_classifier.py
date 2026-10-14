@@ -70,44 +70,7 @@ def extract_subject_hint(text: str) -> Optional[str]:
                 return hint
     return None
 
-def normalize_phone_number(raw_phone: str) -> Optional[str]:
-    """
-    Normalizes Egyptian, Gulf, and international numbers into clean E.164 digits without leading +.
-    e.g. '01012345678' -> '201012345678'
-         '+20 11 2345 6789' -> '201123456789'
-         '00966501234567' -> '966501234567'
-    """
-    digits = re.sub(r'\D', '', raw_phone)
-    
-    # Egyptian local format (11 digits starting with 01)
-    if len(digits) == 11 and digits.startswith("01"):
-        return "20" + digits[1:]
-        
-    # Egyptian with country code (12 digits starting with 201)
-    if len(digits) == 12 and digits.startswith("201"):
-        return digits
-        
-    # Egyptian with 0020 prefix
-    if len(digits) == 14 and digits.startswith("00201"):
-        return digits[2:]
-        
-    # Saudi format (starting with 05 -> 9665)
-    if len(digits) == 10 and digits.startswith("05"):
-        return "966" + digits[1:]
-    if len(digits) == 12 and digits.startswith("9665"):
-        return digits
-        
-    # UAE format (starting with 05 -> 9715)
-    if len(digits) == 10 and digits.startswith("05"):
-        return "971" + digits[1:]
-    if len(digits) == 12 and digits.startswith("9715"):
-        return digits
-
-    # General international number (10 to 14 digits)
-    if 10 <= len(digits) <= 14:
-        return digits
-        
-    return None
+from core.job_utils import normalize_phone_number
 
 WHATSAPP_LINK_REGEX = re.compile(
     r'https?://(?:api\.whatsapp\.com/send\?(?:[^&]+&)*phone=(\d+)|(?:wa\.me|wa\.link)/(\d+)|chat\.whatsapp\.com/[A-Za-z0-9]+)',
@@ -383,3 +346,6 @@ def classify_and_extract(job: Dict[str, Any]) -> Dict[str, Any]:
             "job_url": url
         }
     }
+
+
+classify_job_apply_method = classify_and_extract

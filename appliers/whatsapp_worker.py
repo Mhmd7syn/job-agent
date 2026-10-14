@@ -16,12 +16,12 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 from core.database import DB_PATH
 from core.applicant_profile import load_profile, get_resume_for_role
 from appliers.whatsapp_copilot import generate_whatsapp_pitch, normalize_phone_number
-from appliers.email_worker import (
+from core.quota_manager import (
     get_autopilot_state,
     save_autopilot_state,
     log_autopilot_activity,
-    notify_telegram_candidate
 )
+from core.telegram_bot import notify_telegram_candidate
 
 logger = logging.getLogger(__name__)
 

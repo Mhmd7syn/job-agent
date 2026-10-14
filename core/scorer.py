@@ -20,6 +20,46 @@ SENIORITY_EXCLUDE_KEYWORDS = {
     "intermediate"
 }
 
+COMPANY_INDICATORS = (
+    'about us', 'who we are', 'our company', 'the company', 'we are', 'we have been',
+    'founded', 'established', 'in the market', 'our team', 'our organization',
+    'serving clients', 'industry leader', 'history of', 'track record of'
+)
+
+REQUIREMENT_INDICATORS = (
+    'required', 'requirement', 'requirements', 'must', 'minimum', 'at least',
+    'looking for', 'seeking', 'candidate', 'applicant', 'qualification', 'qualifications',
+    'should have', 'plus', 'preferred'
+)
+
+def extract_experience_years(text: str) -> Optional[int]:
+    """
+    Extracts the minimum required years of experience from job text.
+    Handles single numbers, ranges, degree duration exclusions, and company history filters.
+    """
+    if not text:
+        return None
+
+    cleaned = re.sub(r'\b(?:bachelor|master|phd|degree)[^.\n\r;]{0,50}?\(\s*\d+\s*(?:years?|yrs?)\s*\)', '', text, flags=re.IGNORECASE)
+
+    extracted = []
+    sentences = re.split(r'[\n\.\;\•\*\!\?]+', cleaned)
+    for s in sentences:
+        s_clean = s.strip()
+        s_lower = s_clean.lower()
+        if not s_clean or not any(kw in s_lower for kw in ('experience', 'exp')):
+            continue
+
+        if any(ci in s_lower for ci in COMPANY_INDICATORS) and not any(ri in s_lower for ri in REQUIREMENT_INDICATORS):
+            continue
+
+        s_clean_text = re.sub(r'^\s*\d+[\.\)\-]\s*', '', s_clean)
+        nums = [int(n) for n in re.findall(r'\b\d+\b', s_clean_text) if int(n) < 40]
+        if nums:
+            extracted.append(min(nums))
+
+    return min(extracted) if extracted else None
+
 def load_latest_config():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     config_path = os.path.join(base_dir, 'core', 'config.json')
@@ -199,42 +239,8 @@ def calculate_score(row, config=None, apply_date_penalty=True):
             user_exp = role.get('years_experience', 0)
             break
 
-    extracted_exp = []
-    text_to_check = f"{desc}\n{career_level_val}\n{title}"
-    sentences = re.split(r'[\n\.\;\•\*\!\?]+', text_to_check)
-
-    company_indicators = [
-        'about us', 'who we are', 'our company', 'the company', 'we are', 'we have been',
-        'founded', 'established', 'in the market', 'our team', 'our organization',
-        'serving clients', 'industry leader', 'history of', 'track record of'
-    ]
-    req_indicators = [
-        'required', 'requirement', 'requirements', 'must', 'minimum', 'at least',
-        'looking for', 'seeking', 'candidate', 'applicant', 'qualification', 'qualifications',
-        'should have', 'plus', 'preferred'
-    ]
-
-    for sentence in sentences:
-        s_clean = sentence.strip()
-        s_lower = s_clean.lower()
-        if not s_clean:
-            continue
-        if any(kw in s_lower for kw in ['experience', 'exp']):
-            # Filter out company background descriptions that lack candidate requirement cues
-            if any(ci in s_lower for ci in company_indicators) and not any(ri in s_lower for ri in req_indicators):
-                continue
-
-            # Strip leading list numbers like "1.", "2)", "- "
-            s_clean_text = re.sub(r'^\s*\d+[\.\)\-]\s*', '', s_clean)
-
-            # Extract numbers from the sentence (< 40 to avoid calendar years like 2024 or phone numbers)
-            # min(nums) naturally handles both single numbers (e.g. [2] -> 2) and ranges (e.g. [0, 2] -> 0)
-            nums = [int(n) for n in re.findall(r'\b\d+\b', s_clean_text) if int(n) < 40]
-            if nums:
-                extracted_exp.append(min(nums))
-
-    if extracted_exp:
-        min_req_exp = min(extracted_exp)
+    min_req_exp = extract_experience_years(f"{desc}\n{career_level_val}\n{title}")
+    if min_req_exp is not None:
         diff = min_req_exp - user_exp
         if diff > 0:
             score -= diff * 5

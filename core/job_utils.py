@@ -389,3 +389,47 @@ def process_scraped_batch(df_list: list, config: dict = None) -> Optional[pd.Dat
 
     logging.info(f"💾 Incrementally saved {saved_count} job(s) to SQLite database.")
     return pd.DataFrame(valid_records)
+
+
+def normalize_phone_number(raw_phone: str, country: str = "") -> Optional[str]:
+    """
+    Canonical phone normalizer for Egyptian, Gulf, and international formats.
+    Transforms raw phone inputs into clean E.164 digits without leading +.
+    e.g. '01000000000' -> '201000000000'
+         '+20 10 0000 0000' -> '201000000000'
+         '00201100000000' -> '201100000000'
+         '0501234567' -> '966501234567' (or '971501234567' if country indicates UAE)
+    """
+    if not raw_phone:
+        return ""
+    digits = re.sub(r'\D', '', str(raw_phone))
+
+    # Strip international dialling prefix 00
+    if digits.startswith("00") and len(digits) >= 12:
+        digits = digits[2:]
+
+    # Egyptian local format (11 digits starting with 01)
+    if len(digits) == 11 and digits.startswith("01"):
+        return "20" + digits[1:]
+
+    # Egyptian with country code (12 digits starting with 201)
+    if len(digits) == 12 and digits.startswith("201"):
+        return digits
+
+    # Already has Gulf country code (Saudi: 9665..., UAE: 9715...)
+    if len(digits) == 12:
+        if digits.startswith("9665") or digits.startswith("9715"):
+            return digits
+
+    # Gulf local format (10 digits starting with 05)
+    if len(digits) == 10 and digits.startswith("05"):
+        c_lower = str(country or "").strip().lower()
+        if any(c in c_lower for c in ["uae", "emirates", "dubai", "abu dhabi", "sharjah"]):
+            return "971" + digits[1:]
+        return "966" + digits[1:]
+
+    # International / E.164 (10 to 15 digits)
+    if 10 <= len(digits) <= 15:
+        return digits
+
+    return digits if digits else None

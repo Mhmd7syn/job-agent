@@ -15,6 +15,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 from core.applicant_profile import load_profile, get_resume_for_role
 from core.cv_parser import extract_text_from_file
 from core.database import get_job_by_id
+from core.job_utils import normalize_phone_number
 
 logger = logging.getLogger(__name__)
 
@@ -47,48 +48,6 @@ class WhatsAppPitchSchema(BaseModel):
         default=[],
         description="Bullet points of real skills or projects highlighted from the CV."
     )
-
-
-def normalize_phone_number(raw_phone: str, country: str = "") -> str:
-    """
-    Normalizes Egyptian, Gulf, and international numbers into clean E.164 digits without leading +.
-    e.g. '01000000000' -> '201000000000'
-         '+20 10 0000 0000' -> '201000000000'
-         '0501234567' -> '966501234567' (or '971501234567' if country indicates UAE)
-    """
-    if not raw_phone:
-        return ""
-    digits = re.sub(r'\D', '', str(raw_phone))
-
-    # Strip international dialling prefix 00
-    if digits.startswith("00") and len(digits) >= 12:
-        digits = digits[2:]
-
-    # Egyptian local format (11 digits starting with 01)
-    if len(digits) == 11 and digits.startswith("01"):
-        return "20" + digits[1:]
-
-    # Egyptian with country code (12 digits starting with 201)
-    if len(digits) == 12 and digits.startswith("201"):
-        return digits
-
-    # Already has Gulf country code (Saudi: 9665..., UAE: 9715...)
-    if len(digits) == 12:
-        if digits.startswith("9665") or digits.startswith("9715"):
-            return digits
-
-    # Gulf local format (10 digits starting with 05)
-    if len(digits) == 10 and digits.startswith("05"):
-        c_lower = country.strip().lower()
-        if any(c in c_lower for c in ["uae", "emirates", "dubai", "abu dhabi", "sharjah"]):
-            return "971" + digits[1:]
-        return "966" + digits[1:]
-
-    # General international number (10 to 15 digits)
-    if 10 <= len(digits) <= 15:
-        return digits
-
-    return digits
 
 
 def build_whatsapp_desktop_url(phone: str, text: str) -> str:

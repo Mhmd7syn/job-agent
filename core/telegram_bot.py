@@ -99,6 +99,20 @@ def get_bot_token() -> str:
     return os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
 
+def notify_telegram_candidate(message: str) -> bool:
+    """Dispatches real-time notification to candidate on Telegram if configured."""
+    try:
+        from core import config as app_config
+        tg_state = get_state()
+        chat_id = tg_state.get("chat_id") or getattr(app_config, "TELEGRAM_CHAT_ID", None) or os.getenv("TELEGRAM_CHAT_ID")
+        bot_token = get_bot_token() or os.getenv("TELEGRAM_BOT_TOKEN")
+        if bot_token and chat_id:
+            return send_message(bot_token=bot_token, chat_id=chat_id, text=message)
+    except Exception as e:
+        logger.debug(f"Failed to notify Telegram candidate: {e}")
+    return False
+
+
 def get_bot_info(bot_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Fetches bot username and identity from Telegram getMe."""
     token = bot_token or get_bot_token()
@@ -383,12 +397,251 @@ def send_summary_reply(bot_token: str, chat_id: str, results: List[Dict[str, Any
 
 _last_seen_chat: Optional[Dict[str, Any]] = None
 
+def _extract_job_urls(text: str) -> List[str]:
+    """Extracts and normalizes all valid URLs from message text."""
+    found_urls = URL_REGEX.findall(text or "")
+    return [clean_url(u) for u in found_urls if len(clean_url(u)) > 8]
+
+
+def _scrape_and_persist_url(
+    job_url: str,
+    is_scholarship: bool,
+    is_liked: bool,
+    is_applied: bool,
+    force_pending: bool
+) -> Dict[str, Any]:
+    """Scrapes a single job URL, resolves duplicates, and persists to DB."""
+    logger.info(f"Telegram bot processing job URL: {job_url} (scholarship={is_scholarship}, liked={is_liked}, applied={is_applied})")
+
+    # 1. Fast pre-scrape duplicate check: URL already in DB?
+    existing = get_job_by_url(job_url)
+    if existing:
+        if is_liked or is_applied or is_scholarship:
+            upd = dict(existing)
+            if is_scholarship:
+                upd["job_type"] = "Scholarship"
+            if is_liked:
+                upd["status"] = "liked"
+            if is_applied:
+                upd["is_applied"] = 1
+            saved_job, _ = save_or_update_job(upd, force_pending=False)
+            logger.info(f"Telegram bot updated existing job: {saved_job.get('title')}")
+            return {
+                "status": "updated",
+                "title": saved_job.get("title") or "Existing Job",
+                "company": saved_job.get("company") or "Unknown Company",
+                "score": round(saved_job.get("relevance_score", 0), 1),
+                "url": job_url,
+                "is_scholarship": saved_job.get("job_type") == "Scholarship",
+                "is_liked": saved_job.get("status") == "liked",
+                "is_applied": saved_job.get("is_applied") == 1
+            }
+
+        logger.info(f"Telegram bot skipped duplicate job URL: {job_url}")
+        return {
+            "status": "duplicate",
+            "title": existing.get("title") or "Existing Job",
+            "company": existing.get("company") or "Unknown Company",
+            "score": round(existing.get("relevance_score", 0), 1),
+            "url": job_url,
+            "is_scholarship": is_scholarship or existing.get("job_type") == "Scholarship",
+            "is_liked": existing.get("status") == "liked",
+            "is_applied": existing.get("is_applied") == 1
+        }
+
+    try:
+        job_dict = scrape_job_from_url(url=job_url, scraper_type="auto", is_scholarship=is_scholarship)
+        if is_liked:
+            job_dict["status"] = "liked"
+        if is_applied:
+            job_dict["is_applied"] = 1
+
+        # 2. Check if job_id already in DB
+        if job_dict.get("job_id"):
+            existing_by_id = get_job_by_id(job_dict["job_id"])
+            if existing_by_id:
+                if is_liked or is_applied or is_scholarship:
+                    upd = dict(existing_by_id)
+                    if is_scholarship:
+                        upd["job_type"] = "Scholarship"
+                    if is_liked:
+                        upd["status"] = "liked"
+                    if is_applied:
+                        upd["is_applied"] = 1
+                    saved_job, _ = save_or_update_job(upd, force_pending=False)
+                    return {
+                        "status": "updated",
+                        "title": saved_job.get("title") or "Existing Job",
+                        "company": saved_job.get("company") or "Unknown Company",
+                        "score": round(saved_job.get("relevance_score", 0), 1),
+                        "url": job_url,
+                        "is_scholarship": saved_job.get("job_type") == "Scholarship",
+                        "is_liked": saved_job.get("status") == "liked",
+                        "is_applied": saved_job.get("is_applied") == 1
+                    }
+
+                logger.info(f"Telegram bot skipped duplicate job_id: {job_dict['job_id']}")
+                return {
+                    "status": "duplicate",
+                    "title": existing_by_id.get("title") or "Existing Job",
+                    "company": existing_by_id.get("company") or "Unknown Company",
+                    "score": round(existing_by_id.get("relevance_score", 0), 1),
+                    "url": job_url,
+                    "is_scholarship": is_scholarship or existing_by_id.get("job_type") == "Scholarship",
+                    "is_liked": existing_by_id.get("status") == "liked",
+                    "is_applied": existing_by_id.get("is_applied") == 1
+                }
+
+        saved_job, is_new = save_or_update_job(job_dict, force_pending=force_pending)
+        title = saved_job.get("title") or "Unknown Title"
+        company = saved_job.get("company") or "Unknown Company"
+        location = saved_job.get("location") or "Not Specified"
+        score = round(saved_job.get("relevance_score", 0), 1)
+
+        if is_new:
+            record_new_telegram_job(title)
+            return {
+                "status": "added",
+                "title": title,
+                "company": company,
+                "location": location,
+                "score": score,
+                "url": job_url,
+                "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
+                "is_liked": saved_job.get("status") == "liked",
+                "is_applied": saved_job.get("is_applied") == 1
+            }
+        return {
+            "status": "duplicate",
+            "title": title,
+            "company": company,
+            "score": score,
+            "url": job_url,
+            "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
+            "is_liked": saved_job.get("status") == "liked",
+            "is_applied": saved_job.get("is_applied") == 1
+        }
+    except Exception as e:
+        logger.error(f"Failed to scrape job from URL '{job_url}': {e}", exc_info=True)
+        return {
+            "status": "error",
+            "url": job_url,
+            "error": str(e)
+        }
+
+
+def _parse_and_persist_raw_text(
+    text: str,
+    is_scholarship: bool,
+    is_liked: bool,
+    is_applied: bool,
+    force_pending: bool
+) -> Dict[str, Any]:
+    """Parses raw job description text with LLM/regex, scores, and persists to DB."""
+    logger.info(f"Telegram bot processing raw job text (scholarship={is_scholarship}, liked={is_liked}, applied={is_applied})")
+    try:
+        clean_text = re.sub(r'[#/](?:scholarships?|fellowships?|liked?|applied)\b', '', text, flags=re.IGNORECASE).strip()
+        parse_text = clean_text if len(clean_text) >= 15 else text
+
+        job_dict = scrape_job_from_url(url="", raw_text=parse_text, scraper_type="generic", is_scholarship=is_scholarship)
+        if is_liked:
+            job_dict["status"] = "liked"
+        if is_applied:
+            job_dict["is_applied"] = 1
+
+        job_id = job_dict.get("job_id")
+        if job_id:
+            existing = get_job_by_id(job_id)
+            if existing:
+                if is_liked or is_applied or is_scholarship:
+                    upd = dict(existing)
+                    if is_scholarship:
+                        upd["job_type"] = "Scholarship"
+                    if is_liked:
+                        upd["status"] = "liked"
+                    if is_applied:
+                        upd["is_applied"] = 1
+                    saved_job, _ = save_or_update_job(upd, force_pending=False)
+                    return {
+                        "status": "updated",
+                        "title": saved_job.get("title") or "Existing Job",
+                        "company": saved_job.get("company") or "Unknown Company",
+                        "score": round(saved_job.get("relevance_score", 0), 1),
+                        "is_scholarship": saved_job.get("job_type") == "Scholarship",
+                        "is_liked": saved_job.get("status") == "liked",
+                        "is_applied": saved_job.get("is_applied") == 1
+                    }
+
+                logger.info(f"Telegram bot skipped duplicate raw text job: {existing.get('title')}")
+                return {
+                    "status": "duplicate",
+                    "title": existing.get("title") or "Existing Job",
+                    "company": existing.get("company") or "Unknown Company",
+                    "score": round(existing.get("relevance_score", 0), 1),
+                    "is_scholarship": is_scholarship or existing.get("job_type") == "Scholarship",
+                    "is_liked": existing.get("status") == "liked",
+                    "is_applied": existing.get("is_applied") == 1
+                }
+
+        score = round(job_dict.get("relevance_score", 0), 1)
+        title = job_dict.get("title") or "Extracted Role"
+        company = job_dict.get("company") or "Extracted Company"
+        location = job_dict.get("location") or "Not Specified"
+
+        if not is_liked and not is_applied and not is_scholarship and score <= 0:
+            delete_job_by_id(job_dict.get("job_id"))
+            return {
+                "status": "pruned",
+                "title": title,
+                "company": company,
+                "location": location,
+                "score": score,
+                "is_scholarship": False,
+                "is_liked": False,
+                "is_applied": False
+            }
+
+        saved_job, is_new = save_or_update_job(job_dict, force_pending=force_pending)
+        title = saved_job.get("title") or "Extracted Role"
+        company = saved_job.get("company") or "Extracted Company"
+        location = saved_job.get("location") or "Not Specified"
+        score = round(saved_job.get("relevance_score", 0), 1)
+
+        if is_new:
+            record_new_telegram_job(title)
+            return {
+                "status": "added",
+                "title": title,
+                "company": company,
+                "location": location,
+                "score": score,
+                "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
+                "is_liked": saved_job.get("status") == "liked",
+                "is_applied": saved_job.get("is_applied") == 1
+            }
+        return {
+            "status": "duplicate",
+            "title": title,
+            "company": company,
+            "score": score,
+            "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
+            "is_liked": saved_job.get("status") == "liked",
+            "is_applied": saved_job.get("is_applied") == 1
+        }
+    except Exception as e:
+        logger.error(f"Failed to parse raw job text: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
 def process_message(bot_token: str, message: Dict[str, Any], allowed_chat_id: Optional[str] = None, send_reply: bool = True) -> List[Dict[str, Any]]:
     """
     Processes a single message:
     1. Checks authorization.
     2. Detects URL vs Raw Text automatically.
-    3. Checks for duplicates in database before scraping/scoring (no rescore, no readd).
+    3. Checks for duplicates in database before scraping/scoring.
     4. Scrapes & scores only new jobs.
     5. Saves to SQLite.
     6. Returns list of job results and optionally sends reply.
@@ -427,7 +680,6 @@ def process_message(bot_token: str, message: Dict[str, Any], allowed_chat_id: Op
 
     if configured_user:
         if username.lower() == configured_user:
-            # Auto-bind chat_id if changed or newly detected
             try:
                 from core import config as app_config
                 if getattr(app_config, "TELEGRAM_CHAT_ID", "") != chat_id:
@@ -474,250 +726,22 @@ def process_message(bot_token: str, message: Dict[str, Any], allowed_chat_id: Op
     is_scholarship = bool(re.search(r'(?:[#/]scholarships?|[#/]fellowships?|\bمنحة\b|\bمنح\b)', text, re.IGNORECASE))
     is_applied = bool(re.search(r'(?:[#/]applied|\bقدّمت\b|\bقدمت\b)', text, re.IGNORECASE))
     is_liked = bool(re.search(r'(?:[#/]liked?|[#/]favorite|\bإعجاب\b|\bاعجاب\b)', text, re.IGNORECASE)) or is_applied
-
     force_pending = False if is_liked else True
 
-    # Detect URLs in text
-    found_urls = URL_REGEX.findall(text)
-    urls = [clean_url(u) for u in found_urls if len(clean_url(u)) > 8]
-
-    if urls:
-        # User sent one or more links
-        for job_url in urls:
-            logger.info(f"Telegram bot processing job URL: {job_url} (scholarship={is_scholarship}, liked={is_liked}, applied={is_applied})")
-
-            # 1. Fast pre-scrape duplicate check: URL already in DB?
-            existing = get_job_by_url(job_url)
-            if existing:
-                if is_liked or is_applied or is_scholarship:
-                    upd = dict(existing)
-                    if is_scholarship:
-                        upd["job_type"] = "Scholarship"
-                    if is_liked:
-                        upd["status"] = "liked"
-                    if is_applied:
-                        upd["is_applied"] = 1
-                    saved_job, _ = save_or_update_job(upd, force_pending=False)
-                    logger.info(f"Telegram bot updated existing job: {saved_job.get('title')}")
-                    results.append({
-                        "status": "updated",
-                        "title": saved_job.get("title") or "Existing Job",
-                        "company": saved_job.get("company") or "Unknown Company",
-                        "score": round(saved_job.get("relevance_score", 0), 1),
-                        "url": job_url,
-                        "is_scholarship": saved_job.get("job_type") == "Scholarship",
-                        "is_liked": saved_job.get("status") == "liked",
-                        "is_applied": saved_job.get("is_applied") == 1
-                    })
-                    continue
-
-                logger.info(f"Telegram bot skipped duplicate job URL: {job_url}")
-                results.append({
-                    "status": "duplicate",
-                    "title": existing.get("title") or "Existing Job",
-                    "company": existing.get("company") or "Unknown Company",
-                    "score": round(existing.get("relevance_score", 0), 1),
-                    "url": job_url,
-                    "is_scholarship": is_scholarship or existing.get("job_type") == "Scholarship",
-                    "is_liked": existing.get("status") == "liked",
-                    "is_applied": existing.get("is_applied") == 1
-                })
-                continue
-
-            try:
-                job_dict = scrape_job_from_url(url=job_url, scraper_type="auto", is_scholarship=is_scholarship)
-                if is_liked:
-                    job_dict["status"] = "liked"
-                if is_applied:
-                    job_dict["is_applied"] = 1
-
-                # 2. Check if job_id already in DB (different URL pointing to same job)
-                if job_dict.get("job_id"):
-                    existing_by_id = get_job_by_id(job_dict["job_id"])
-                    if existing_by_id:
-                        if is_liked or is_applied or is_scholarship:
-                            upd = dict(existing_by_id)
-                            if is_scholarship: upd["job_type"] = "Scholarship"
-                            if is_liked: upd["status"] = "liked"
-                            if is_applied: upd["is_applied"] = 1
-                            saved_job, _ = save_or_update_job(upd, force_pending=False)
-                            results.append({
-                                "status": "updated",
-                                "title": saved_job.get("title") or "Existing Job",
-                                "company": saved_job.get("company") or "Unknown Company",
-                                "score": round(saved_job.get("relevance_score", 0), 1),
-                                "url": job_url,
-                                "is_scholarship": saved_job.get("job_type") == "Scholarship",
-                                "is_liked": saved_job.get("status") == "liked",
-                                "is_applied": saved_job.get("is_applied") == 1
-                            })
-                            continue
-
-                        logger.info(f"Telegram bot skipped duplicate job_id: {job_dict['job_id']}")
-                        results.append({
-                            "status": "duplicate",
-                            "title": existing_by_id.get("title") or "Existing Job",
-                            "company": existing_by_id.get("company") or "Unknown Company",
-                            "score": round(existing_by_id.get("relevance_score", 0), 1),
-                            "url": job_url,
-                            "is_scholarship": is_scholarship or existing_by_id.get("job_type") == "Scholarship",
-                            "is_liked": existing_by_id.get("status") == "liked",
-                            "is_applied": existing_by_id.get("is_applied") == 1
-                        })
-                        continue
-
-                saved_job, is_new = save_or_update_job(job_dict, force_pending=force_pending)
-
-                title = saved_job.get("title") or "Unknown Title"
-                company = saved_job.get("company") or "Unknown Company"
-                location = saved_job.get("location") or "Not Specified"
-                score = round(saved_job.get("relevance_score", 0), 1)
-
-                if is_new:
-                    record_new_telegram_job(title)
-                    results.append({
-                        "status": "added",
-                        "title": title,
-                        "company": company,
-                        "location": location,
-                        "score": score,
-                        "url": job_url,
-                        "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
-                        "is_liked": saved_job.get("status") == "liked",
-                        "is_applied": saved_job.get("is_applied") == 1
-                    })
-                else:
-                    results.append({
-                        "status": "duplicate",
-                        "title": title,
-                        "company": company,
-                        "score": score,
-                        "url": job_url,
-                        "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
-                        "is_liked": saved_job.get("status") == "liked",
-                        "is_applied": saved_job.get("is_applied") == 1
-                    })
-            except Exception as e:
-                logger.error(f"Failed to scrape job from URL '{job_url}': {e}", exc_info=True)
-                results.append({
-                    "status": "error",
-                    "url": job_url,
-                    "error": str(e)
-                })
+    found_urls = _extract_job_urls(text)
+    if found_urls:
+        for job_url in found_urls:
+            res = _scrape_and_persist_url(job_url, is_scholarship, is_liked, is_applied, force_pending)
+            results.append(res)
     else:
-        # No URL found: Treat entire message as raw job description text
         if len(text) < 15:
             send_message(
                 bot_token, chat_id,
                 "ℹ️ Please share a job link (e.g. from LinkedIn or Wuzzuf) or paste a complete job description text."
             )
             return []
-
-        logger.info(f"Telegram bot processing raw job text (scholarship={is_scholarship}, liked={is_liked}, applied={is_applied})")
-        try:
-            clean_text = re.sub(r'[#/](?:scholarships?|fellowships?|liked?|applied)\b', '', text, flags=re.IGNORECASE).strip()
-            parse_text = clean_text if len(clean_text) >= 15 else text
-
-            job_dict = scrape_job_from_url(url="", raw_text=parse_text, scraper_type="generic", is_scholarship=is_scholarship)
-            if is_liked:
-                job_dict["status"] = "liked"
-            if is_applied:
-                job_dict["is_applied"] = 1
-
-            job_id = job_dict.get("job_id")
-            if job_id:
-                existing = get_job_by_id(job_id)
-                if existing:
-                    if is_liked or is_applied or is_scholarship:
-                        upd = dict(existing)
-                        if is_scholarship: upd["job_type"] = "Scholarship"
-                        if is_liked: upd["status"] = "liked"
-                        if is_applied: upd["is_applied"] = 1
-                        saved_job, _ = save_or_update_job(upd, force_pending=False)
-                        results.append({
-                            "status": "updated",
-                            "title": saved_job.get("title") or "Existing Job",
-                            "company": saved_job.get("company") or "Unknown Company",
-                            "score": round(saved_job.get("relevance_score", 0), 1),
-                            "is_scholarship": saved_job.get("job_type") == "Scholarship",
-                            "is_liked": saved_job.get("status") == "liked",
-                            "is_applied": saved_job.get("is_applied") == 1
-                        })
-                        if send_reply:
-                            send_summary_reply(bot_token, chat_id, results)
-                        return results
-
-                    logger.info(f"Telegram bot skipped duplicate raw text job: {existing.get('title')}")
-                    results.append({
-                        "status": "duplicate",
-                        "title": existing.get("title") or "Existing Job",
-                        "company": existing.get("company") or "Unknown Company",
-                        "score": round(existing.get("relevance_score", 0), 1),
-                        "is_scholarship": is_scholarship or existing.get("job_type") == "Scholarship",
-                        "is_liked": existing.get("status") == "liked",
-                        "is_applied": existing.get("is_applied") == 1
-                    })
-                    if send_reply:
-                        send_summary_reply(bot_token, chat_id, results)
-                    return results
-
-            score = round(job_dict.get("relevance_score", 0), 1)
-            title = job_dict.get("title") or "Extracted Role"
-            company = job_dict.get("company") or "Extracted Company"
-            location = job_dict.get("location") or "Not Specified"
-
-            # If job scores 0 or less and is neither Liked, Applied, nor a Scholarship, prune it immediately
-            if not is_liked and not is_applied and not is_scholarship and score <= 0:
-                delete_job_by_id(job_dict.get("job_id"))
-                results.append({
-                    "status": "pruned",
-                    "title": title,
-                    "company": company,
-                    "location": location,
-                    "score": score,
-                    "is_scholarship": False,
-                    "is_liked": False,
-                    "is_applied": False
-                })
-                if send_reply:
-                    send_summary_reply(bot_token, chat_id, results)
-                return results
-
-            saved_job, is_new = save_or_update_job(job_dict, force_pending=force_pending)
-
-            title = saved_job.get("title") or "Extracted Role"
-            company = saved_job.get("company") or "Extracted Company"
-            location = saved_job.get("location") or "Not Specified"
-            score = round(saved_job.get("relevance_score", 0), 1)
-
-            if is_new:
-                record_new_telegram_job(title)
-                results.append({
-                    "status": "added",
-                    "title": title,
-                    "company": company,
-                    "location": location,
-                    "score": score,
-                    "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
-                    "is_liked": saved_job.get("status") == "liked",
-                    "is_applied": saved_job.get("is_applied") == 1
-                })
-            else:
-                results.append({
-                    "status": "duplicate",
-                    "title": title,
-                    "company": company,
-                    "score": score,
-                    "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
-                    "is_liked": saved_job.get("status") == "liked",
-                    "is_applied": saved_job.get("is_applied") == 1
-                })
-        except Exception as e:
-            logger.error(f"Failed to parse raw job text: {e}", exc_info=True)
-            results.append({
-                "status": "error",
-                "error": str(e)
-            })
+        res = _parse_and_persist_raw_text(text, is_scholarship, is_liked, is_applied, force_pending)
+        results.append(res)
 
     if send_reply and results:
         send_summary_reply(bot_token, chat_id, results)

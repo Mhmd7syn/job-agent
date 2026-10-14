@@ -7,7 +7,8 @@ from pydantic import BaseModel
 
 from core.database import DB_PATH
 from core.applicant_profile import load_profile, save_profile
-from appliers.email_worker import get_autopilot_state, run_email_autopilot_batch
+from core.quota_manager import get_autopilot_state
+from appliers.email_worker import run_email_autopilot_batch
 from appliers.whatsapp_worker import run_whatsapp_autopilot_batch
 from appliers.master_orchestrator import (
     run_master_autopilot_cycle,

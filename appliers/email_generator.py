@@ -73,19 +73,7 @@ class EmailDraftSchema(BaseModel):
 
 
 
-def notify_telegram_candidate(message: str) -> bool:
-    """Dispatches real-time notification to candidate on Telegram if configured."""
-    try:
-        from core.telegram_bot import get_state, send_message, get_bot_token
-        from core import config as app_config
-        tg_state = get_state()
-        chat_id = tg_state.get("chat_id") or getattr(app_config, "TELEGRAM_CHAT_ID", None) or os.getenv("TELEGRAM_CHAT_ID")
-        bot_token = get_bot_token() or os.getenv("TELEGRAM_BOT_TOKEN")
-        if bot_token and chat_id:
-            return send_message(bot_token=bot_token, chat_id=chat_id, text=message)
-    except Exception as e:
-        logger.debug(f"Failed to notify Telegram candidate: {e}")
-    return False
+from core.telegram_bot import notify_telegram_candidate
 
 
 def generate_email_draft(

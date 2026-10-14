@@ -18,69 +18,18 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 from core.database import DB_PATH
 from core.applicant_profile import load_profile, get_resume_for_role
-from appliers.email_generator import generate_email_draft, notify_telegram_candidate
+from core.telegram_bot import notify_telegram_candidate
+from core.quota_manager import (
+    AUTOPILOT_STATE_FILE,
+    DailyQuotaManager,
+    get_autopilot_state,
+    save_autopilot_state,
+    log_autopilot_activity,
+)
+from appliers.email_generator import generate_email_draft
 from appliers.outlook_launcher import launch_outlook_compose
 
 logger = logging.getLogger(__name__)
-
-AUTOPILOT_STATE_FILE = os.path.join(BASE_DIR, "output", "autopilot_state.json")
-
-
-def get_autopilot_state() -> Dict[str, Any]:
-    """Loads persistent Auto-Pilot rate limiting and historical state."""
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    default_state = {
-        "last_run_date": today_str,
-        "daily_runs_count": 0,
-        "emails_sent_today": 0,
-        "whatsapp_sent_today": 0,
-        "easy_apply_sent_today": 0,
-        "ats_sent_today": 0,
-        "total_applied_all_time": 0,
-        "recent_logs": []
-    }
-
-    if os.path.exists(AUTOPILOT_STATE_FILE):
-        try:
-            with open(AUTOPILOT_STATE_FILE, "r", encoding="utf-8") as f:
-                state = json.load(f)
-            # Reset daily counters if new day
-            if state.get("last_run_date") != today_str:
-                state["last_run_date"] = today_str
-                state["daily_runs_count"] = 0
-                state["emails_sent_today"] = 0
-                state["whatsapp_sent_today"] = 0
-                state["easy_apply_sent_today"] = 0
-                state["ats_sent_today"] = 0
-            return state
-        except Exception as e:
-            logger.warning(f"Error loading autopilot state: {e}")
-
-    return default_state
-
-
-def save_autopilot_state(state: Dict[str, Any]):
-    """Persists Auto-Pilot state atomically."""
-    try:
-        os.makedirs(os.path.dirname(AUTOPILOT_STATE_FILE), exist_ok=True)
-        temp_file = AUTOPILOT_STATE_FILE + ".tmp"
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
-        os.replace(temp_file, AUTOPILOT_STATE_FILE)
-    except Exception as e:
-        logger.error(f"Error saving autopilot state: {e}")
-
-
-def log_autopilot_activity(message: str, state: Optional[Dict[str, Any]] = None):
-    """Appends timestamped log entry to state."""
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    entry = f"[{timestamp}] {message}"
-    logger.info(f"[AutoPilot] {message}")
-    if state is not None:
-        if "recent_logs" not in state:
-            state["recent_logs"] = []
-        state["recent_logs"].append(entry)
-        state["recent_logs"] = state["recent_logs"][-40:]  # Keep last 40 entries
 
 
 def send_smtp_email(
