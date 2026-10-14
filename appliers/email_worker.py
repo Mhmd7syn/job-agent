@@ -18,7 +18,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 from core.database import DB_PATH
 from core.applicant_profile import load_profile, get_resume_for_role
-from appliers.email_generator import generate_email_draft
+from appliers.email_generator import generate_email_draft, notify_telegram_candidate
 from appliers.outlook_launcher import launch_outlook_compose
 
 logger = logging.getLogger(__name__)
@@ -129,19 +129,6 @@ def send_smtp_email(
         logger.error(f"SMTP send failed: {e}")
         return False
 
-
-def notify_telegram_candidate(message: str):
-    """Dispatches real-time notification to candidate on Telegram if configured."""
-    try:
-        from core.telegram_bot import get_state, send_message, get_bot_token
-        from core import config as app_config
-        tg_state = get_state()
-        chat_id = tg_state.get("chat_id") or getattr(app_config, "TELEGRAM_CHAT_ID", None) or os.getenv("TELEGRAM_CHAT_ID")
-        bot_token = get_bot_token() or os.getenv("TELEGRAM_BOT_TOKEN")
-        if bot_token and chat_id:
-            send_message(bot_token=bot_token, chat_id=chat_id, text=message)
-    except Exception:
-        pass
 
 
 def run_email_autopilot_batch(

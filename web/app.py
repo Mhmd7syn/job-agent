@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.database import (
     get_jobs_by_status, update_job_status, get_job_by_id, toggle_job_applied,
-    delete_job_by_id, save_or_update_job
+    delete_job_by_id, save_or_update_job, record_job_applied
 )
 from core.config_tuner import analyze_job_and_tune_config
 from core.cv_parser import parse_cv_with_ai
@@ -795,41 +795,21 @@ def reveal_cv_endpoint(req: Dict[str, Any]):
 
 @app.post("/api/email/mark-applied")
 def mark_email_applied_endpoint(req: MarkAppliedRequest):
-    if not os.path.exists(DB_PATH):
-        raise HTTPException(status_code=500, detail="Database not found")
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        cursor = conn.cursor()
-        now_str = datetime.now().isoformat()
-        
-        cursor.execute("SELECT apply_payload FROM jobs WHERE job_id = ?", (req.job_id,))
-        row = cursor.fetchone()
-        payload = {}
-        if row and row[0]:
-            try:
-                payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-            except Exception:
-                payload = {}
-                
-        payload["sent_email"] = {
+    now_str = datetime.now().isoformat()
+    res = record_job_applied(
+        job_id=req.job_id,
+        channel="sent_email",
+        extra_payload={
             "recipient": req.recipient,
             "subject": req.subject,
             "body": req.body,
             "applied_via": req.applied_via or "outlook_copilot",
             "timestamp": now_str
         }
-        
-        cursor.execute("""
-            UPDATE jobs 
-            SET is_applied = 1, apply_status = 'applied', applied_at = ?, apply_payload = ?
-            WHERE job_id = ?
-        """, (now_str, json.dumps(payload, ensure_ascii=False), req.job_id))
-        conn.commit()
-        conn.close()
-        return {"status": "success", "job_id": req.job_id, "applied_at": now_str}
-    except Exception as e:
-        logging.error(f"Error marking job as applied: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "Database error"))
+    return res
 
 # ============================================
 # WhatsApp Co-Pilot & Desktop Launch Endpoints
@@ -889,40 +869,20 @@ def reveal_whatsapp_cv_endpoint(req: Dict[str, Any]):
 
 @app.post("/api/whatsapp/mark-applied")
 def mark_whatsapp_applied_endpoint(req: MarkWhatsAppAppliedRequest):
-    if not os.path.exists(DB_PATH):
-        raise HTTPException(status_code=500, detail="Database not found")
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        cursor = conn.cursor()
-        now_str = datetime.now().isoformat()
-        
-        cursor.execute("SELECT apply_payload FROM jobs WHERE job_id = ?", (req.job_id,))
-        row = cursor.fetchone()
-        payload = {}
-        if row and row[0]:
-            try:
-                payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-            except Exception:
-                payload = {}
-                
-        payload["sent_whatsapp"] = {
+    now_str = datetime.now().isoformat()
+    res = record_job_applied(
+        job_id=req.job_id,
+        channel="sent_whatsapp",
+        extra_payload={
             "phone": req.phone,
             "pitch": req.pitch,
             "applied_via": req.applied_via or "whatsapp_desktop",
             "timestamp": now_str
         }
-        
-        cursor.execute("""
-            UPDATE jobs 
-            SET is_applied = 1, apply_status = 'applied', applied_at = ?, apply_payload = ?
-            WHERE job_id = ?
-        """, (now_str, json.dumps(payload, ensure_ascii=False), req.job_id))
-        conn.commit()
-        conn.close()
-        return {"status": "success", "job_id": req.job_id, "applied_at": now_str}
-    except Exception as e:
-        logging.error(f"Error marking WhatsApp job as applied: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "Database error"))
+    return res
 
 # ============================================
 # Easy Apply Co-Pilot & Assisted Session Endpoints
@@ -963,38 +923,18 @@ def easy_apply_status_endpoint(job_id: str):
 
 @app.post("/api/easy-apply/mark-applied")
 def mark_easy_apply_applied_endpoint(req: MarkEasyApplyAppliedRequest):
-    if not os.path.exists(DB_PATH):
-        raise HTTPException(status_code=500, detail="Database not found")
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        cursor = conn.cursor()
-        now_str = datetime.now().isoformat()
-        
-        cursor.execute("SELECT apply_payload FROM jobs WHERE job_id = ?", (req.job_id,))
-        row = cursor.fetchone()
-        payload = {}
-        if row and row[0]:
-            try:
-                payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-            except Exception:
-                payload = {}
-                
-        payload["sent_easy_apply"] = {
+    now_str = datetime.now().isoformat()
+    res = record_job_applied(
+        job_id=req.job_id,
+        channel="sent_easy_apply",
+        extra_payload={
             "applied_via": req.applied_via or "easy_apply_copilot",
             "timestamp": now_str
         }
-        
-        cursor.execute("""
-            UPDATE jobs 
-            SET is_applied = 1, apply_status = 'applied', applied_at = ?, apply_payload = ?
-            WHERE job_id = ?
-        """, (now_str, json.dumps(payload, ensure_ascii=False), req.job_id))
-        conn.commit()
-        conn.close()
-        return {"status": "success", "job_id": req.job_id, "applied_at": now_str}
-    except Exception as e:
-        logging.error(f"Error marking Easy Apply job as applied: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "Database error"))
+    return res
 
 
 # ----------------------------------------------------

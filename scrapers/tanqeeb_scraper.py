@@ -326,7 +326,7 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                     logging.debug(f"Direct link scrape failed for {apply_url}: {e}")
 
             # Standard Tanqeeb fallback
-            full_desc = fetch_tanqeeb_full_description(job_url) if job_url != base_url else ""
+            full_desc = fetch_tanqeeb_full_description(job_url) if job_url and job_url != base_url else ""
             if full_desc and len(full_desc) > len(job.get('description', '')):
                 job['description'] = full_desc
             if details.get('company') and (job.get('company') in ('Unknown', '', None) or job.get('company', '').lower() in ['linkedin', 'naukri gulf', 'wuzzuf', 'bayt', 'forasna', 'tanqeeb']):

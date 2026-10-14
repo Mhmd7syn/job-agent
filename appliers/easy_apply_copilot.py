@@ -3,7 +3,6 @@ import time
 import json
 import logging
 import threading
-import sqlite3
 from typing import Dict, Any, Optional, List
 
 from dotenv import load_dotenv
@@ -11,7 +10,7 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-from core.database import DB_PATH
+from core.database import get_job_by_id
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
 from appliers.screening_resolver import ScreeningResolver
 
@@ -64,29 +63,6 @@ def get_session(job_id: str) -> Optional[EasyApplySession]:
     with SESSIONS_LOCK:
         return ACTIVE_SESSIONS.get(job_id)
 
-
-def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
-    """Fetches job details from the local SQLite database."""
-    if not os.path.exists(DB_PATH):
-        return None
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            d = dict(row)
-            if d.get("apply_payload") and isinstance(d["apply_payload"], str):
-                try:
-                    d["apply_payload"] = json.loads(d["apply_payload"])
-                except Exception:
-                    d["apply_payload"] = {}
-            return d
-    except Exception as e:
-        logger.error(f"Error fetching job {job_id} from DB: {e}")
-    return None
 
 
 def prepare_easy_apply(job_id: str) -> Dict[str, Any]:

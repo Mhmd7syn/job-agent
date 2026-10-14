@@ -4,7 +4,7 @@ from scrapers.glassdoor_scraper import scrape_glassdoor
 from scrapers.bayt_scraper import scrape_bayt
 from scrapers.tanqeeb_scraper import scrape_tanqeeb
 from scrapers.wuzzuf_scraper import scrape_wuzzuf
-from scrapers.selenium_scraper import SeleniumSession
+from scrapers import selenium_scraper
 from core.config import SITES, RESULTS_PER_TERM, HOURS_OLD, SEARCH_TERMS, LOCATION
 import pandas as pd
 import sys
@@ -461,7 +461,7 @@ def main(run_start_time=None, reload_cfg=False):
     if sb_sites:
         logging.info("🚀 [Phase 3/3] Starting Browser Scrapers (Wuzzuf, Glassdoor, Indeed)...")
         with tqdm(total=total_searches, desc="[Browser Scrapers]", unit="search") as pbar:
-            sb_ctx = SeleniumSession() if SeleniumSession else contextlib.nullcontext(None)
+            sb_ctx = selenium_scraper.SeleniumSession() if getattr(selenium_scraper, 'SeleniumSession', None) else contextlib.nullcontext(None)
             with sb_ctx as sb_driver:
                 if is_sb_driver_alive(sb_driver):
                     for term in SEARCH_TERMS:

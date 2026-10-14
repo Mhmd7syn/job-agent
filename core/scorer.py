@@ -5,9 +5,14 @@ import json
 import re
 import time
 import unicodedata
+from functools import lru_cache
 from datetime import date, datetime
 from core.database import DB_PATH
 from core.career_levels import expand_levels, get_excluded_levels
+
+@lru_cache(maxsize=512)
+def _get_word_pattern(word: str) -> re.Pattern:
+    return re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
 
 SENIORITY_EXCLUDE_KEYWORDS = {
     "senior", "lead", "manager", "principal", "head", "director", "sr",
@@ -91,10 +96,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
 
     # Hard Disqualification: Seniority level in LEVEL_EXCLUDE
     for syn in effective_excluded_synonyms:
-        if not syn:
-            continue
-        syn_pat = re.compile(r'\b' + re.escape(syn) + r'\b', re.IGNORECASE)
-        if syn_pat.search(clean_level_scope):
+        if syn and _get_word_pattern(syn).search(clean_level_scope):
             return 0
 
     # Excluded seniority or title keywords in Title / Career Level
@@ -102,7 +104,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
         if not kw:
             continue
         kw_clean = kw.strip().lower()
-        pat = re.compile(r'\b' + re.escape(kw_clean) + r'\b', re.IGNORECASE)
+        pat = _get_word_pattern(kw_clean)
         if pat.search(title) or (kw_clean in SENIORITY_EXCLUDE_KEYWORDS and pat.search(clean_level_scope)):
             return 0
 
@@ -143,7 +145,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     for kw in resume_keywords:
         if not kw:
             continue
-        pat = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
+        pat = _get_word_pattern(kw)
         if pat.search(title):
             tech_score += 8
         elif pat.search(desc):
@@ -161,10 +163,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     # -------------------------------------------------------------
     # Target Seniority Level Boost
     for lvl in target_level_synonyms:
-        if not lvl:
-            continue
-        lvl_pat = re.compile(r'\b' + re.escape(lvl) + r'\b', re.IGNORECASE)
-        if lvl_pat.search(clean_level_scope):
+        if lvl and _get_word_pattern(lvl).search(clean_level_scope):
             score += 15
             break
 
@@ -189,8 +188,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
             continue
         kw_clean = kw.strip().lower()
         if kw_clean not in SENIORITY_EXCLUDE_KEYWORDS:
-            pat = re.compile(r'\b' + re.escape(kw_clean) + r'\b', re.IGNORECASE)
-            if pat.search(desc):
+            if _get_word_pattern(kw_clean).search(desc):
                 score -= 15
 
     # Experience Penalty (5 points per year gap)

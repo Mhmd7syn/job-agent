@@ -88,9 +88,6 @@ def fetch_glassdoor_job_details(driver, job_url: str) -> dict:
 
         # 3b. Extract any direct employer career/apply links embedded in the job description or page
         # E.g. McKinsey: <a href="https://www.mckinsey.com/careers/search-jobs">Ready to apply? Search our open roles</a>
-        desc_div = soup.find('div', class_=lambda c: c and any(k in str(c) for k in [
-            'jobDescriptionContent', 'JobDetails_jobDescription', 'desc', 'JobDetails_jobDetailsContainer'
-        ])) or soup.find('div', id='JobDescriptionContainer')
         search_root = desc_div or soup
         candidate_links = []
         for a_tag in search_root.find_all('a', href=True):

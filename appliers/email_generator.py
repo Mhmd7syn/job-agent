@@ -2,7 +2,6 @@ import os
 import json
 import logging
 import time
-import sqlite3
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
@@ -13,7 +12,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 from core.applicant_profile import load_profile, get_resume_for_role
 from core.cv_parser import extract_text_from_file
-from core.database import DB_PATH
+from core.database import get_job_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -72,29 +71,6 @@ Candidate Resume Text:
 class EmailDraftSchema(BaseModel):
     body: str = Field(description="The concise email application body from greeting to closing statement, without signature block.")
 
-
-def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
-    """Fetches job details from the local SQLite database."""
-    if not os.path.exists(DB_PATH):
-        return None
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            d = dict(row)
-            if d.get("apply_payload") and isinstance(d["apply_payload"], str):
-                try:
-                    d["apply_payload"] = json.loads(d["apply_payload"])
-                except Exception:
-                    d["apply_payload"] = {}
-            return d
-    except Exception as e:
-        logger.error(f"Error fetching job {job_id} from DB: {e}")
-    return None
 
 
 def notify_telegram_candidate(message: str) -> bool:

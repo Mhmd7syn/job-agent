@@ -158,8 +158,8 @@ def scrape_indeed(search_term, location, results_wanted=15, hours_old=None, driv
             desc_elem = card.find('div', class_=lambda c: c and any(k in str(c) for k in ['job-snippet', 'underShelfFooter', 'css-9446fg']))
             card_desc = desc_elem.text.strip() if desc_elem else card.get_text(separator=' ', strip=True)
 
-            # Fetch full description if driver is alive
-            full_desc = fetch_indeed_full_description(driver, href) if driver else ""
+            # Fetch full description
+            full_desc = fetch_indeed_full_description(driver, href)
             final_desc = full_desc if full_desc and len(full_desc) > len(card_desc) else card_desc
 
             jobs.append(normalize_job_dict({

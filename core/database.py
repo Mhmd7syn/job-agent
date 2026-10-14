@@ -2,6 +2,7 @@ import sqlite3
 import os
 import json
 from datetime import datetime
+from typing import Optional, Dict, Any, List
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output", "jobs_state.db")
 
@@ -377,14 +378,58 @@ def toggle_job_applied(job_id, is_applied):
     conn.commit()
     conn.close()
 
-def get_job_by_id(job_id):
-    conn = sqlite3.connect(DB_PATH, timeout=15)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
+def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
+    """Fetches job details from the local SQLite database and deserializes apply_payload."""
+    if not job_id or not os.path.exists(DB_PATH):
+        return None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=15)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            d = dict(row)
+            if d.get("apply_payload") and isinstance(d["apply_payload"], str):
+                try:
+                    d["apply_payload"] = json.loads(d["apply_payload"])
+                except Exception:
+                    d["apply_payload"] = {}
+            return d
+    except Exception:
+        pass
+    return None
+
+def record_job_applied(job_id: str, channel: str = "", extra_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Marks a job as applied in the database, recording timestamp and channel metadata in apply_payload."""
+    if not job_id or not os.path.exists(DB_PATH):
+        return {"status": "error", "message": "Database or job_id not found"}
+    try:
+        now_str = datetime.now().isoformat()
+        conn = sqlite3.connect(DB_PATH, timeout=15)
+        cursor = conn.cursor()
+        cursor.execute("SELECT apply_payload FROM jobs WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        payload = {}
+        if row and row[0]:
+            try:
+                payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            except Exception:
+                payload = {}
+        if channel and extra_payload:
+            payload[channel] = extra_payload
+
+        cursor.execute("""
+            UPDATE jobs 
+            SET is_applied = 1, apply_status = 'applied', applied_at = ?, apply_payload = ?
+            WHERE job_id = ?
+        """, (now_str, json.dumps(payload, ensure_ascii=False), job_id))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "job_id": job_id, "applied_at": now_str}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 def is_job_seen(job_url: str) -> bool:
     """Fast pre-AI deduplication check. Returns True if this URL already exists in the DB (as job_url or apply_url).

@@ -3,7 +3,6 @@ import json
 import re
 import logging
 import time
-import sqlite3
 import urllib.parse
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
@@ -15,7 +14,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 from core.applicant_profile import load_profile, get_resume_for_role
 from core.cv_parser import extract_text_from_file
-from core.database import DB_PATH
+from core.database import get_job_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -118,29 +117,6 @@ def build_whatsapp_web_url(phone: str, text: str) -> str:
         return f"https://web.whatsapp.com/send?phone={clean_phone}&text={encoded_text}"
     return f"https://web.whatsapp.com/send?text={encoded_text}"
 
-
-def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
-    """Fetches job details from the local SQLite database."""
-    if not os.path.exists(DB_PATH):
-        return None
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            d = dict(row)
-            if d.get("apply_payload") and isinstance(d["apply_payload"], str):
-                try:
-                    d["apply_payload"] = json.loads(d["apply_payload"])
-                except Exception:
-                    d["apply_payload"] = {}
-            return d
-    except Exception as e:
-        logger.error(f"Error fetching job {job_id} from DB: {e}")
-    return None
 
 
 def generate_fallback_pitch(

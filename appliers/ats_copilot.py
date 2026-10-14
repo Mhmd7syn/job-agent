@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-from core.database import DB_PATH
+from core.database import DB_PATH, get_job_by_id
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
 from core.cv_parser import extract_text_from_file
 from appliers.screening_resolver import ScreeningResolver
@@ -153,30 +153,6 @@ def detect_platform(url: str, text: str = "") -> Dict[str, Any]:
         "color": "#64748b",
         "badge_class": "tag-channel-platform"
     }
-
-
-def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
-    """Fetches job details from the local SQLite database."""
-    if not os.path.exists(DB_PATH):
-        return None
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            d = dict(row)
-            if d.get("apply_payload") and isinstance(d["apply_payload"], str):
-                try:
-                    d["apply_payload"] = json.loads(d["apply_payload"])
-                except Exception:
-                    d["apply_payload"] = {}
-            return d
-    except Exception as e:
-        logger.error(f"Error fetching job {job_id} from DB: {e}")
-    return None
 
 
 def generate_ats_cover_letter(
