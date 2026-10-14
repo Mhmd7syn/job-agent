@@ -11,6 +11,7 @@ import os
 import json
 import tempfile
 import uuid
+import shutil
 from datetime import datetime
 
 # Add the parent directory to sys.path so we can import core modules
@@ -450,10 +451,14 @@ def run_scraper():
     script_path = os.path.join(root_dir, "job_agent.py")
     python_exe = sys.executable
     candidate_job_agent = os.path.join(os.path.dirname(sys.executable), "job-agent.exe")
-    alt_job_agent = r"C:\Users\HP\AppData\Local\Python\pythoncore-3.14-64\job-agent.exe"
+    system_job_agent = shutil.which("job-agent")
+    local_appdata = os.environ.get("LOCALAPPDATA", "")
+    alt_job_agent = os.path.join(local_appdata, "Python", "pythoncore-3.14-64", "job-agent.exe") if local_appdata else ""
     if os.path.exists(candidate_job_agent):
         cmd = [candidate_job_agent]
-    elif os.path.exists(alt_job_agent):
+    elif system_job_agent and os.path.exists(system_job_agent):
+        cmd = [system_job_agent]
+    elif alt_job_agent and os.path.exists(alt_job_agent):
         cmd = [alt_job_agent]
     else:
         cmd = [python_exe, script_path]

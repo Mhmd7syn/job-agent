@@ -26,18 +26,18 @@ class SmartScreening(BaseModel):
     driving_license: bool = False
     military_status: str = "Exempted / Completed"
     notice_period_days: int = 30
-    home_country: str = "Egypt"
-    home_city: str = "Cairo"
+    home_country: str = ""
+    home_city: str = ""
     sponsorship_outside_home_only: bool = True
     relocate_outside_home_only: bool = True
-    expected_salary_egp: int = 35000
-    expected_salary_usd: int = 1500
+    expected_salary_egp: int = 0
+    expected_salary_usd: int = 0
     current_salary: str = "Negotiable"
     years_experience_by_role: Dict[str, int] = Field(default_factory=lambda: {
         "Computer Vision & AI": 0,
         "Data Science & Machine Learning": 0,
         "Data Analytics & BI": 0,
-        "Teaching & STEM Instructor": 3
+        "Teaching & STEM Instructor": 0
     })
     resumes_by_role: Dict[str, str] = Field(default_factory=dict)
 
@@ -285,13 +285,13 @@ def resolve_contextual_screening(job_location: str, job_country: str = "") -> Di
     """
     profile = load_profile()
     screening = profile.get("smart_screening", {})
-    home_country = (screening.get("home_country") or "Egypt").lower()
-    home_city = (screening.get("home_city") or "Cairo").lower()
+    home_country = (screening.get("home_country") or "").strip().lower()
+    home_city = (screening.get("home_city") or "").strip().lower()
     
     loc_str = f"{job_location} {job_country}".lower()
     
-    is_in_home_country = home_country in loc_str or "egypt" in loc_str or "cairo" in loc_str or "giza" in loc_str
-    is_in_home_city = home_city in loc_str or "cairo" in loc_str or "giza" in loc_str
+    is_in_home_city = bool(home_city and (home_city in loc_str))
+    is_in_home_country = bool((home_country and (home_country in loc_str)) or is_in_home_city)
     
     # Context-aware Sponsorship:
     # If in home country -> No sponsorship needed (False)

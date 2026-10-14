@@ -134,7 +134,7 @@ def get_bot_username(bot_token: Optional[str] = None) -> str:
     info = get_bot_info(bot_token)
     if info and info.get("username"):
         return info["username"].strip().lstrip("@")
-    return "JobAgent_Mhmd7syn_bot"
+    return os.environ.get("TELEGRAM_BOT_USERNAME", "").strip().lstrip("@")
 
 
 def get_bot_url(bot_token: Optional[str] = None) -> str:
@@ -143,7 +143,7 @@ def get_bot_url(bot_token: Optional[str] = None) -> str:
     e.g., https://t.me/BotUsername
     """
     username = get_bot_username(bot_token)
-    return f"https://t.me/{username}"
+    return f"https://t.me/{username}" if username else ""
 
 
 def get_bot_tme_url(bot_token: Optional[str] = None) -> str:

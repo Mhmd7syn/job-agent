@@ -131,7 +131,7 @@ class TestApplyClassifier(unittest.TestCase):
     def test_linkedin_post_with_email_classified_as_email(self):
         job = {
             "title": "Data Analyst (Fresh Graduates)",
-            "job_url": "https://www.linkedin.com/posts/mohamed-elkadey-ab9164188_hiring-dataanalyst-freshgraduates-share-7487446934845247488-GQj_/",
+            "job_url": "https://www.linkedin.com/posts/recruiter-sample-post-ab9164188_hiring-dataanalyst-freshgraduates-share-7487446934845247488-GQj_/",
             "site": "linkedin_posts",
             "description": """
                 🚀 We're Hiring | Data Analyst (Fresh Graduates)

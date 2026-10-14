@@ -38,6 +38,18 @@ core/pending_alerts.json
 scratch/
 .pytest_cache/
 
+# Security and credentials
+*.pem
+*.key
+
+# Database and output files
+jobs_state.db
+output/*.json
+
+# User resumes and documents
+*.pdf
+*.docx
+
 # Executables
 *.exe
 

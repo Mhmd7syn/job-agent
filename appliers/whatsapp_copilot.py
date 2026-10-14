@@ -52,8 +52,8 @@ class WhatsAppPitchSchema(BaseModel):
 def normalize_phone_number(raw_phone: str, country: str = "") -> str:
     """
     Normalizes Egyptian, Gulf, and international numbers into clean E.164 digits without leading +.
-    e.g. '01097748566' -> '201097748566'
-         '+20 10 9774 8566' -> '201097748566'
+    e.g. '01000000000' -> '201000000000'
+         '+20 10 0000 0000' -> '201000000000'
          '0501234567' -> '966501234567' (or '971501234567' if country indicates UAE)
     """
     if not raw_phone:

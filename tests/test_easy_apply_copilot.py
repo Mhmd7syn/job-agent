@@ -25,11 +25,11 @@ def test_screening_resolver_contact_fields():
     """Verify screening resolver correctly extracts candidate contact details."""
     resolver = ScreeningResolver(job_title="Data Analyst", job_location="Cairo, Egypt")
 
-    assert resolver.resolve_field_value("First Name") == "Mohamed"
-    assert resolver.resolve_field_value("Last Name") == "Hussein"
-    assert resolver.resolve_field_value("Full Name") == "Mohamed Hussein"
-    assert "mhmd7syn" in resolver.resolve_field_value("Email Address")
-    assert "10" in resolver.resolve_field_value("Phone Number")
+    assert resolver.resolve_field_value("First Name") == "Test"
+    assert resolver.resolve_field_value("Last Name") == "Candidate"
+    assert resolver.resolve_field_value("Full Name") == "Test Candidate"
+    assert "test.applicant@example.com" in resolver.resolve_field_value("Email Address")
+    assert "1000000000" in resolver.resolve_field_value("Phone Number")
     assert resolver.resolve_field_value("City") == "Cairo"
     assert resolver.resolve_field_value("Country") == "Egypt"
     assert "linkedin.com" in resolver.resolve_field_value("LinkedIn URL")
@@ -95,7 +95,7 @@ def test_api_prepare_easy_apply_endpoint(client):
     if expected_cv:
         assert data["attached_cv"]["filename"] == os.path.basename(expected_cv)
     else:
-        assert data["attached_cv"]["filename"] in ["Mohamed_Hussein_CV.pdf", "MohamedHussein_DataAnalyst_Resume.pdf"]
+        assert data["attached_cv"]["filename"].lower().endswith(".pdf")
     assert data["contact_preview"]["full_name"] == load_profile()["personal_info"]["full_name"]
     assert data["screening_preview"]["requires_sponsorship"] is False
 

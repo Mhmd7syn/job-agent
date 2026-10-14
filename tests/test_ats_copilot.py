@@ -75,8 +75,8 @@ def test_cover_letter_generation():
     )
     assert "Data Scientist" in cl
     assert "Sporty Group" in cl
-    assert "Mohamed Hussein" in cl
-    assert "mhmd7syn" in cl or "mohamedh" in cl
+    assert "Test Candidate" in cl
+    assert "test.applicant@example.com" in cl or "applicant" in cl
     assert len(cl) > 150
 
 

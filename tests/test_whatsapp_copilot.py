@@ -31,10 +31,10 @@ def client():
 
 def test_phone_normalization():
     """Verify phone normalization for Egyptian, Gulf, and international formats."""
-    assert normalize_phone_number("01097748566") == "201097748566"
-    assert normalize_phone_number("+20 10 9774 8566") == "201097748566"
-    assert normalize_phone_number("00201112881552") == "201112881552"
-    assert normalize_phone_number("01112881552") == "201112881552"
+    assert normalize_phone_number("01000000000") == "201000000000"
+    assert normalize_phone_number("+20 10 0000 0000") == "201000000000"
+    assert normalize_phone_number("00201100000000") == "201100000000"
+    assert normalize_phone_number("01100000000") == "201100000000"
     assert normalize_phone_number("01551234567") == "201551234567"
     assert normalize_phone_number("01221234567") == "201221234567"
     assert normalize_phone_number("0501234567") in ("966501234567", "971501234567")
@@ -43,16 +43,16 @@ def test_phone_normalization():
 
 def test_url_builders():
     """Verify protocol URL formats for WhatsApp Desktop, wa.me, and WhatsApp Web."""
-    desktop_url = build_whatsapp_desktop_url("201097748566", "Hello from Mohamed")
-    assert desktop_url.startswith("whatsapp://send?phone=201097748566&text=")
-    assert "Hello%20from%20Mohamed" in desktop_url
+    desktop_url = build_whatsapp_desktop_url("201000000000", "Hello Candidate")
+    assert desktop_url.startswith("whatsapp://send?phone=201000000000&text=")
+    assert "Hello%20Candidate" in desktop_url
 
-    wa_me_url = build_wa_me_url("201097748566", "Hello from Mohamed")
-    assert wa_me_url.startswith("https://wa.me/201097748566?text=")
-    assert "Hello%20from%20Mohamed" in wa_me_url
+    wa_me_url = build_wa_me_url("201000000000", "Hello Candidate")
+    assert wa_me_url.startswith("https://wa.me/201000000000?text=")
+    assert "Hello%20Candidate" in wa_me_url
 
-    web_url = build_whatsapp_web_url("201097748566", "Hello from Mohamed")
-    assert web_url.startswith("https://web.whatsapp.com/send?phone=201097748566&text=")
+    web_url = build_whatsapp_web_url("201000000000", "Hello Candidate")
+    assert web_url.startswith("https://web.whatsapp.com/send?phone=201000000000&text=")
 
 
 def test_fallback_pitch_generation():
@@ -60,20 +60,20 @@ def test_fallback_pitch_generation():
     pitch_data = generate_fallback_pitch(
         job_title="Data Analyst",
         company="Retail Corp",
-        candidate_name="Mohamed Hussein",
+        candidate_name="Candidate Name",
         cv_path=None,
-        candidate_phone="+201097344958",
-        candidate_email="mhmd7syn.contact@gmail.com",
-        linkedin_url="https://linkedin.com/in/Mhmd7syn"
+        candidate_phone="+201000000000",
+        candidate_email="applicant@example.com",
+        linkedin_url="https://linkedin.com/in/applicant"
     )
     assert pitch_data["status"] == "success"
     pitch_text = pitch_data["pitch"]
     assert "Data Analyst" in pitch_text
     assert "Retail Corp" in pitch_text
-    assert "Mohamed Hussein" in pitch_text
+    assert "Candidate Name" in pitch_text
     assert "resume" in pitch_text.lower() or "cv" in pitch_text.lower()
-    assert "+201097344958" in pitch_text
-    assert "linkedin.com/in/Mhmd7syn" in pitch_text
+    assert "+201000000000" in pitch_text
+    assert "linkedin.com/in/applicant" in pitch_text
 
 
 def test_cv_resolution_for_whatsapp_roles():
@@ -102,7 +102,7 @@ def test_api_generate_pitch_endpoint(client):
     data = response.json()
     assert data["status"] == "success"
     assert "phone" in data
-    assert data["phone"] == "201097748566"
+    assert len(data["phone"]) >= 10
     assert "pitch" in data
     assert len(data["pitch"]) > 20
     assert "attached_cv" in data
@@ -110,7 +110,7 @@ def test_api_generate_pitch_endpoint(client):
     if expected_cv:
         assert data["attached_cv"]["filename"] == os.path.basename(expected_cv)
     else:
-        assert data["attached_cv"]["filename"] in ["Mohamed_Hussein_CV.pdf", "MohamedHussein_ComputerScienceInstructor_Resume.pdf"]
+        assert data["attached_cv"]["filename"].lower().endswith(".pdf")
     assert data["attached_cv"]["exists"] is True
 
 
@@ -156,7 +156,7 @@ def test_decoupled_apply_workflow(client):
     # Call explicit mark-applied endpoint
     mark_resp = client.post("/api/whatsapp/mark-applied", json={
         "job_id": test_job_id,
-        "phone": "201097748566",
+        "phone": "201000000000",
         "pitch": "Test pitch message",
         "applied_via": "whatsapp_desktop"
     })
@@ -172,7 +172,7 @@ def test_decoupled_apply_workflow(client):
     assert row[1] == "applied"
     payload = json.loads(row[2]) if isinstance(row[2], str) else row[2]
     assert "sent_whatsapp" in payload
-    assert payload["sent_whatsapp"]["phone"] == "201097748566"
+    assert payload["sent_whatsapp"]["phone"] == "201000000000"
 
     # Restore initial state
     conn = sqlite3.connect(DB_PATH)

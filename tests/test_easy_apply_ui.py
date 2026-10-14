@@ -71,10 +71,10 @@ def test_easy_apply_modal_ui():
 
         # Verify candidate name and CV filename are rendered
         name_text = page.inner_text("#easy-apply-contact-name")
-        assert "Mohamed" in name_text
+        assert len(name_text.strip()) > 0
 
         cv_text = page.inner_text("#easy-apply-cv-filename")
-        assert ("Resume.pdf" in cv_text or "CV.pdf" in cv_text or "Mohamed" in cv_text)
+        assert ("Resume.pdf" in cv_text or "CV.pdf" in cv_text or ".pdf" in cv_text.lower())
 
         # Test hide modal
         page.evaluate("hideEasyApplyCopilotModal()")

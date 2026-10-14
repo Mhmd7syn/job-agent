@@ -93,7 +93,7 @@ def test_gmail_compose_url_builder():
     """Verify Gmail compose URL is properly formed and encoded."""
     url = build_gmail_compose_url(
         recipient="hr@example.com",
-        subject="Application for Data Scientist - Mohamed Hussein",
+        subject="Application for Data Scientist - Test Candidate",
         body="Dear Hiring Team,\n\nPlease find my application attached."
     )
     assert url.startswith("https://mail.google.com/mail/?")

@@ -43,7 +43,7 @@ See how to browse curated jobs, switch platforms, and customize your AI matching
 ### One-File Installation
 No need to clone or download the full repository manually.
 
-1. Download a single file: **[setup_ui.pyw](https://github.com/Mhmd7syn/job-agent/blob/main/setup_ui.pyw)** (click the **Download raw file** button 📥 at the top right of the code viewer)
+1. Download **`setup_ui.pyw`**
 2. Double-click it — a sleek, dark-mode **GUI Installation Wizard** will launch.
 3. The wizard handles everything:
    - **📁 Installation Directory**: Browse and choose where to install. The wizard downloads and sets up all files directly into your chosen folder.

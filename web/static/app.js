@@ -704,7 +704,7 @@ async function loadTelegramStatusUI() {
             userInput.value = (data.username || '').replace(/^@/, '');
         }
 
-        const botUrl = data.bot_url || (data.bot_username ? `https://t.me/${data.bot_username}` : 'https://t.me/JobAgent_Mhmd7syn_bot');
+        const botUrl = data.bot_url || (data.bot_username ? `https://t.me/${data.bot_username}` : '#');
         if (openBotBtn) {
             openBotBtn.href = botUrl;
         }
@@ -2868,7 +2868,7 @@ async function openEmailCopilotModal(jobId) {
 
             const cvFilenameEl = document.getElementById('email-copilot-cv-filename');
             const cvMetaEl = document.getElementById('email-copilot-cv-meta');
-            if (cvFilenameEl) cvFilenameEl.textContent = cvInfo.filename || 'Mohamed_Hussein_CV.pdf';
+            if (cvFilenameEl) cvFilenameEl.textContent = cvInfo.filename || 'Resume.pdf';
             if (cvMetaEl) {
                 const sizeText = cvInfo.size_kb ? `${cvInfo.size_kb} KB` : '';
                 const pathText = cvInfo.path || 'Configured role resume';
@@ -3189,7 +3189,7 @@ async function openWhatsAppCopilotModal(jobId) {
 
             const cvFilenameEl = document.getElementById('whatsapp-copilot-cv-filename');
             const cvMetaEl = document.getElementById('whatsapp-copilot-cv-meta');
-            if (cvFilenameEl) cvFilenameEl.textContent = cvInfo.filename || 'Mohamed_Hussein_CV.pdf';
+            if (cvFilenameEl) cvFilenameEl.textContent = cvInfo.filename || 'Resume.pdf';
             if (cvMetaEl) {
                 const sizeText = cvInfo.size_kb ? `${cvInfo.size_kb} KB` : '';
                 const pathText = cvInfo.path || 'Configured role resume';
@@ -3812,7 +3812,7 @@ async function openAtsCopilotModal(jobId) {
         }
 
         if (cvFileEl && data.attached_cv) {
-            cvFileEl.textContent = data.attached_cv.filename || 'Mohamed_Hussein_CV.pdf';
+            cvFileEl.textContent = data.attached_cv.filename || 'Resume.pdf';
         }
 
         // Quick Copy populate
@@ -4424,30 +4424,20 @@ function startHubStatusPolling() {
     }, 3000);
 }
 
-// Developer Credits
+// Application Footer
 (function() {
     function renderCredits() {
         if (!document.getElementById('_dev_credit_')) {
             const footer = document.createElement('div');
             footer.id = '_dev_credit_';
             footer.style = 'margin-top: 3rem; padding: 1.5rem; text-align: center; border-top: 1px solid var(--card-border); color: var(--text-muted); font-size: 0.9rem;';
-            footer.innerHTML = '<div style="opacity:0.8; margin-bottom: 0.5rem;">Developed by <strong style="color:var(--text-main);">Mohamed H. Farghali</strong> - AI/ML Engineer</div>' +
-                '<div style="display:flex; justify-content:center; gap:1.25rem;">' +
-                '<a href="mailto:mohamedh2910@gmail.com" style="color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:0.35rem;"><i class="fa-solid fa-envelope"></i>Email</a>' +
-                '<a href="https://linkedin.com/in/Mhmd7syn" target="_blank" style="color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:0.35rem;"><i class="fa-brands fa-linkedin"></i>LinkedIn</a>' +
-                '<a href="https://github.com/Mhmd7syn" target="_blank" style="color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:0.35rem;"><i class="fa-brands fa-github"></i>GitHub</a>' +
-                '<a href="https://kaggle.com/mohamdHussein" target="_blank" style="color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:0.35rem;"><i class="fa-brands fa-kaggle"></i>Kaggle</a>' +
+            footer.innerHTML = '<div style="opacity:0.8; margin-bottom: 0.5rem;"><strong style="color:var(--text-main);">Job Agent</strong> &mdash; Intelligent Job Search & Application Automation</div>' +
+                '<div style="display:flex; justify-content:center; gap:1.25rem; font-size: 0.82rem; color: var(--text-muted);">' +
+                '<span><i class="fa-solid fa-robot"></i> Autonomous Multi-Channel Co-Pilot</span>' +
                 '</div>';
             const container = document.querySelector('.app-container');
             if (container) container.appendChild(footer);
         }
     }
     renderCredits();
-    setInterval(() => {
-        const c = document.getElementById('_dev_credit_');
-        if (!c || c.style.display === 'none' || c.innerHTML.indexOf('Mohamed') === -1) {
-            if (c) c.remove();
-            renderCredits();
-        }
-    }, 3000);
 })();
