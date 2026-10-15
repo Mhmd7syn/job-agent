@@ -79,7 +79,7 @@
                 </div>
 
                 <!-- Main Section Navigation Tabs -->
-                <div class="settings-nav-tabs" style="padding: 0 1.5rem; margin-top: 1rem;">
+                <div class="settings-nav-tabs">
                     <button type="button" class="settings-nav-tab active" id="tab-sec-matching" onclick="switchSettingsSection('matching')">
                         <i class="fa-solid fa-bullseye"></i> 1. Search & Matching
                     </button>
@@ -91,7 +91,7 @@
                     </button>
                 </div>
 
-                <div class="modal-body" style="padding: 0 1.5rem 1.5rem;">
+                <div class="modal-body" style="padding: 1.25rem 1.5rem 1.5rem;">
                     <!-- ========================================== -->
                     <!-- SECTION 1: SEARCH & MATCHING               -->
                     <!-- ========================================== -->
@@ -450,10 +450,10 @@
                             </div>
                             <div style="margin-top: 1rem;">
                                 <label style="display: flex; align-items: center; justify-content: space-between;">
-                                    <span><i class="fa-solid fa-signature"></i> Saved Personal Signature</span>
-                                    <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">Appended at the end of generated cold emails</span>
+                                    <span><i class="fa-solid fa-file-code"></i> Email HTML Signature File Path</span>
+                                    <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">Path to .html signature file</span>
                                 </label>
-                                <textarea id="apply-email-signature" class="input-field" rows="4" placeholder="Best Regards,&#10;&#10;[Full Name]&#10;[Job Title / Role]&#10;&#10;📞 [Phone Number] 📧 [Email Address] 📍 [City, Country]&#10;LinkedIn: [LinkedIn URL] | GitHub: [GitHub URL]" style="width: 100%; font-family: monospace; font-size: 0.84rem; margin-top: 0.3rem;"></textarea>
+                                <input type="text" id="apply-email-signature" class="input-field" placeholder="D:\path\to\Personal Signature.html" style="width: 100%; font-family: monospace; font-size: 0.84rem; margin-top: 0.3rem;">
                             </div>
                         </div>
 
