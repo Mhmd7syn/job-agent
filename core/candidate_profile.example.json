@@ -45,7 +45,8 @@
     "smtp_port": 465,
     "smtp_email": "candidate@example.com",
     "smtp_app_password": "",
-    "email_signature_personal": "Best Regards,\nCandidate Name\nRole\n📞 +1234567890 📧 candidate@example.com",
+    "email_signature_path": "path/to/Personal Signature.html",
+    "email_signature_personal": "",
     "whatsapp_mode": "deep_link",
     "whatsapp_default_language": "auto"
   },

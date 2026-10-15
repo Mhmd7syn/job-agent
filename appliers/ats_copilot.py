@@ -169,7 +169,8 @@ def generate_ats_cover_letter(
     profile = load_profile()
     personal = profile.get("personal_info", {})
     full_name = personal.get("full_name", "")
-    signature = profile.get("auto_apply_settings", {}).get("email_signature_personal", "").strip()
+    from core.email_signature import get_signature_text
+    signature = get_signature_text(profile)
 
     if not signature:
         email = personal.get("email", "")

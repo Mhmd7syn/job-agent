@@ -1034,7 +1034,7 @@ async function loadAutoApplySettingsUI() {
         if (smtpPassEl) smtpPassEl.value = data.smtp_app_password || '';
 
         const sigEl = document.getElementById('apply-email-signature');
-        if (sigEl) sigEl.value = data.email_signature_personal || '';
+        if (sigEl) sigEl.value = data.email_signature_path || data.email_signature_personal || '';
 
         const waModeEl = document.getElementById('apply-whatsapp-mode');
         if (waModeEl) waModeEl.value = data.whatsapp_mode || 'deep_link';
@@ -1118,7 +1118,9 @@ async function saveProfileAndApplySettingsFromDOM() {
         autoApply.smtp_port = parseInt(document.getElementById('apply-smtp-port')?.value) || 465;
         autoApply.smtp_email = document.getElementById('apply-smtp-email')?.value.trim() || '';
         autoApply.smtp_app_password = document.getElementById('apply-smtp-password')?.value.trim() || '';
-        autoApply.email_signature_personal = document.getElementById('apply-email-signature')?.value || '';
+        const sigVal = document.getElementById('apply-email-signature')?.value.trim() || '';
+        autoApply.email_signature_path = sigVal;
+        autoApply.email_signature_personal = '';
         autoApply.whatsapp_mode = document.getElementById('apply-whatsapp-mode')?.value || 'deep_link';
         autoApply.whatsapp_default_language = document.getElementById('apply-whatsapp-lang')?.value || 'auto';
 
@@ -2438,11 +2440,12 @@ function openJobDetailsModal(jobId) {
             channelIcon = 'fa-solid fa-envelope';
             const candSuffix = currentProfileData?.personal_info?.full_name ? ` - ${currentProfileData.personal_info.full_name}` : '';
             const subject = payload.subject_hint || `Application for ${job.title}${candSuffix}`;
-            primaryActionUrl = payload.recipient_email ? `mailto:${payload.recipient_email}` : '';
+            const email = payload.recipient_email || payload.email || '';
+            primaryActionUrl = email ? `mailto:${email}` : '';
             detailRows = `
                 <div class="detail-row">
                     <span class="detail-label"><i class="fa-solid fa-at"></i> Recipient:</span>
-                    <span class="detail-value"><code>${escapeHtml(email)}</code></span>
+                    <span class="detail-value"><code>${escapeHtml(email || 'Email in Job Description')}</code></span>
                 </div>
                 <div class="detail-row">
                     <span class="detail-label"><i class="fa-solid fa-heading"></i> Subject:</span>

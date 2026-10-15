@@ -52,6 +52,7 @@ MOCK_PROFILE = {
         "smtp_port": 465,
         "smtp_email": "test.applicant@example.com",
         "smtp_app_password": "",
+        "email_signature_path": "",
         "email_signature_personal": "Best regards,\nTest Candidate\ntest.applicant@example.com | +201000000000",
         "whatsapp_mode": "deep_link",
         "whatsapp_default_language": "auto"

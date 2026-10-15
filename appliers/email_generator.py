@@ -13,6 +13,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 from core.applicant_profile import load_profile, get_resume_for_role
 from core.cv_parser import extract_text_from_file
 from core.database import get_job_by_id
+from core.email_signature import get_signature_text, get_signature_html
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,8 @@ def generate_email_draft(
     auto_apply = profile.get("auto_apply_settings", {})
 
     candidate_name = personal_info.get("full_name", "").strip()
-    personal_signature = auto_apply.get("email_signature_personal", "").strip()
+    signature_text = get_signature_text(profile)
+    signature_html = get_signature_html(profile)
 
     # Locate role-specific resume PDF
     cv_path = get_resume_for_role(job_title)
@@ -150,7 +152,7 @@ def generate_email_draft(
     subject = clean_hint if has_specific_code else default_subject
 
     # 2. Deterministic signature block from configuration
-    signature = personal_signature
+    signature = signature_text
 
     # 3. Simple, transparent prompt formatting
     user_prompt = EMAIL_USER_PROMPT_TEMPLATE.format(
@@ -208,7 +210,7 @@ def generate_email_draft(
         "subject": subject,
         "body": full_body,
         "raw_ai_body": raw_body,
-        "personal_signature": signature,
+        "personal_signature": signature_html or signature,
         "attached_cv": {
             "path": cv_path,
             "filename": os.path.basename(cv_path) if cv_path else None,

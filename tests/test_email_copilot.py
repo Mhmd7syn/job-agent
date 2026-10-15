@@ -107,7 +107,7 @@ def test_gmail_compose_url_builder():
 def test_windows_clipboard_copy_file():
     """Verify copying a file to the clipboard works on Windows."""
     # Test on a known existing file
-    test_file = os.path.join(BASE_DIR, "AUTO_APPLY_QUEUE.md")
+    test_file = os.path.join(BASE_DIR, "README.md")
     success = copy_file_to_clipboard(test_file)
     if sys.platform == "win32":
         assert success is True

@@ -56,6 +56,7 @@ class AutoApplySettings(BaseModel):
     smtp_port: int = 465
     smtp_email: str = ""
     smtp_app_password: str = ""
+    email_signature_path: str = ""
     email_signature_personal: str = ""
     whatsapp_mode: str = "deep_link"  # 'deep_link' (co-pilot) or 'web_automation' (auto-pilot)
     whatsapp_default_language: str = "auto"  # 'auto', 'arabic', 'english'

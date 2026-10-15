@@ -1,17 +1,123 @@
+import os
 import re
 import html
+import logging
+from html.parser import HTMLParser
 from typing import Optional, Dict, Any
 from core.applicant_profile import load_profile
+
+logger = logging.getLogger(__name__)
+
+
+class _HTMLToTextExtractor(HTMLParser):
+    """
+    Extracts structured, human-readable plain text from an HTML signature block.
+    Extracts table layout, breaks, and image alt attributes (e.g. LinkedIn, GitHub, Kaggle).
+    """
+    def __init__(self):
+        super().__init__()
+        self.pieces = []
+
+    def handle_starttag(self, tag, attrs):
+        t = tag.lower()
+        if t in ("p", "br", "tr", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
+            self.pieces.append("\n")
+        elif t == "td":
+            self.pieces.append("  ")
+        elif t == "img":
+            attrs_dict = dict(attrs)
+            alt = attrs_dict.get("alt", "").strip()
+            if alt:
+                self.pieces.append(f" {alt} ")
+
+    def handle_endtag(self, tag):
+        t = tag.lower()
+        if t in ("p", "tr", "div", "table"):
+            self.pieces.append("\n")
+
+    def handle_data(self, data):
+        self.pieces.append(data)
+
+    def get_text(self) -> str:
+        raw = "".join(self.pieces)
+        raw = html.unescape(raw)
+        lines = [re.sub(r"[ \t]+", " ", line).strip() for line in raw.split("\n")]
+        cleaned = []
+        for line in lines:
+            if line:
+                cleaned.append(line)
+        return "\n".join(cleaned).strip()
+
+
+def get_signature_path_from_config(profile: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Retrieves the HTML signature file path from candidate profile configuration.
+    """
+    if profile is None:
+        profile = load_profile()
+    return profile.get("auto_apply_settings", {}).get("email_signature_path", "").strip()
+
+
+def get_signature_html(
+    profile: Optional[Dict[str, Any]] = None,
+    signature_path: Optional[str] = None
+) -> str:
+    """
+    Loads and extracts the HTML signature from the configured path.
+    Extracts the inner body / table structure cleanly so it can be embedded into email drafts.
+    """
+    if profile is None:
+        profile = load_profile()
+
+    path = signature_path or get_signature_path_from_config(profile)
+
+    if path and os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Extract body content if wrapped in full HTML document
+            body_match = re.search(r"<body[^>]*>(.*?)</body>", content, re.DOTALL | re.IGNORECASE)
+            if body_match:
+                extracted = body_match.group(1).strip()
+            else:
+                extracted = content.strip()
+
+            return extracted
+        except Exception as e:
+            logger.error(f"Error reading HTML signature from '{path}': {e}")
+
+    # Fallback to legacy string if present
+    legacy_sig = profile.get("auto_apply_settings", {}).get("email_signature_personal", "").strip()
+    return legacy_sig
+
+
+def get_signature_text(profile: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Converts the HTML signature into a clean plain text representation for plain text email bodies or fallbacks.
+    """
+    sig_html = get_signature_html(profile)
+    if not sig_html:
+        return ""
+
+    if any(tag in sig_html.lower() for tag in ("<table", "<div", "<p", "<tr", "<td", "<br")):
+        extractor = _HTMLToTextExtractor()
+        extractor.feed(sig_html)
+        text = extractor.get_text()
+        return text
+
+    return sig_html.strip()
 
 
 def get_signature_from_config(profile: Optional[Dict[str, Any]] = None) -> str:
     """
-    Retrieves the signature directly from the candidate profile configuration.
-    No hardcoded data, external files, or filesystem lookups.
+    Retrieves the signature from configuration. Returns the HTML signature if available,
+    falling back to plain text.
     """
-    if profile is None:
-        profile = load_profile()
-    return profile.get("auto_apply_settings", {}).get("email_signature_personal", "").strip()
+    html_sig = get_signature_html(profile)
+    if html_sig:
+        return html_sig
+    return get_signature_text(profile)
 
 
 def strip_signoff_from_body(body: str) -> str:
@@ -25,12 +131,21 @@ def strip_signoff_from_body(body: str) -> str:
     return re.sub(pattern, "", body, flags=re.DOTALL).rstrip()
 
 
-def format_email_body_html(body_text: str, signature: Optional[str] = None) -> str:
+def format_email_body_html(
+    body_text: str,
+    signature: Optional[str] = None,
+    append_signature: bool = True,
+    **kwargs
+) -> str:
     """
     Formats the email body into clean HTML paragraphs and bullet lists,
-    and appends the signature directly from configuration with its format and style preserved.
+    and appends the HTML signature directly from the configured file path with its format and style preserved.
     """
-    sig = signature if signature is not None else get_signature_from_config()
+    if not append_signature:
+        sig = ""
+    else:
+        sig = signature if signature is not None else get_signature_html()
+
     body_clean = strip_signoff_from_body(body_text) if sig else body_text.strip()
     paragraphs = re.split(r"\n\s*\n", body_clean.strip())
 
@@ -60,11 +175,11 @@ def format_email_body_html(body_text: str, signature: Optional[str] = None) -> s
     body_html = "\n".join(html_parts)
 
     if sig:
-        # If signature is already HTML, keep it directly; otherwise convert text format preserving newlines
         if any(tag in sig.lower() for tag in ("<p", "<div", "<table", "<span")):
-            sig_html = sig
+            # If already contains full html tags, ensure body wrapper only if not present
+            body_match = re.search(r"<body[^>]*>(.*?)</body>", sig, re.DOTALL | re.IGNORECASE)
+            sig_html = body_match.group(1).strip() if body_match else sig
         else:
-            # Preserve exact spacing and line breaks of normal text signature from configuration
             sig_lines = sig.split("\n")
             rendered_lines = [html.escape(line) if line.strip() else "&nbsp;" for line in sig_lines]
             sig_html = (
