@@ -144,6 +144,21 @@ def run_whatsapp_autopilot_batch(
 
         # Generate tailored English pitch & role CV
         pitch_data = generate_whatsapp_pitch(job_id=job_id)
+        if pitch_data.get("status") != "success":
+            err_msg = pitch_data.get("message", "AI pitch generation unavailable")
+            log_autopilot_activity(
+                f"Postponing WhatsApp application for '{title}' at {company}: {err_msg}",
+                state
+            )
+            processed_jobs.append({
+                "job_id": job_id,
+                "title": title,
+                "company": company,
+                "status": "postponed",
+                "message": err_msg
+            })
+            continue
+
         pitch_text = pitch_data.get("pitch", "")
         cv_path = pitch_data.get("cv_path") or get_resume_for_role(title)
         cv_name = os.path.basename(cv_path) if cv_path else "Resume.pdf"

@@ -1021,8 +1021,17 @@ async function loadAutoApplySettingsUI() {
         const minScoreEl = document.getElementById('apply-min-score');
         if (minScoreEl) minScoreEl.value = data.min_relevance_score || 70;
 
+        const hostVal = data.smtp_host || 'smtp.gmail.com';
+        const providerEl = document.getElementById('apply-email-provider');
+        if (providerEl) {
+            providerEl.value = (hostVal.includes('office365') || hostVal.includes('outlook')) ? 'office365' : 'gmail';
+        }
+        if (typeof onEmailProviderChange === 'function') {
+            onEmailProviderChange();
+        }
+
         const smtpHostEl = document.getElementById('apply-smtp-host');
-        if (smtpHostEl) smtpHostEl.value = data.smtp_host || 'smtp.gmail.com';
+        if (smtpHostEl) smtpHostEl.value = hostVal;
 
         const smtpPortEl = document.getElementById('apply-smtp-port');
         if (smtpPortEl) smtpPortEl.value = data.smtp_port || 465;
@@ -1114,8 +1123,10 @@ async function saveProfileAndApplySettingsFromDOM() {
         autoApply.batch_size_per_run = parseInt(document.getElementById('apply-batch-size')?.value) || 3;
         autoApply.max_runs_per_day = parseInt(document.getElementById('apply-max-runs')?.value) || 5;
         autoApply.min_relevance_score = parseInt(document.getElementById('apply-min-score')?.value) || 70;
-        autoApply.smtp_host = document.getElementById('apply-smtp-host')?.value.trim() || 'smtp.gmail.com';
-        autoApply.smtp_port = parseInt(document.getElementById('apply-smtp-port')?.value) || 465;
+        const providerVal = document.getElementById('apply-email-provider')?.value || 'gmail';
+        autoApply.email_provider = providerVal;
+        autoApply.smtp_host = document.getElementById('apply-smtp-host')?.value.trim() || (providerVal === 'office365' ? 'smtp.office365.com' : 'smtp.gmail.com');
+        autoApply.smtp_port = parseInt(document.getElementById('apply-smtp-port')?.value) || (providerVal === 'office365' ? 587 : 465);
         autoApply.smtp_email = document.getElementById('apply-smtp-email')?.value.trim() || '';
         autoApply.smtp_app_password = document.getElementById('apply-smtp-password')?.value.trim() || '';
         const sigVal = document.getElementById('apply-email-signature')?.value.trim() || '';
@@ -1146,6 +1157,101 @@ async function saveProfileAndApplySettingsFromDOM() {
         currentProfileData = updatedProfile;
     } catch (err) {
         console.error('Failed to save profile/apply settings:', err);
+    }
+}
+
+function onEmailProviderChange() {
+    const providerEl = document.getElementById('apply-email-provider');
+    const hostEl = document.getElementById('apply-smtp-host');
+    const portEl = document.getElementById('apply-smtp-port');
+    const linkEl = document.getElementById('apply-smtp-pass-link');
+    const linkText = document.getElementById('apply-smtp-link-text');
+    const hintEl = document.getElementById('apply-smtp-hint');
+
+    const provider = providerEl ? providerEl.value : 'gmail';
+
+    if (provider === 'office365') {
+        if (hostEl) hostEl.value = 'smtp.office365.com';
+        if (portEl) portEl.value = '587';
+        if (linkEl) linkEl.href = 'https://account.live.com/proofs/manage/additional';
+        if (linkText) linkText.textContent = 'Get Office 365 App Password';
+        if (hintEl) hintEl.textContent = 'Requires 2-Step Verification enabled on your Microsoft Account.';
+    } else {
+        if (hostEl) hostEl.value = 'smtp.gmail.com';
+        if (portEl) portEl.value = '465';
+        if (linkEl) linkEl.href = 'https://myaccount.google.com/apppasswords';
+        if (linkText) linkText.textContent = 'Get Gmail App Password';
+        if (hintEl) hintEl.textContent = 'Requires 2-Step Verification enabled on your Google Account.';
+    }
+}
+
+async function sendTestSmtpEmail() {
+    const btn = document.getElementById('apply-test-smtp-btn');
+    const resultBox = document.getElementById('apply-test-smtp-result');
+    const provider = document.getElementById('apply-email-provider')?.value || 'gmail';
+    const host = document.getElementById('apply-smtp-host')?.value.trim() || (provider === 'office365' ? 'smtp.office365.com' : 'smtp.gmail.com');
+    const port = parseInt(document.getElementById('apply-smtp-port')?.value) || (provider === 'office365' ? 587 : 465);
+    const email = document.getElementById('apply-smtp-email')?.value.trim() || '';
+    const password = document.getElementById('apply-smtp-password')?.value.trim() || '';
+
+    if (!email) {
+        showToast('Please enter your Sender Email Address before testing.', 'warning', 'fa-triangle-exclamation');
+        return;
+    }
+    if (!password) {
+        showToast('Please enter your 16-character App Password before testing.', 'warning', 'fa-triangle-exclamation');
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Connecting & Sending...';
+    }
+    if (resultBox) {
+        resultBox.style.display = 'none';
+    }
+
+    try {
+        const res = await fetch('/api/email/test-smtp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                smtp_host: host,
+                smtp_port: port,
+                sender_email: email,
+                sender_password: password
+            })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.status === 'success') {
+            showToast('✓ ' + data.message, 'success', 'fa-circle-check');
+            if (resultBox) {
+                resultBox.style.display = 'block';
+                resultBox.style.background = 'rgba(16, 185, 129, 0.15)';
+                resultBox.style.color = '#34d399';
+                resultBox.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+                resultBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> ' + escapeHtml(data.message);
+            }
+        } else {
+            const errMsg = data.message || data.detail || 'SMTP test failed.';
+            showToast(errMsg, 'danger', 'fa-circle-xmark');
+            if (resultBox) {
+                resultBox.style.display = 'block';
+                resultBox.style.background = 'rgba(239, 68, 68, 0.15)';
+                resultBox.style.color = '#f87171';
+                resultBox.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                resultBox.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> ' + escapeHtml(errMsg);
+            }
+        }
+    } catch (e) {
+        console.error('Error testing SMTP:', e);
+        showToast('Failed to connect to SMTP server: ' + e.message, 'danger', 'fa-circle-xmark');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Test SMTP Connection';
+        }
     }
 }
 
@@ -2832,17 +2938,16 @@ async function openEmailCopilotModal(jobId) {
         bodyEl.disabled = true;
     }
 
-    const outlookBtn = document.getElementById('email-copilot-outlook-btn');
+    const smtpBtn = document.getElementById('email-copilot-smtp-btn');
     const appliedBtn = document.getElementById('email-copilot-applied-btn');
 
-    if (outlookBtn) {
-        outlookBtn.disabled = true;
-        outlookBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating AI Draft...';
+    if (smtpBtn) {
+        smtpBtn.style.display = 'inline-flex';
+        smtpBtn.disabled = true;
+        smtpBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating AI Draft...';
     }
     if (appliedBtn) {
-        appliedBtn.style.display = job.is_applied === 1 ? 'none' : 'inline-flex';
-        appliedBtn.className = 'btn btn-secondary';
-        appliedBtn.innerHTML = '<i class="fa-solid fa-check"></i> Mark as Applied';
+        appliedBtn.style.display = 'none';
     }
 
     modal.classList.remove('hidden');
@@ -2883,9 +2988,9 @@ async function openEmailCopilotModal(jobId) {
                 badgeEl.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini AI Tailored';
             }
 
-            if (outlookBtn) {
-                outlookBtn.disabled = false;
-                outlookBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Open in Outlook (Auto-Attached)';
+            if (smtpBtn) {
+                smtpBtn.disabled = false;
+                smtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send Direct (SMTP)';
             }
         } else {
             const errorMsg = data.detail || data.message || 'AI service is unavailable. Application draft discarded.';
@@ -2897,9 +3002,9 @@ async function openEmailCopilotModal(jobId) {
             if (badgeEl) {
                 badgeEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b;"></i> Discarded (AI Unavailable)';
             }
-            if (outlookBtn) {
-                outlookBtn.disabled = true;
-                outlookBtn.innerHTML = '<i class="fa-solid fa-ban"></i> Application Discarded';
+            if (smtpBtn) {
+                smtpBtn.disabled = true;
+                smtpBtn.innerHTML = '<i class="fa-solid fa-ban"></i> Application Discarded';
             }
         }
     } catch (err) {
@@ -2912,9 +3017,9 @@ async function openEmailCopilotModal(jobId) {
         if (badgeEl) {
             badgeEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #ef4444;"></i> Generation Error';
         }
-        if (outlookBtn) {
-            outlookBtn.disabled = true;
-            outlookBtn.innerHTML = '<i class="fa-solid fa-ban"></i> Application Discarded';
+        if (smtpBtn) {
+            smtpBtn.disabled = true;
+            smtpBtn.innerHTML = '<i class="fa-solid fa-ban"></i> Application Discarded';
         }
     }
 }
@@ -2970,19 +3075,19 @@ async function revealCvInExplorer() {
     }
 }
 
-async function openDraftInOutlook() {
+async function sendDraftDirectSMTP() {
     const recipient = document.getElementById('email-copilot-recipient')?.value.trim() || '';
     const subject = document.getElementById('email-copilot-subject')?.value.trim() || '';
     const body = document.getElementById('email-copilot-body')?.value || '';
 
-    const outlookBtn = document.getElementById('email-copilot-outlook-btn');
-    if (outlookBtn) {
-        outlookBtn.disabled = true;
-        outlookBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Launching Outlook...';
+    const smtpBtn = document.getElementById('email-copilot-smtp-btn');
+    if (smtpBtn) {
+        smtpBtn.disabled = true;
+        smtpBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending via SMTP...';
     }
 
     try {
-        const res = await fetch('/api/email/open-in-outlook', {
+        const res = await fetch('/api/email/send-direct-smtp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2990,42 +3095,48 @@ async function openDraftInOutlook() {
                 recipient: recipient,
                 subject: subject,
                 body: body,
-                raw_body: currentEmailRawBody,
-                cv_path: currentEmailCvPath,
-                personal_signature: currentEmailPersonalSig
+                cv_path: currentEmailCvPath
             })
         });
         const data = await res.json();
 
         if (res.ok && data.status === 'success') {
-            // Show status banner inside modal informing user to send & mark applied
             const statusBanner = document.getElementById('email-copilot-status-banner');
+            const statusText = document.getElementById('email-copilot-status-text');
             if (statusBanner) {
                 statusBanner.style.display = 'flex';
+                if (statusText) statusText.textContent = `Email dispatched successfully via direct SMTP to ${recipient}!`;
                 statusBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
-            // Highlight the Mark as Applied button in the footer
-            const appliedBtn = document.getElementById('email-copilot-applied-btn');
-            if (appliedBtn) {
-                appliedBtn.style.display = 'inline-flex';
-                appliedBtn.className = 'btn btn-primary';
-                appliedBtn.style.background = '#10b981';
-                appliedBtn.style.borderColor = '#10b981';
-                appliedBtn.innerHTML = '<i class="fa-solid fa-check"></i> Mark as Applied';
+            if (smtpBtn) {
+                smtpBtn.style.display = 'none';
             }
 
-            showToast('✓ Outlook opened with CV attached! Review, click Send in Outlook, then click "Mark as Applied".', 'success', 'fa-envelope-open-text');
+            // Update local state in table
+            const job = allJobs.find(j => String(j.job_id) === String(currentEmailJobId));
+            if (job) {
+                job.is_applied = 1;
+                job.apply_status = 'applied';
+                job.applied_at = new Date().toISOString();
+                job.apply_type = 'email';
+            }
+            renderTable();
+            showToast('✓ Email sent directly via SMTP and job marked as applied!', 'success', 'fa-paper-plane');
         } else {
-            showToast(data.detail || 'Failed to open Outlook compose window.', 'danger', 'fa-circle-xmark');
+            const errMsg = data.detail || data.message || 'Failed to send email via SMTP.';
+            showToast(errMsg, 'danger', 'fa-circle-xmark');
+            if (smtpBtn) {
+                smtpBtn.disabled = false;
+                smtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send Direct (SMTP)';
+            }
         }
     } catch (err) {
-        console.error('Error launching Outlook:', err);
-        showToast('Error launching Outlook.', 'danger', 'fa-circle-xmark');
-    } finally {
-        if (outlookBtn) {
-            outlookBtn.disabled = false;
-            outlookBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Open in Outlook (Auto-Attached)';
+        console.error('Error sending email via SMTP:', err);
+        showToast('Error sending email via SMTP: ' + err.message, 'danger', 'fa-circle-xmark');
+        if (smtpBtn) {
+            smtpBtn.disabled = false;
+            smtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send Direct (SMTP)';
         }
     }
 }
@@ -3052,7 +3163,7 @@ async function markCurrentEmailJobApplied() {
                 recipient: recipient,
                 subject: subject,
                 body: body,
-                applied_via: 'outlook_copilot'
+                applied_via: 'smtp_copilot'
             })
         });
 

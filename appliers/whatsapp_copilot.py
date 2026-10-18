@@ -92,10 +92,10 @@ def generate_fallback_pitch(
 
     lines = [
         f"Hello Hiring Team at {comp_display},",
-        f"I am reaching out regarding the {job_title} opportunity.",
-        f"I bring relevant technical background and hands-on experience that align closely with the role's requirements.",
-        "I have attached my tailored resume (PDF) for your review.",
-        f"Looking forward to connecting with you.",
+        f"I'm reaching out regarding the {job_title} role.",
+        "I bring relevant hands-on technical experience that aligns closely with the role's requirements.",
+        "I've attached my resume (PDF) for your review.",
+        "Looking forward to connecting with you.",
         f"\nBest regards,\n{candidate_name}"
     ]
 
@@ -178,41 +178,36 @@ def generate_whatsapp_pitch(
         except Exception as e:
             logger.warning(f"Could not extract CV text from {cv_path}: {e}")
 
-    # If no Gemini client, use deterministic fallback
+    # If no Gemini client, do not apply now; postpone to next run
     if not client:
-        result = generate_fallback_pitch(
-            job_title=job_title,
-            company=company,
-            candidate_name=candidate_name,
-            cv_path=cv_path,
-            candidate_phone=candidate_phone,
-            candidate_email=candidate_email,
-            linkedin_url=linkedin_url
-        )
-        result["phone"] = normalized_phone
-        result["whatsapp_url"] = whatsapp_url or (f"https://wa.me/{normalized_phone}" if normalized_phone else "")
-        result["desktop_url"] = build_whatsapp_desktop_url(normalized_phone, result["pitch"])
-        result["wa_me_url"] = build_wa_me_url(normalized_phone, result["pitch"])
-        result["job_id"] = job_id
-        return result
+        err_msg = "Gemini AI client is not initialized or API key is missing."
+        logger.warning(f"Postponing WhatsApp pitch for '{job_title}' at '{company}': {err_msg}")
+        return {
+            "status": "error",
+            "reason": "ai_unavailable",
+            "message": f"AI unavailable ({err_msg}). Postponed to next run.",
+            "job_id": job_id,
+            "phone": normalized_phone
+        }
 
     system_instruction = (
-        "You are an elite tech talent agent and recruiter outreach specialist.\n"
-        "Your task is to craft a concise, compelling, high-converting WhatsApp message to a recruiter or hiring manager.\n\n"
+        "You are drafting a direct, natural WhatsApp outreach message to a recruiter or hiring manager.\n"
+        "Tone: Friendly, conversational, professional—sounds like a competent person sending a quick mobile message, not an AI template.\n"
+        "Length: 50–80 words maximum.\n\n"
         "CRITICAL RULES:\n"
         "1. STRICTLY ENGLISH LANGUAGE:\n"
-        "   - ALWAYS write the message in fluent, idiomatic, professional business English.\n"
-        "   - Even if the job description or post is in Arabic or mentions an Arab country, write ONLY in English.\n"
-        "2. CONCISE & READABLE ON MOBILE (under 100 words total):\n"
-        "   - WhatsApp messages must be quick to scan on mobile screens.\n"
-        "   - Start with a polite greeting (e.g. 'Hello Hiring Team at {company},' or 'Dear {company} Team,').\n"
-        "   - Mention the target role ({job_title}).\n"
-        "   - Include 2 short bullet points summarizing matching technical skills or experience directly from the candidate's CV.\n"
-        "   - Explicitly mention that the CV/resume PDF is attached.\n"
-        "   - Sign off with candidate's full name, email, phone, and LinkedIn profile.\n"
-        "3. STRICT TRUTHFULNESS & FACTUAL GROUNDING:\n"
-        "   - Only mention real technologies, skills, or projects present in the candidate's CV.\n"
-        "   - NEVER hallucinate fake experience or ungrounded credentials.\n"
+        "   - Write in clear, natural English, even if the job description is in another language.\n"
+        "2. NATURAL CONVERSATIONAL TONE:\n"
+        "   - Use contractions naturally (I'm, I've).\n"
+        "   - Use plain, active verbs (built, worked with) rather than corporate buzzwords (spearheaded, leveraged, orchestrated).\n"
+        "   - BANNED IDIOMS & CLICHÉS: Never use colloquial idioms or slang. Never use AI cliches like 'I hope this finds you well', 'testament', 'delve', 'plethora', 'synergy', or 'esteemed'.\n"
+        "3. MESSAGE STRUCTURE:\n"
+        "   - Polite greeting: 'Hello {company} Hiring Team,' or 'Dear Hiring Team,'\n"
+        "   - Direct opener: 1 line stating you're reaching out regarding the {job_title} role.\n"
+        "   - Relevance: 2 brief bullet points or lines highlighting matching hands-on skills or projects directly from the candidate's CV.\n"
+        "   - Call to action: Note that the CV/resume PDF is attached, with a low-friction close ('Happy to chat if my background looks like a fit.').\n"
+        "   - Sign off: Candidate's full name, email, phone, and LinkedIn profile.\n"
+        "4. STRICT TRUTHFULNESS: Only mention real technologies and experiences from the CV. Never hallucinate.\n"
     )
 
     user_prompt = f"""Generate a WhatsApp outreach pitch based on the following details:
@@ -285,20 +280,13 @@ def generate_whatsapp_pitch(
                 logger.error(f"Gemini generation error on WhatsApp pitch: {e}")
                 break
 
-    # Fallback if AI generation failed or timed out
-    logger.info(f"Falling back to heuristic pitch generation for job: {job_title}")
-    result = generate_fallback_pitch(
-        job_title=job_title,
-        company=company,
-        candidate_name=candidate_name,
-        cv_path=cv_path,
-        candidate_phone=candidate_phone,
-        candidate_email=candidate_email,
-        linkedin_url=linkedin_url
-    )
-    result["phone"] = normalized_phone
-    result["whatsapp_url"] = whatsapp_url or (f"https://wa.me/{normalized_phone}" if normalized_phone else "")
-    result["desktop_url"] = build_whatsapp_desktop_url(normalized_phone, result["pitch"])
-    result["wa_me_url"] = build_wa_me_url(normalized_phone, result["pitch"])
-    result["job_id"] = job_id
-    return result
+    # Postpone to next run if AI generation failed or timed out
+    err_msg = "Gemini AI generation failed or timed out."
+    logger.warning(f"Postponing WhatsApp application for '{job_title}' at '{company}': {err_msg}")
+    return {
+        "status": "error",
+        "reason": "ai_unavailable",
+        "message": f"AI unavailable ({err_msg}). Postponed to next run.",
+        "job_id": job_id,
+        "phone": normalized_phone
+    }

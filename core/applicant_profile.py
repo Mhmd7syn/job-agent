@@ -52,6 +52,7 @@ class AutoApplySettings(BaseModel):
         "easy_apply": True,
         "platform": True
     })
+    email_provider: str = "gmail"  # 'gmail' or 'office365'
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 465
     smtp_email: str = ""

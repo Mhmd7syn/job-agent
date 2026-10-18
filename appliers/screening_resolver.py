@@ -215,19 +215,24 @@ class ScreeningResolver:
             return None
 
         prompt = f"""You are answering an application screening question for a job candidate.
-Answer CONCISELY (1-2 sentences, maximum 40 words) strictly using the candidate's real CV details.
-Do NOT invent credentials or lie.
 
----
-### CANDIDATE RESUME SUMMARY:
+Candidate Resume Details:
+\"\"\"
 {self.cv_text[:3000]}
+\"\"\"
 
----
-### QUESTION:
+Screening Question:
 {question}
 
----
-Answer strictly in professional English:"""
+Instructions:
+1. Answer directly in the first person ("I have...", "In my previous role, I...").
+2. Answer the question immediately in the first sentence. Do NOT repeat or restate the question.
+3. Length: 1–2 direct, natural sentences (maximum 35 words).
+4. Tone: Practical, confident, human English. Use natural contractions (I've, I'm) and plain verbs.
+5. Strictly avoid fluff or AI clichés (do not say "extensive experience", "leveraged", "spearheaded", "passionate").
+6. Strictly ground your answer in the candidate's real CV. Never invent credentials.
+
+Answer:"""
 
         try:
             resp = gemini_client.models.generate_content(

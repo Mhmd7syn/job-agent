@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from core.database import get_job_by_id, record_job_applied
+from core.applicant_profile import load_profile
 from appliers.email_generator import generate_email_draft
 from appliers.gmail_launcher import prepare_gmail_launch, copy_file_to_clipboard, reveal_in_explorer
-from appliers.outlook_launcher import launch_outlook_compose
+from appliers.email_worker import send_smtp_email
 from appliers.whatsapp_copilot import generate_whatsapp_pitch
 from appliers.whatsapp_launcher import launch_whatsapp_desktop
 from appliers.easy_apply_copilot import prepare_easy_apply, launch_easy_apply_session, get_session
@@ -39,21 +40,28 @@ class OpenInGmailRequest(BaseModel):
     cv_path: Optional[str] = None
     open_browser: bool = Field(default=False)
 
-class OpenInOutlookRequest(BaseModel):
-    job_id: Optional[str] = None
+class TestSmtpRequest(BaseModel):
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    sender_email: Optional[str] = None
+    sender_password: Optional[str] = None
+    recipient_email: Optional[str] = None
+
+
+class SendDirectSmtpRequest(BaseModel):
+    job_id: str
     recipient: str = Field(default="")
     subject: str = Field(default="")
     body: str = Field(default="")
-    raw_body: Optional[str] = None
     cv_path: Optional[str] = None
-    personal_signature: Optional[str] = None
+
 
 class MarkAppliedRequest(BaseModel):
     job_id: str
     recipient: Optional[str] = None
     subject: Optional[str] = None
     body: Optional[str] = None
-    applied_via: Optional[str] = "outlook_copilot"
+    applied_via: Optional[str] = "smtp_copilot"
 
 
 @router.post("/api/email/generate-draft")
@@ -63,19 +71,131 @@ def generate_email_draft_endpoint(req: EmailDraftRequest):
         raise HTTPException(status_code=404, detail=draft.get("message", "Job not found"))
     return draft
 
-@router.post("/api/email/open-in-outlook")
-def open_in_outlook_endpoint(req: OpenInOutlookRequest):
-    res = launch_outlook_compose(
-        recipient=req.recipient,
+
+@router.post("/api/email/test-smtp")
+def test_smtp_endpoint(req: Optional[TestSmtpRequest] = None):
+    """Sends a verification email to test SMTP connectivity and credentials."""
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    profile = load_profile()
+    settings = profile.get("auto_apply_settings", {})
+
+    host = (req.smtp_host if req and req.smtp_host else settings.get("smtp_host", "smtp.gmail.com")).strip()
+    port = int(req.smtp_port if req and req.smtp_port else settings.get("smtp_port", 465))
+    sender = (req.sender_email if req and req.sender_email else settings.get("smtp_email", "")).strip()
+    raw_pass = (req.sender_password if req and req.sender_password else settings.get("smtp_app_password", ""))
+    password = (raw_pass or "").replace(" ", "").strip()
+    recipient = (req.recipient_email if req and req.recipient_email else sender).strip()
+
+    if not sender:
+        return {"status": "error", "message": "Sender email is missing. Please enter your email."}
+    if not password:
+        return {"status": "error", "message": "App Password is missing. Please enter your 16-character App Password."}
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = sender
+    msg["To"] = recipient
+    msg["Subject"] = "Job Agent - Direct SMTP Test Successful 🚀"
+
+    plain_text = f"Hello,\n\nThis is a confirmation test email from Job Agent.\nDirect SMTP is working properly with {host}:{port}!\n\nStatus: Connected & Authenticated"
+    html_text = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 580px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; background: #ffffff;">
+        <h2 style="color: #2563eb; margin-top: 0;">🚀 Direct SMTP Test Verified</h2>
+        <p>Your SMTP configuration in <b>Job Agent</b> is working properly!</p>
+        <div style="background: #f8fafc; border-left: 4px solid #2563eb; padding: 10px 14px; margin: 14px 0; border-radius: 4px; font-size: 13px;">
+            <div><b>Sender:</b> {sender}</div>
+            <div><b>Host:</b> {host}</div>
+            <div><b>Port:</b> {port}</div>
+            <div><b>Status:</b> Authenticated & Connected</div>
+        </div>
+        <p style="color: #64748b; font-size: 12px; margin-bottom: 0;">You can now use direct socket dispatch for 1-click email applications.</p>
+    </div>
+    """
+    msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+    msg.attach(MIMEText(html_text, "html", "utf-8"))
+
+    try:
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, timeout=15) as server:
+                server.login(sender, password)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=15) as server:
+                server.starttls()
+                server.login(sender, password)
+                server.send_message(msg)
+        return {
+            "status": "success",
+            "message": f"Test email sent successfully to {recipient} via {host}:{port}!"
+        }
+    except smtplib.SMTPAuthenticationError:
+        return {
+            "status": "error",
+            "message": f"Authentication failed: Username or App Password rejected by {host}. Please verify your 16-character App Password."
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"SMTP Connection failed: {str(e)}"
+        }
+
+
+@router.post("/api/email/send-direct-smtp")
+def send_direct_smtp_endpoint(req: SendDirectSmtpRequest):
+    """Sends an email directly via SMTP from the Co-pilot modal."""
+    profile = load_profile()
+    settings = profile.get("auto_apply_settings", {})
+
+    host = settings.get("smtp_host", "smtp.gmail.com")
+    port = int(settings.get("smtp_port", 465))
+    sender_email = settings.get("smtp_email", "").strip()
+    sender_password = settings.get("smtp_app_password", "").replace(" ", "").strip()
+
+    if not sender_email or not sender_password:
+        raise HTTPException(
+            status_code=400,
+            detail="SMTP credentials not configured. Please set your Sender Email and App Password in Settings."
+        )
+
+    if not req.recipient:
+        raise HTTPException(status_code=400, detail="Recipient email is required.")
+
+    success = send_smtp_email(
+        smtp_host=host,
+        smtp_port=port,
+        sender_email=sender_email,
+        sender_password=sender_password,
+        recipient_email=req.recipient,
         subject=req.subject,
         body=req.body,
-        cv_path=req.cv_path,
-        raw_body=req.raw_body,
-        personal_signature=req.personal_signature
+        cv_path=req.cv_path
     )
-    if res.get("status") == "error":
-        raise HTTPException(status_code=500, detail=res.get("message", "Failed to launch Outlook"))
-    return res
+
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send email via SMTP. Check your connection or credentials in Settings."
+        )
+
+    now_str = datetime.now().isoformat()
+    record_job_applied(
+        job_id=req.job_id,
+        channel="sent_email",
+        extra_payload={
+            "recipient": req.recipient,
+            "subject": req.subject,
+            "delivery_method": "smtp_copilot",
+            "timestamp": now_str
+        }
+    )
+
+    return {
+        "status": "success",
+        "message": f"Email sent directly via SMTP to {req.recipient}!",
+        "job_id": req.job_id
+    }
 
 @router.post("/api/email/open-in-gmail")
 def open_in_gmail_endpoint(req: OpenInGmailRequest):
@@ -113,7 +233,7 @@ def mark_email_applied_endpoint(req: MarkAppliedRequest):
             "recipient": req.recipient,
             "subject": req.subject,
             "body": req.body,
-            "applied_via": req.applied_via or "outlook_copilot",
+            "applied_via": req.applied_via or "smtp_copilot",
             "timestamp": now_str
         }
     )

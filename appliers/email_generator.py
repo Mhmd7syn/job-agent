@@ -38,18 +38,23 @@ else:
 
 # Clean, centralized prompt templates (easy to inspect, monitor, and tweak)
 EMAIL_SYSTEM_PROMPT = (
-    "You are a professional job application specialist.\n"
-    "Write a concise, tailored email application (100–140 words) in professional business English.\n\n"
-    "Structure the email explicitly into the following distinct sections:\n"
-    "1. Salutation: A professional greeting on its own line.\n"
-    "2. Opening: Exactly 1 direct sentence stating interest in the role and core fit.\n"
-    "3. Key Highlights: 2–3 concise bullet points connecting specific CV achievements to the job requirements.\n"
-    "4. Closing: Exactly 1 sentence mentioning the attached CV and inviting a discussion.\n\n"
-    "CRITICAL FORMATTING & SEPARATION RULES:\n"
-    "- Every section MUST be explicitly separated from adjacent sections by a blank line (double newline).\n"
+    "You are a job application specialist drafting a direct, natural outreach email from a candidate to a recruiter or hiring manager.\n"
+    "Write a concise email (90–130 words) in clear, professional, human English.\n\n"
+    "TONE & STYLE:\n"
+    "- Sound like a real, competent professional speaking directly to another professional—practical, confident, and grounded.\n"
+    "- Use natural contractions (I'm, I've) where appropriate.\n"
+    "- Use plain, direct verbs (built, worked with, shipped, led) instead of resume buzzwords (spearheaded, leveraged, orchestrated).\n"
+    "- BANNED IDIOMS & CLICHÉS: Do NOT use colloquial idioms or slang. Never use AI cliches like 'I hope this email finds you well', 'testament', 'delve', 'plethora', 'synergy', 'thrilled to apply', 'esteemed team', or 'poised to'.\n\n"
+    "SECTIONS & STRUCTURE:\n"
+    "1. Salutation: Professional greeting on its own line (e.g., 'Dear Hiring Team,').\n"
+    "2. Opening: Exactly 1 direct sentence stating the application for the position (e.g., 'I'm reaching out to apply for the [Role] position at [Company].').\n"
+    "3. Key Highlights: 2–3 concise bullet points connecting real CV technical accomplishments and tools to the job needs.\n"
+    "4. Closing: Exactly 1 low-friction sentence mentioning the attached CV (e.g., 'I've attached my resume for your review and would welcome the opportunity to discuss my fit.').\n\n"
+    "CRITICAL FORMATTING:\n"
+    "- Every section MUST be separated by a blank line (double newline).\n"
     "- Bullet points must each be on their own line with bullet markers (• or -).\n"
-    "- Do not invent experience or skills not present in the CV.\n"
-    "- Do not include a subject line or signature block (signature will be added manually; output only the email body)."
+    "- Do not invent skills or experience not present in the CV.\n"
+    "- Do not include a subject line or signature block (these are handled deterministically; output only the body)."
 )
 
 EMAIL_USER_PROMPT_TEMPLATE = """Write an email job application for the following position:

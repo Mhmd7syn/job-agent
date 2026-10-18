@@ -181,8 +181,7 @@ def generate_ats_cover_letter(
 
     # Try AI generation via Gemini
     if gemini_client and (cv_text or job_description):
-        prompt = f"""
-You are an expert career advisor writing a tailored cover letter / application statement for a job application.
+        prompt = f"""You are drafting a concise, natural cover statement for a job application.
 
 Target Job:
 - Position: {job_title}
@@ -195,13 +194,15 @@ Candidate CV Context:
 
 Candidate Name: {full_name}
 
-Instructions:
-1. Write a professional, concise 2-paragraph cover letter in fluent English.
-2. Paragraph 1: Express strong interest in the {job_title} role at {company} and summarize relevant technical experience.
-3. Paragraph 2: Highlight 2 specific factual projects or accomplishments from the candidate's background that directly solve problems for this position.
-4. Conclude with enthusiasm for discussing contributions in an interview.
-5. STRICTLY DO NOT invent false credentials, companies, or universities.
-6. Return ONLY the cover letter body text (do not include salutation or signature, as they are appended automatically).
+Tone & Rules:
+1. Write a concise, natural 2-paragraph statement (90–130 words) in clear, human English.
+2. Tone: Professional and practical—sound like a working engineer explaining why they fit the role, not an AI template.
+3. Use natural contractions (I'm, I've) and plain verbs (built, worked with, shipped).
+4. Paragraph 1: Direct statement of interest in the {job_title} role at {company} and core tech stack/skills fit.
+5. Paragraph 2: Mention 1-2 concrete projects or technical achievements from the CV that address the job requirements.
+6. BANNED IDIOMS & CLICHÉS: Never use colloquial idioms or slang. Never use AI cliches like 'testament', 'delve', 'plethora', 'synergy', 'esteemed team', 'spearhead', or 'poised to'.
+7. STRICTLY DO NOT invent false credentials, companies, or metrics.
+8. Return ONLY the body text (do not include salutation or signature; they are attached automatically).
 """
         try:
             response = gemini_client.models.generate_content(

@@ -27,7 +27,6 @@ from core.quota_manager import (
     log_autopilot_activity,
 )
 from appliers.email_generator import generate_email_draft
-from appliers.outlook_launcher import launch_outlook_compose
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,8 @@ def send_smtp_email(
     body: str,
     cv_path: Optional[str] = None
 ) -> bool:
-    """Sends an application email via SMTP with attached CV PDF."""
+    """Sends an application email via direct SMTP with attached CV PDF."""
+    clean_password = (sender_password or "").replace(" ", "").strip()
     msg = MIMEMultipart()
     msg["From"] = sender_email
     msg["To"] = recipient_email
@@ -66,12 +66,12 @@ def send_smtp_email(
     try:
         if smtp_port == 465:
             with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=25) as server:
-                server.login(sender_email, sender_password)
+                server.login(sender_email, clean_password)
                 server.send_message(msg)
         else:
             with smtplib.SMTP(smtp_host, smtp_port, timeout=25) as server:
                 server.starttls()
-                server.login(sender_email, sender_password)
+                server.login(sender_email, clean_password)
                 server.send_message(msg)
         return True
     except Exception as e:
@@ -91,7 +91,7 @@ def run_email_autopilot_batch(
     2. Queries highest relevance unapplied email jobs.
     3. Generates tailored cold email drafts & subject hints.
     4. Automatically attaches role CV PDF from configuration.
-    5. Dispatches via SMTP (or Outlook automation).
+    5. Dispatches via direct SMTP.
     6. Updates database records and sends Telegram notification.
     """
     profile = load_profile()
@@ -232,20 +232,13 @@ def run_email_autopilot_batch(
             )
             delivery_method = "smtp"
         else:
-            # Fallback to Outlook COM automation
-            try:
-                launch_res = launch_outlook_compose(
-                    to_email=recipient_email,
-                    subject=subject,
-                    body=body,
-                    cv_path=cv_path
-                )
-                send_success = launch_res.get("status") == "success"
-                delivery_method = "outlook_com"
-            except Exception as out_err:
-                logger.error(f"Outlook automation error: {out_err}")
-                send_success = False
-                delivery_method = "failed"
+            logger.error("SMTP credentials (email or app password) not configured.")
+            log_autopilot_activity(
+                f"Skipping {title} at {company}: SMTP credentials missing. Configure App Password in Settings.",
+                state
+            )
+            send_success = False
+            delivery_method = "failed_no_credentials"
 
         if send_success:
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

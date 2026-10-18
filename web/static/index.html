@@ -430,30 +430,51 @@
                         <!-- SubPane 3.2: Email SMTP -->
                         <div id="subpane-apply-email" class="settings-subsection-pane">
                             <h3 style="margin-bottom: 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;">📧 Email Sending Configuration</h3>
-                            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 0.8rem;">
+                            
+                            <!-- Hidden inputs for backward compatibility -->
+                            <input type="hidden" id="apply-smtp-host" value="smtp.gmail.com">
+                            <input type="hidden" id="apply-smtp-port" value="465">
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
                                 <div>
-                                    <label>SMTP Host</label>
-                                    <input type="text" id="apply-smtp-host" placeholder="smtp.gmail.com">
-                                </div>
-                                <div>
-                                    <label>Port</label>
-                                    <input type="number" id="apply-smtp-port" placeholder="465">
+                                    <label>Email Provider</label>
+                                    <select id="apply-email-provider" class="input-field" onchange="onEmailProviderChange()" style="width: 100%;">
+                                        <option value="gmail" selected>Google Gmail</option>
+                                        <option value="office365">Microsoft Office 365 / Outlook</option>
+                                    </select>
                                 </div>
                                 <div>
                                     <label>Sender Email Address</label>
-                                    <input type="email" id="apply-smtp-email" placeholder="your_email@gmail.com">
-                                </div>
-                                <div>
-                                    <label>App Password (16 chars)</label>
-                                    <input type="password" id="apply-smtp-password" placeholder="xxxx xxxx xxxx xxxx">
+                                    <input type="email" id="apply-smtp-email" placeholder="mohamedh2910@gmail.com" class="input-field" style="width: 100%;">
                                 </div>
                             </div>
+
+                            <div style="margin-top: 0.8rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+                                    <label style="margin: 0;">App Password (16 chars)</label>
+                                    <a id="apply-smtp-pass-link" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; font-size: 0.78rem; text-decoration: underline; display: inline-flex; align-items: center; gap: 0.3rem;">
+                                        <i class="fa-solid fa-arrow-up-right-from-square"></i> <span id="apply-smtp-link-text">Get Gmail App Password</span>
+                                    </a>
+                                </div>
+                                <input type="password" id="apply-smtp-password" class="input-field" placeholder="xxxx xxxx xxxx xxxx" style="width: 100%;">
+                                <div id="apply-smtp-hint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                    Requires 2-Step Verification enabled on your Google Account.
+                                </div>
+                            </div>
+
                             <div style="margin-top: 1rem;">
                                 <label style="display: flex; align-items: center; justify-content: space-between;">
                                     <span><i class="fa-solid fa-file-code"></i> Email HTML Signature File Path</span>
                                     <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">Path to .html signature file</span>
                                 </label>
                                 <input type="text" id="apply-email-signature" class="input-field" placeholder="D:\path\to\Personal Signature.html" style="width: 100%; font-family: monospace; font-size: 0.84rem; margin-top: 0.3rem;">
+                            </div>
+
+                            <div style="margin-top: 1.2rem; padding-top: 0.8rem; border-top: 1px solid var(--card-border); display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;">
+                                <button type="button" id="apply-test-smtp-btn" class="btn btn-secondary" onclick="sendTestSmtpEmail()" style="font-weight: 600;">
+                                    <i class="fa-solid fa-paper-plane"></i> Test SMTP Connection
+                                </button>
+                                <div id="apply-test-smtp-result" style="display: none; font-size: 0.82rem; padding: 0.4rem 0.8rem; border-radius: 0.4rem;"></div>
                             </div>
                         </div>
 
@@ -770,10 +791,10 @@
                 <button class="close-btn" onclick="hideEmailCopilotModal()"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body" style="padding: 1.5rem;">
-                <!-- Status Banner after launching email client -->
+                <!-- Status Banner after sending email -->
                 <div id="email-copilot-status-banner" style="display: none; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 0.5rem; padding: 0.65rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #6ee7b7; align-items: center; justify-content: space-between;">
-                    <div><i class="fa-solid fa-paper-plane"></i> <span>Outlook opened with CV attached! Review, click <strong>Send</strong> in Outlook, then click <strong>Mark as Applied</strong> below.</span></div>
-                    <button type="button" class="btn btn-sm" onclick="markCurrentEmailJobApplied()" style="background: #10b981; color: white; border: none; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer;">Mark Applied Now</button>
+                    <div><i class="fa-solid fa-circle-check"></i> <span id="email-copilot-status-text">Email dispatched successfully via direct SMTP!</span></div>
+                    <button type="button" class="btn btn-sm" onclick="hideEmailCopilotModal()" style="background: #10b981; color: white; border: none; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer;">Done</button>
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.75rem;">
@@ -806,7 +827,7 @@
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
                                 <span id="email-copilot-cv-filename" style="font-size: 0.9rem; font-weight: 600; color: var(--text-main);">Resume.pdf</span>
                                 <span style="font-size: 0.72rem; background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 0.1rem 0.45rem; border-radius: 999px;">
-                                    <i class="fa-solid fa-paperclip"></i> Auto-attached in Outlook
+                                    <i class="fa-solid fa-paperclip"></i> Auto-attached via SMTP
                                 </span>
                             </div>
                             <div id="email-copilot-cv-meta" style="font-size: 0.78rem; color: var(--text-muted);">Resolved from configured role resume</div>
@@ -829,10 +850,10 @@
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
                     <button type="button" class="btn btn-secondary" onclick="hideEmailCopilotModal()"><i class="fa-solid fa-xmark"></i> Cancel</button>
-                    <button type="button" id="email-copilot-outlook-btn" class="btn btn-primary" onclick="openDraftInOutlook()" style="background: #0078d4; border-color: #0078d4; font-weight: 600;">
-                        <i class="fa-solid fa-paper-plane"></i> Open in Outlook (Auto-Attached)
+                    <button type="button" id="email-copilot-smtp-btn" class="btn btn-primary" onclick="sendDraftDirectSMTP()" style="background: #10b981; border-color: #10b981; font-weight: 600;">
+                        <i class="fa-solid fa-paper-plane"></i> Send Direct (SMTP)
                     </button>
-                    <button type="button" id="email-copilot-applied-btn" class="btn btn-secondary" onclick="markCurrentEmailJobApplied()" style="border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-weight: 600;" title="Click after sending in Outlook to mark applied in database">
+                    <button type="button" id="email-copilot-applied-btn" class="btn btn-secondary" onclick="markCurrentEmailJobApplied()" style="border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-weight: 600; display: none;" title="Mark applied in database">
                         <i class="fa-solid fa-check"></i> Mark as Applied
                     </button>
                 </div>
