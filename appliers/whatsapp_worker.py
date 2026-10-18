@@ -8,12 +8,20 @@ import urllib.parse
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from dotenv import load_dotenv
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
+except ImportError:
+    pass
 
-from core.database import DB_PATH, record_job_applied
+from core.database import (
+    DB_PATH,
+    record_job_applied,
+    get_autopilot_applied_tracker,
+    is_job_eligible_for_autopilot,
+    register_autopilot_applied,
+)
 from core.applicant_profile import load_profile, get_resume_for_role
 from appliers.whatsapp_copilot import generate_whatsapp_pitch, normalize_phone_number
 from core.quota_manager import (
@@ -54,7 +62,7 @@ def run_whatsapp_autopilot_batch(
         }
 
     channels_enabled = settings.get("channels_enabled", {})
-    if not channels_enabled.get("whatsapp", True) and not force:
+    if not channels_enabled.get("whatsapp", False):
         return {
             "status": "skipped",
             "message": "WhatsApp channel is disabled in auto-apply settings.",
@@ -87,19 +95,38 @@ def run_whatsapp_autopilot_batch(
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    tracker = get_autopilot_applied_tracker(conn)
     cursor = conn.cursor()
 
     fetch_limit = max(batch_size * 5, 20)
     cursor.execute("""
         SELECT * FROM jobs
         WHERE is_applied = 0
+          AND (apply_status IS NULL OR apply_status != 'applied')
+          AND (status IS NULL OR status IN ('pending', 'liked'))
+          AND status NOT IN ('not_related', 'filtered', 'applied')
           AND apply_type = 'whatsapp'
+          AND relevance_score > 0
           AND relevance_score >= ?
         ORDER BY relevance_score DESC
         LIMIT ?
     """, (min_score, fetch_limit))
-    candidate_jobs = [dict(r) for r in cursor.fetchall()]
+    raw_candidates = [dict(r) for r in cursor.fetchall()]
     conn.close()
+
+    candidate_jobs = []
+    for c_job in raw_candidates:
+        eligible, reason = is_job_eligible_for_autopilot(
+            c_job,
+            applied_tracker=tracker,
+            min_score=min_score,
+            channel="whatsapp",
+            channels_enabled=channels_enabled
+        )
+        if eligible:
+            candidate_jobs.append(c_job)
+        else:
+            log_autopilot_activity(f"Auto-Pilot filter: Excluding '{c_job.get('title')}' at {c_job.get('company')} ({reason}).", state)
 
     if not candidate_jobs:
         msg = f"No eligible unapplied WhatsApp jobs found with relevance score >= {min_score}."
@@ -126,6 +153,18 @@ def run_whatsapp_autopilot_batch(
         company = job.get("company", "")
         score = job.get("relevance_score", 0)
 
+        # Authoritative eligibility re-check
+        eligible, reason = is_job_eligible_for_autopilot(
+            job,
+            applied_tracker=tracker,
+            min_score=min_score,
+            channel="whatsapp",
+            channels_enabled=channels_enabled
+        )
+        if not eligible:
+            log_autopilot_activity(f"Skipping '{title}' at {company}: {reason}.", state)
+            continue
+
         raw_payload = job.get("apply_payload", {})
         payload = json.loads(raw_payload) if isinstance(raw_payload, str) else (raw_payload or {})
         raw_phone = payload.get("phone", "")
@@ -138,6 +177,12 @@ def run_whatsapp_autopilot_batch(
 
         if not phone:
             log_autopilot_activity(f"Skipping {title} at {company}: No valid phone number resolved.", state)
+            continue
+
+        from core.database import _clean_phone
+        clean_p = _clean_phone(phone)
+        if clean_p and clean_p in tracker.get("applied_phones", set()):
+            log_autopilot_activity(f"Skipping '{title}' at {company}: WhatsApp contact '{phone}' was already applied to.", state)
             continue
 
         log_autopilot_activity(f"[{idx+1}/{len(candidate_jobs)}] Formulating English pitch for '{title}' at {company} (Phone: {phone})...", state)
@@ -165,8 +210,11 @@ def run_whatsapp_autopilot_batch(
 
         if dry_run:
             log_autopilot_activity(f"[Dry Run] Would send WhatsApp message to {phone} with CV {cv_name}.", state)
+            register_autopilot_applied(job, tracker, phone=phone)
             success_count += 1
             processed_jobs.append({"job_id": job_id, "title": title, "status": "dry_run_success"})
+            if success_count >= batch_size:
+                break
             continue
 
         # Execute automated dispatch via Playwright WhatsApp Web
@@ -186,6 +234,7 @@ def run_whatsapp_autopilot_batch(
             dispatch_method = "failed"
 
         if send_success:
+            register_autopilot_applied(job, tracker, phone=phone)
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             payload["sent_whatsapp"] = {
                 "phone": phone,
@@ -211,6 +260,9 @@ def run_whatsapp_autopilot_batch(
                 "status": "applied",
                 "method": dispatch_method
             })
+
+            if success_count >= batch_size:
+                break
 
             # Anti-ban safety pacing between chats (15–25s)
             if idx < len(candidate_jobs) - 1:

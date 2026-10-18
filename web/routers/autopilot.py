@@ -17,6 +17,7 @@ from appliers.master_orchestrator import (
     get_applications_aggregate_stats,
     resolve_telegram_hitl_answer
 )
+from core.task_scheduler import sync_autopilot_windows_task, get_autopilot_windows_task_status
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ def autopilot_status_endpoint():
     is_enabled = bool(settings.get("enabled", False))
     state["is_enabled"] = is_enabled
     state["is_paused"] = not is_enabled
+    state["task_scheduler"] = get_autopilot_windows_task_status()
     return state
 
 @router.post("/api/autopilot/toggle-state")
@@ -73,11 +75,13 @@ def autopilot_toggle_state_endpoint(req: ToggleAutoPilotRequest):
         profile["auto_apply_settings"] = {}
     profile["auto_apply_settings"]["enabled"] = req.enabled
     save_profile(profile)
+    task_res = sync_autopilot_windows_task(profile["auto_apply_settings"])
     state_label = "Active / Resumed" if req.enabled else "Paused"
     return {
         "status": "success",
         "enabled": req.enabled,
         "is_paused": not req.enabled,
+        "task_scheduler": task_res,
         "message": f"Auto-Pilot is now {state_label}."
     }
 

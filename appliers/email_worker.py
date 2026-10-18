@@ -12,12 +12,20 @@ from email.header import Header
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from dotenv import load_dotenv
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
+except ImportError:
+    pass
 
-from core.database import DB_PATH, record_job_applied
+from core.database import (
+    DB_PATH,
+    record_job_applied,
+    get_autopilot_applied_tracker,
+    is_job_eligible_for_autopilot,
+    register_autopilot_applied,
+)
 from core.applicant_profile import load_profile, get_resume_for_role
 from core.telegram_bot import notify_telegram_candidate
 from core.quota_manager import (
@@ -113,7 +121,7 @@ def run_email_autopilot_batch(
         }
 
     channels_enabled = settings.get("channels_enabled", {})
-    if not channels_enabled.get("email", True) and not force:
+    if not channels_enabled.get("email", True):
         return {
             "status": "skipped",
             "message": "Email channel is disabled in auto-apply settings.",
@@ -142,18 +150,38 @@ def run_email_autopilot_batch(
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    tracker = get_autopilot_applied_tracker(conn)
     cursor = conn.cursor()
 
+    fetch_limit = max(batch_size * 5, 25)
     cursor.execute("""
         SELECT * FROM jobs
         WHERE is_applied = 0
+          AND (apply_status IS NULL OR apply_status != 'applied')
+          AND (status IS NULL OR status IN ('pending', 'liked'))
+          AND status NOT IN ('not_related', 'filtered', 'applied')
           AND apply_type = 'email'
+          AND relevance_score > 0
           AND relevance_score >= ?
         ORDER BY relevance_score DESC
         LIMIT ?
-    """, (min_score, batch_size))
-    candidate_jobs = [dict(r) for r in cursor.fetchall()]
+    """, (min_score, fetch_limit))
+    raw_candidates = [dict(r) for r in cursor.fetchall()]
     conn.close()
+
+    candidate_jobs = []
+    for c_job in raw_candidates:
+        eligible, reason = is_job_eligible_for_autopilot(
+            c_job,
+            applied_tracker=tracker,
+            min_score=min_score,
+            channel="email",
+            channels_enabled=channels_enabled
+        )
+        if eligible:
+            candidate_jobs.append(c_job)
+        else:
+            log_autopilot_activity(f"Auto-Pilot filter: Excluding '{c_job.get('title')}' at {c_job.get('company')} ({reason}).", state)
 
     if not candidate_jobs:
         msg = f"No eligible unapplied email jobs found with relevance score >= {min_score}."
@@ -177,18 +205,38 @@ def run_email_autopilot_batch(
     success_count = 0
 
     for idx, job in enumerate(candidate_jobs):
+        if success_count >= batch_size:
+            break
+
         job_id = job.get("job_id")
         title = job.get("title", "")
         company = job.get("company", "")
         score = job.get("relevance_score", 0)
 
+        # Authoritative eligibility re-check (in case tracker was updated in earlier iterations)
+        eligible, reason = is_job_eligible_for_autopilot(
+            job,
+            applied_tracker=tracker,
+            min_score=min_score,
+            channel="email",
+            channels_enabled=channels_enabled
+        )
+        if not eligible:
+            log_autopilot_activity(f"Skipping '{title}' at {company}: {reason}.", state)
+            continue
+
         # Parse payload
         raw_payload = job.get("apply_payload", {})
         payload = json.loads(raw_payload) if isinstance(raw_payload, str) else (raw_payload or {})
-        recipient_email = payload.get("recipient_email") or ""
+        recipient_email = (payload.get("recipient_email") or "").strip()
 
         if not recipient_email:
             log_autopilot_activity(f"Skipping {title} at {company}: No recipient email extracted.", state)
+            continue
+
+        clean_recipient = recipient_email.lower()
+        if clean_recipient in tracker.get("applied_emails", set()):
+            log_autopilot_activity(f"Skipping '{title}' at {company}: Recipient email '{clean_recipient}' was already applied to.", state)
             continue
 
         log_autopilot_activity(f"[{idx+1}/{len(candidate_jobs)}] Processing '{title}' at {company} (Score: {score})...", state)
@@ -218,8 +266,11 @@ def run_email_autopilot_batch(
 
         if dry_run:
             log_autopilot_activity(f"[Dry Run] Would send email to {recipient_email} with CV {cv_name}.", state)
+            register_autopilot_applied(job, tracker, recipient_email=clean_recipient)
             success_count += 1
             processed_jobs.append({"job_id": job_id, "title": title, "status": "dry_run_success"})
+            if success_count >= batch_size:
+                break
             continue
 
         send_success = False
@@ -248,6 +299,7 @@ def run_email_autopilot_batch(
             delivery_method = "failed_no_credentials"
 
         if send_success:
+            register_autopilot_applied(job, tracker, recipient_email=clean_recipient)
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             payload["sent_email"] = {
                 "recipient": recipient_email,
@@ -274,6 +326,9 @@ def run_email_autopilot_batch(
                 "status": "applied",
                 "method": delivery_method
             })
+
+            if success_count >= batch_size:
+                break
 
             # Add throttling jitter delay between sends (5–12s) to protect sender domain reputation
             if idx < len(candidate_jobs) - 1:

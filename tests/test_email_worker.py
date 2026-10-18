@@ -32,6 +32,15 @@ def test_email_worker_paused_by_default():
     assert "disabled" in res["message"].lower() or "paused" in res["message"].lower()
 
 
+def test_email_channel_disabled_skips_even_when_forced():
+    """Verifies that email worker returns skipped if email channel is unchecked in settings, even when forced."""
+    mock_profile = {"auto_apply_settings": {"enabled": True, "channels_enabled": {"email": False}}}
+    with patch("appliers.email_worker.load_profile", return_value=mock_profile):
+        res = run_email_autopilot_batch(force=True)
+        assert res["status"] == "skipped"
+        assert "disabled" in res["message"].lower()
+
+
 def test_rate_limiter_blocks_when_max_reached():
     """Verifies that the rate limiter halts execution when max runs are reached."""
     state = get_autopilot_state()

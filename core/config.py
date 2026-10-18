@@ -1,10 +1,12 @@
 import os
 import json
-from dotenv import load_dotenv
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root
 env_path = os.path.join(BASE_DIR, '.env')
-load_dotenv(dotenv_path=env_path)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=env_path)
+except ImportError:
+    pass
 
 def decrypt_value(encrypted_val):
     if not encrypted_val:

@@ -37,6 +37,15 @@ def test_whatsapp_anti_ban_cap():
         save_autopilot_state(state)
 
 
+def test_whatsapp_channel_disabled_skips_even_when_forced():
+    """Verifies that WhatsApp worker returns skipped if whatsapp channel is unchecked in settings, even when forced."""
+    mock_profile = {"auto_apply_settings": {"enabled": True, "channels_enabled": {"whatsapp": False}}}
+    with patch("appliers.whatsapp_worker.load_profile", return_value=mock_profile):
+        res = run_whatsapp_autopilot_batch(force=True)
+        assert res["status"] == "skipped"
+        assert "disabled" in res["message"].lower()
+
+
 def test_whatsapp_dry_run():
     """Verifies that dry-run identifies target WhatsApp jobs without modifying DB state."""
     conn = sqlite3.connect(DB_PATH)
@@ -48,8 +57,10 @@ def test_whatsapp_dry_run():
     if not row:
         pytest.skip("No WhatsApp jobs in database for dry-run test")
 
-    res = run_whatsapp_autopilot_batch(force=True, dry_run=True, batch_limit=1)
-    assert res["status"] in ("success", "no_jobs")
+    mock_profile = {"auto_apply_settings": {"enabled": True, "channels_enabled": {"whatsapp": True}}}
+    with patch("appliers.whatsapp_worker.load_profile", return_value=mock_profile):
+        res = run_whatsapp_autopilot_batch(force=True, dry_run=True, batch_limit=1)
+        assert res["status"] in ("success", "no_jobs")
 
 
 def test_simulated_whatsapp_batch_execution():
@@ -73,8 +84,17 @@ def test_simulated_whatsapp_batch_execution():
     conn.commit()
     conn.close()
 
+    mock_pitch = {
+        "status": "success",
+        "message": "Hello, I am applying for this role.",
+        "cv_path": os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "README.md")
+    }
+    mock_profile = {"auto_apply_settings": {"enabled": True, "channels_enabled": {"whatsapp": True}}}
+
     try:
-        with patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=True), \
+        with patch("appliers.whatsapp_worker.load_profile", return_value=mock_profile), \
+             patch("appliers.whatsapp_worker.generate_whatsapp_pitch", return_value=mock_pitch), \
+             patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=True), \
              patch("appliers.whatsapp_worker.notify_telegram_candidate") as mock_tg:
             res = run_whatsapp_autopilot_batch(force=True, dry_run=False, batch_limit=1)
             assert res["status"] == "success"
@@ -120,8 +140,17 @@ def test_whatsapp_batch_failure_notifies_telegram():
     conn.commit()
     conn.close()
 
+    mock_pitch = {
+        "status": "success",
+        "message": "Hello, I am applying for this role.",
+        "cv_path": os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "README.md")
+    }
+    mock_profile = {"auto_apply_settings": {"enabled": True, "channels_enabled": {"whatsapp": True}}}
+
     try:
-        with patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=False), \
+        with patch("appliers.whatsapp_worker.load_profile", return_value=mock_profile), \
+             patch("appliers.whatsapp_worker.generate_whatsapp_pitch", return_value=mock_pitch), \
+             patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=False), \
              patch("appliers.whatsapp_worker.notify_telegram_candidate") as mock_tg:
 
             res = run_whatsapp_autopilot_batch(force=True, dry_run=False, batch_limit=1)

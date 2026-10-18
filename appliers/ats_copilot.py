@@ -7,10 +7,12 @@ import sqlite3
 import re
 from typing import Dict, Any, Optional, List
 
-from dotenv import load_dotenv
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
+except ImportError:
+    pass
 
 from core.database import DB_PATH, get_job_by_id, record_job_applied
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening

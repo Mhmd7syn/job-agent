@@ -13,7 +13,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-from scrapers.link_scraper import scrape_job_from_url
+def scrape_job_from_url(*args, **kwargs):
+    from scrapers.link_scraper import scrape_job_from_url as _scrape
+    return _scrape(*args, **kwargs)
 from core.database import save_or_update_job, get_job_by_url, get_job_by_id, delete_job_by_id
 
 logger = logging.getLogger("telegram_bot")

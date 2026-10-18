@@ -3,10 +3,12 @@ import re
 import logging
 from typing import Dict, Any, Optional
 
-from dotenv import load_dotenv
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
+except ImportError:
+    pass
 
 from core.applicant_profile import load_profile, resolve_contextual_screening, get_resume_for_role
 from core.cv_parser import extract_text_from_file

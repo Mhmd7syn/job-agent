@@ -6,12 +6,19 @@ import sqlite3
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from dotenv import load_dotenv
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
+except ImportError:
+    pass
 
-from core.database import DB_PATH
+from core.database import (
+    DB_PATH,
+    get_autopilot_applied_tracker,
+    is_job_eligible_for_autopilot,
+    register_autopilot_applied,
+)
 from core.applicant_profile import load_profile, save_profile, get_resume_for_role
 from core.quota_manager import (
     get_autopilot_state,
@@ -79,7 +86,7 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
         }
 
         # 1. Run Email Auto-Pilot Batch
-        if channels.get("email", True) or force:
+        if channels.get("email", True):
             log_autopilot_activity("Running Email Auto-Pilot pipeline...", state)
             try:
                 results["email_batch"] = run_email_autopilot_batch(force=force, dry_run=dry_run)
@@ -87,9 +94,16 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
                 logger.error(f"Email batch error in master cycle: {e}")
                 results["email_batch"] = {"status": "error", "message": str(e)}
                 notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Email batch failed ({str(e)[:100]}).")
+        else:
+            log_autopilot_activity("Email channel is disabled in settings; skipping.", state)
+            results["email_batch"] = {
+                "status": "skipped",
+                "message": "Email channel is disabled in auto-apply settings.",
+                "processed_count": 0
+            }
 
         # 2. Run WhatsApp Auto-Pilot Batch
-        if channels.get("whatsapp", True) or force:
+        if channels.get("whatsapp", False):
             log_autopilot_activity("Running WhatsApp Auto-Pilot pipeline...", state)
             try:
                 results["whatsapp_batch"] = run_whatsapp_autopilot_batch(force=force, dry_run=dry_run)
@@ -97,12 +111,30 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
                 logger.error(f"WhatsApp batch error in master cycle: {e}")
                 results["whatsapp_batch"] = {"status": "error", "message": str(e)}
                 notify_telegram_candidate(f"⚠️ Auto-Pilot Error: WhatsApp batch failed ({str(e)[:100]}).")
+        else:
+            log_autopilot_activity("WhatsApp channel is disabled in settings; skipping.", state)
+            results["whatsapp_batch"] = {
+                "status": "skipped",
+                "message": "WhatsApp channel is disabled in auto-apply settings.",
+                "processed_count": 0
+            }
 
         # 3. Process Autonomous Easy Apply & ATS candidates with HITL loop
-        if channels.get("easy_apply", True) or channels.get("platform", True) or force:
-            log_autopilot_activity("Processing Easy Apply & ATS candidate queue...", state)
+        enabled_form_channels = []
+        if channels.get("easy_apply", False):
+            enabled_form_channels.append("easy_apply")
+        if channels.get("platform", False):
+            enabled_form_channels.append("platform")
+
+        if enabled_form_channels:
+            log_autopilot_activity(f"Processing candidate queue for channels: {enabled_form_channels}...", state)
             try:
-                ea_results = _process_autonomous_form_jobs(min_score=settings.get("min_relevance_score", 70), dry_run=dry_run, state=state)
+                ea_results = _process_autonomous_form_jobs(
+                    min_score=settings.get("min_relevance_score", 70),
+                    dry_run=dry_run,
+                    state=state,
+                    enabled_types=enabled_form_channels
+                )
                 results["easy_apply_batch"] = ea_results
                 if ea_results.get("status") == "error":
                     notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Form jobs error ({ea_results.get('message', '')[:100]}).")
@@ -110,6 +142,13 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
                 logger.error(f"Form jobs error in master cycle: {e}")
                 results["easy_apply_batch"] = {"status": "error", "message": str(e)}
                 notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Form jobs batch failed ({str(e)[:100]}).")
+        else:
+            log_autopilot_activity("Form channels (Easy Apply / Platform) are disabled in settings; skipping.", state)
+            results["easy_apply_batch"] = {
+                "status": "skipped",
+                "message": "Easy Apply and Platform channels are disabled in auto-apply settings.",
+                "processed_count": 0
+            }
 
         log_autopilot_activity("=== [Master Auto-Pilot Cycle Completed] ===", state)
         save_autopilot_state(state)
@@ -124,40 +163,99 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
         _is_cycle_running = False
 
 
-def _process_autonomous_form_jobs(min_score: int = 70, dry_run: bool = False, state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _process_autonomous_form_jobs(
+    min_score: int = 70,
+    dry_run: bool = False,
+    state: Optional[Dict[str, Any]] = None,
+    enabled_types: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """
     Evaluates unapplied Easy Apply and ATS jobs, resolving screening questions,
     and delegating unanswerable questions to Telegram HITL.
     """
+    if enabled_types is None:
+        profile = load_profile()
+        p_settings = profile.get("auto_apply_settings", {})
+        p_channels = p_settings.get("channels_enabled", {})
+        enabled_types = []
+        if p_channels.get("easy_apply", False):
+            enabled_types.append("easy_apply")
+        if p_channels.get("platform", False):
+            enabled_types.append("platform")
+
+    if not enabled_types:
+        return {
+            "status": "skipped",
+            "message": "Form channels (easy_apply, platform) are disabled in settings.",
+            "processed_count": 0
+        }
+
     if not os.path.exists(DB_PATH):
         return {"status": "error", "message": "Database not found."}
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    tracker = get_autopilot_applied_tracker(conn)
     cursor = conn.cursor()
 
-    cursor.execute("""
+    fetch_limit = 20
+    placeholders = ",".join("?" for _ in enabled_types)
+    cursor.execute(f"""
         SELECT * FROM jobs
         WHERE is_applied = 0
-          AND apply_type IN ('easy_apply', 'platform')
+          AND (apply_status IS NULL OR apply_status != 'applied')
+          AND (status IS NULL OR status IN ('pending', 'liked'))
+          AND status NOT IN ('not_related', 'filtered', 'applied')
+          AND apply_type IN ({placeholders})
+          AND relevance_score > 0
           AND relevance_score >= ?
         ORDER BY relevance_score DESC
-        LIMIT 3
-    """, (min_score,))
-    jobs = [dict(r) for r in cursor.fetchall()]
+        LIMIT ?
+    """, (*enabled_types, min_score, fetch_limit))
+    raw_candidates = [dict(r) for r in cursor.fetchall()]
     conn.close()
 
-    if not jobs:
+    candidate_jobs = []
+    for c_job in raw_candidates:
+        c_type = c_job.get("apply_type")
+        eligible, reason = is_job_eligible_for_autopilot(
+            c_job,
+            applied_tracker=tracker,
+            min_score=min_score,
+            channel=c_type,
+            channels_enabled={t: True for t in enabled_types}
+        )
+        if eligible:
+            candidate_jobs.append(c_job)
+        else:
+            log_autopilot_activity(f"Auto-Pilot filter: Excluding form candidate '{c_job.get('title')}' at {c_job.get('company')} ({reason}).", state)
+
+    if not candidate_jobs:
         return {"status": "no_jobs", "processed_count": 0}
 
     processed = []
-    for job in jobs:
+    for job in candidate_jobs:
+        if len(processed) >= 3:
+            break
+
         job_id = job.get("job_id")
         title = job.get("title", "")
         company = job.get("company", "")
         cv_path = get_resume_for_role(title)
 
+        eligible, reason = is_job_eligible_for_autopilot(
+            job,
+            applied_tracker=tracker,
+            min_score=min_score,
+            channel=job.get("apply_type"),
+            channels_enabled={t: True for t in enabled_types}
+        )
+        if not eligible:
+            log_autopilot_activity(f"Skipping form candidate '{title}' at {company}: {reason}.", state)
+            continue
+
         if dry_run:
+            register_autopilot_applied(job, tracker)
             processed.append({"job_id": job_id, "title": title, "status": "dry_run_ready"})
             continue
 
@@ -184,6 +282,7 @@ def _process_autonomous_form_jobs(min_score: int = 70, dry_run: bool = False, st
         conn.commit()
         conn.close()
 
+        register_autopilot_applied(job, tracker)
         processed.append({"job_id": job_id, "title": title, "status": "screened_ready"})
 
     return {
@@ -379,3 +478,8 @@ def stop_master_scheduler():
     """Stops the background autonomous scheduler thread."""
     global _scheduler_stop_event
     _scheduler_stop_event.set()
+
+
+if __name__ == "__main__":
+    run_master_autopilot_cycle(force=False)
+

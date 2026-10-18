@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 
 from core.applicant_profile import load_profile, save_profile, scan_resume_directory
 from core.database import backfill_job_classifications
+from core.task_scheduler import sync_autopilot_windows_task
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,6 +21,8 @@ def save_profile_endpoint(profile_data: Dict[str, Any]):
     success = save_profile(profile_data)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save profile data.")
+    if "auto_apply_settings" in profile_data:
+        sync_autopilot_windows_task(profile_data["auto_apply_settings"])
     return {"status": "success", "profile": load_profile()}
 
 @router.api_route("/api/profile/scan-resumes", methods=["GET", "POST"])
@@ -78,6 +81,7 @@ def save_auto_apply_settings_endpoint(settings_data: Dict[str, Any]):
     profile = load_profile()
     profile["auto_apply_settings"] = settings_data
     save_profile(profile)
+    sync_autopilot_windows_task(settings_data)
     return {"status": "success", "settings": profile.get("auto_apply_settings", {})}
 
 @router.post("/api/jobs/classify-all")
