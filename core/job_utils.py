@@ -11,6 +11,16 @@ GENERIC_COMPANY_NAMES = {
 }
 
 
+def is_confidential_company(company: Optional[str]) -> bool:
+    """
+    Checks whether a company name is marked confidential, unknown, or a generic placeholder.
+    """
+    if not company:
+        return True
+    c = str(company).strip().lower()
+    return c in GENERIC_COMPANY_NAMES or c in ("company", "none", "n/a", "null") or "confidential" in c
+
+
 def make_job_id(title: str, company: str, job_url: str = "") -> str:
     """
     Generates a clean, deterministic unique ID for the job.

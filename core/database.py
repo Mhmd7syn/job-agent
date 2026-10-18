@@ -420,11 +420,16 @@ def record_job_applied(job_id: str, channel: str = "", extra_payload: Optional[D
         if channel and extra_payload:
             payload[channel] = extra_payload
 
+        canonical_channel = channel.replace("sent_", "") if (channel and channel.startswith("sent_")) else (channel or "")
         cursor.execute("""
             UPDATE jobs 
-            SET is_applied = 1, apply_status = 'applied', applied_at = ?, apply_payload = ?
+            SET is_applied = 1,
+                apply_status = 'applied',
+                applied_at = ?,
+                apply_channel = CASE WHEN ? != '' THEN ? ELSE apply_channel END,
+                apply_payload = ?
             WHERE job_id = ?
-        """, (now_str, json.dumps(payload, ensure_ascii=False), job_id))
+        """, (now_str, canonical_channel, canonical_channel, json.dumps(payload, ensure_ascii=False), job_id))
         conn.commit()
         conn.close()
         return {"status": "success", "job_id": job_id, "applied_at": now_str}

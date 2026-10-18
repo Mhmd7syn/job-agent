@@ -162,13 +162,20 @@ def send_direct_smtp_endpoint(req: SendDirectSmtpRequest):
     if not req.recipient:
         raise HTTPException(status_code=400, detail="Recipient email is required.")
 
+    subject = (req.subject or "").strip()
+    if not subject:
+        job = get_job_by_id(req.job_id)
+        job_title = (job.get("title") or "").strip() if job else ""
+        cand_name = profile.get("personal_info", {}).get("full_name", "").strip()
+        subject = f"Application: {job_title} – {cand_name}" if (job_title and cand_name) else (f"Application: {job_title}" if job_title else "Job Application")
+
     success = send_smtp_email(
         smtp_host=host,
         smtp_port=port,
         sender_email=sender_email,
         sender_password=sender_password,
         recipient_email=req.recipient,
-        subject=req.subject,
+        subject=subject,
         body=req.body,
         cv_path=req.cv_path
     )
@@ -185,7 +192,7 @@ def send_direct_smtp_endpoint(req: SendDirectSmtpRequest):
         channel="sent_email",
         extra_payload={
             "recipient": req.recipient,
-            "subject": req.subject,
+            "subject": subject,
             "delivery_method": "smtp_copilot",
             "timestamp": now_str
         }

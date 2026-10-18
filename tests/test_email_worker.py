@@ -8,6 +8,7 @@ from appliers.email_worker import (
     get_autopilot_state,
     save_autopilot_state,
     run_email_autopilot_batch,
+    send_smtp_email,
     AUTOPILOT_STATE_FILE
 )
 from core.database import DB_PATH
@@ -155,4 +156,85 @@ def test_email_batch_failure_notifies_telegram():
         cursor.execute("UPDATE jobs SET is_applied = 0, apply_status = 'pending', apply_payload = ? WHERE job_id = ?", (orig_payload, job_id))
         conn.commit()
         conn.close()
+
+
+def test_send_smtp_email_attaches_subject():
+    """Verifies that send_smtp_email explicitly sets the Subject header on the outgoing message."""
+    from unittest.mock import MagicMock
+    from email.header import decode_header
+
+    mock_server = MagicMock()
+    with patch("smtplib.SMTP_SSL") as mock_smtp_ssl:
+        mock_smtp_ssl.return_value.__enter__.return_value = mock_server
+
+        success = send_smtp_email(
+            smtp_host="smtp.gmail.com",
+            smtp_port=465,
+            sender_email="sender@example.com",
+            sender_password="secretpassword",
+            recipient_email="hr@targetcompany.com",
+            subject="Application: Lead AI Engineer - Jane Doe",
+            body="Hello,\n\nPlease find my application attached.\n\nBest,\nJane"
+        )
+
+        assert success is True
+        mock_server.login.assert_called_once_with("sender@example.com", "secretpassword")
+        assert mock_server.send_message.called
+        sent_msg = mock_server.send_message.call_args[0][0]
+
+        assert sent_msg["From"] == "sender@example.com"
+        assert sent_msg["To"] == "hr@targetcompany.com"
+        assert sent_msg["Subject"] is not None
+
+        # Decode header if encoded
+        decoded_chunks = decode_header(sent_msg["Subject"])
+        decoded_subject = "".join(
+            c.decode(enc or "utf-8") if isinstance(c, bytes) else c
+            for c, enc in decoded_chunks
+        )
+        assert decoded_subject == "Application: Lead AI Engineer - Jane Doe"
+
+
+def test_send_smtp_email_unicode_and_fallback():
+    """Verifies that send_smtp_email handles unicode characters and falls back gracefully when subject is empty."""
+    from unittest.mock import MagicMock
+    from email.header import decode_header
+
+    mock_server = MagicMock()
+    with patch("smtplib.SMTP_SSL") as mock_smtp_ssl:
+        mock_smtp_ssl.return_value.__enter__.return_value = mock_server
+
+        # 1. Unicode subject
+        unicode_subj = "Application: Data Scientist – أحمد 🚀"
+        send_smtp_email(
+            smtp_host="smtp.gmail.com",
+            smtp_port=465,
+            sender_email="sender@example.com",
+            sender_password="pwd",
+            recipient_email="hr@test.com",
+            subject=unicode_subj,
+            body="Plain body"
+        )
+        sent_msg = mock_server.send_message.call_args[0][0]
+        decoded_chunks = decode_header(sent_msg["Subject"])
+        decoded_subject = "".join(
+            c.decode(enc or "utf-8") if isinstance(c, bytes) else c
+            for c, enc in decoded_chunks
+        )
+        assert decoded_subject == unicode_subj
+
+        # 2. Empty subject fallback
+        mock_server.reset_mock()
+        send_smtp_email(
+            smtp_host="smtp.gmail.com",
+            smtp_port=465,
+            sender_email="sender@example.com",
+            sender_password="pwd",
+            recipient_email="hr@test.com",
+            subject="   ",
+            body="Plain body"
+        )
+        sent_msg = mock_server.send_message.call_args[0][0]
+        assert sent_msg["Subject"] == "Job Application"
+
 

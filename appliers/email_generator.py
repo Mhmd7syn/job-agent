@@ -14,6 +14,7 @@ from core.applicant_profile import load_profile, get_resume_for_role
 from core.cv_parser import extract_text_from_file
 from core.database import get_job_by_id
 from core.email_signature import get_signature_text, get_signature_html
+from core.job_utils import is_confidential_company
 
 logger = logging.getLogger(__name__)
 
@@ -47,19 +48,20 @@ EMAIL_SYSTEM_PROMPT = (
     "- BANNED IDIOMS & CLICHÉS: Do NOT use colloquial idioms or slang. Never use AI cliches like 'I hope this email finds you well', 'testament', 'delve', 'plethora', 'synergy', 'thrilled to apply', 'esteemed team', or 'poised to'.\n\n"
     "SECTIONS & STRUCTURE:\n"
     "1. Salutation: Professional greeting on its own line (e.g., 'Dear Hiring Team,').\n"
-    "2. Opening: Exactly 1 direct sentence stating the application for the position (e.g., 'I'm reaching out to apply for the [Role] position at [Company].').\n"
+    "2. Opening: Exactly 1 direct sentence stating the application for the position (e.g., 'I'm reaching out to apply for the [Role] position at [Company].' or 'I'm reaching out to apply for the [Role] position.' if company is omitted or confidential).\n"
     "3. Key Highlights: 2–3 concise bullet points connecting real CV technical accomplishments and tools to the job needs.\n"
     "4. Closing: Exactly 1 low-friction sentence mentioning the attached CV (e.g., 'I've attached my resume for your review and would welcome the opportunity to discuss my fit.').\n\n"
     "CRITICAL FORMATTING:\n"
     "- Every section MUST be separated by a blank line (double newline).\n"
     "- Bullet points must each be on their own line with bullet markers (• or -).\n"
     "- Do not invent skills or experience not present in the CV.\n"
-    "- Do not include a subject line or signature block (these are handled deterministically; output only the body)."
+    "- Never refer to the company as 'Confidential' or use placeholder names. If the company is omitted or confidential, refer only to the position.\n"
+    "- Do not include a subject line or signature block (signature will be added manually; output only the email body)."
 )
 
 EMAIL_USER_PROMPT_TEMPLATE = """Write an email job application for the following position:
 
-Position: {job_title} at {company}
+Position: {position}
 Location: {location}
 
 Job Description:
@@ -144,6 +146,9 @@ def generate_email_draft(
             "recipient_email": recipient_email
         }
 
+    is_confidential = is_confidential_company(company)
+    target_position = job_title if is_confidential else f"{job_title} at {company}"
+
     # 1. Deterministic subject line
     default_subject = f"Application: {job_title} – {candidate_name}" if candidate_name else f"Application: {job_title}"
     clean_hint = (subject_hint or "").strip()
@@ -161,8 +166,7 @@ def generate_email_draft(
 
     # 3. Simple, transparent prompt formatting
     user_prompt = EMAIL_USER_PROMPT_TEMPLATE.format(
-        job_title=job_title,
-        company=company,
+        position=target_position,
         location=location or "Not specified",
         description=description[:4000],
         cv_text=cv_text[:6000] if cv_text else "Technical background in software development and data science."

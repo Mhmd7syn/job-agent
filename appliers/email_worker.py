@@ -8,6 +8,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+from email.header import Header
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -46,6 +47,12 @@ def send_smtp_email(
     msg = MIMEMultipart()
     msg["From"] = sender_email
     msg["To"] = recipient_email
+    clean_subject = (subject or "").replace("\r", " ").replace("\n", " ").strip() or "Job Application"
+    try:
+        clean_subject.encode("ascii")
+        msg["Subject"] = clean_subject
+    except UnicodeEncodeError:
+        msg["Subject"] = Header(clean_subject, "utf-8")
     from core.email_signature import format_email_body_html
 
     msg_alt = MIMEMultipart("alternative")
@@ -204,7 +211,7 @@ def run_email_autopilot_batch(
             continue
         cand_name = profile.get("personal_info", {}).get("full_name", "").strip()
         default_subj = f"Application: {title} – {cand_name}" if cand_name else f"Application: {title}"
-        subject = draft_info.get("subject", default_subj)
+        subject = (draft_info.get("subject") or "").strip() or default_subj
         body = draft_info.get("body", "")
         cv_path = draft_info.get("cv_path") or get_resume_for_role(title)
         cv_name = os.path.basename(cv_path) if cv_path else "Resume.pdf"
