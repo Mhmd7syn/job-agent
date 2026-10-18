@@ -155,9 +155,19 @@ def format_email_body_html(
         if not p_str:
             continue
         lines = [l.strip() for l in p_str.split("\n") if l.strip()]
-        if lines and all(l.startswith(("•", "-", "*")) for l in lines):
+        bullet_indices = [i for i, l in enumerate(lines) if l.startswith(("•", "-", "*"))]
+        if bullet_indices:
+            first_b = bullet_indices[0]
+            lead_lines = lines[:first_b]
+            bullet_lines = lines[first_b:]
+            if lead_lines:
+                lead_escaped = "<br/>".join(html.escape(l) for l in lead_lines)
+                html_parts.append(
+                    f"<p style='margin-top: 0; margin-bottom: 6pt; font-family: Aptos, Calibri, sans-serif; "
+                    f"font-size: 11pt; color: #1e293b; line-height: 1.5;'>{lead_escaped}</p>"
+                )
             items = []
-            for l in lines:
+            for l in bullet_lines:
                 clean_item = re.sub(r"^[•\-*]\s*", "", l)
                 items.append(f"<li style='margin-bottom: 4px;'>{html.escape(clean_item)}</li>")
             html_parts.append(
