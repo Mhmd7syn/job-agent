@@ -34,14 +34,14 @@ def _parse_bayt_soup(soup):
 
 _BAYT_DETAILS_CACHE = {}
 
-def fetch_bayt_job_details(job_url, driver=None):
-    """Fetches full job description and company name from a Bayt job page."""
+def fetch_bayt_job_details(job_url, *args, **kwargs):
+    """Fetches full job description and company name from a Bayt job page via HTTP."""
     if not job_url or 'bayt.com/en/' not in job_url:
         return {'description': '', 'company': ''}
     if job_url in _BAYT_DETAILS_CACHE:
         return _BAYT_DETAILS_CACHE[job_url]
 
-    html = fetch_page_content(job_url, driver=driver, timeout=6)
+    html = fetch_page_content(job_url, timeout=6)
     if html:
         soup = BeautifulSoup(html, 'html.parser')
         res = _parse_bayt_soup(soup)
@@ -51,16 +51,16 @@ def fetch_bayt_job_details(job_url, driver=None):
 
     return {'description': '', 'company': ''}
 
-def fetch_bayt_full_description(job_url, driver=None):
-    """Fetches the complete full job description and requirements via lightweight HTTP with driver fallback."""
-    details = fetch_bayt_job_details(job_url, driver=driver)
+def fetch_bayt_full_description(job_url, *args, **kwargs):
+    """Fetches the complete full job description and requirements via lightweight HTTP."""
+    details = fetch_bayt_job_details(job_url)
     return details.get('description', '')
 
-def _fetch_bayt_page(url, driver=None):
-    """Fetches a Bayt page via fast HTTP first, with driver fallback for Cloudflare."""
-    return fetch_page_content(url, driver=driver, timeout=8, min_length=10000, check_str="has-pointer-d")
+def _fetch_bayt_page(url):
+    """Fetches a Bayt page via fast HTTP."""
+    return fetch_page_content(url, timeout=8, min_length=10000, check_str="has-pointer-d")
 
-def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver=None):
+def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, *args, **kwargs):
     jobs = []
     query = search_term
     
@@ -85,7 +85,7 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver
     try:
         while len(candidates) < results_wanted and page <= max_pages:
             url = f"{base_url}&page={page}"
-            html_content = _fetch_bayt_page(url, driver=driver)
+            html_content = _fetch_bayt_page(url)
             if not html_content:
                 break
 
@@ -163,11 +163,11 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, driver
         # Concurrent description fetching
         def _fetch_desc(job):
             try:
-                full_desc = fetch_bayt_full_description(job['job_url'], driver=driver) if driver else fetch_bayt_full_description(job['job_url'])
+                full_desc = fetch_bayt_full_description(job['job_url'])
                 if full_desc and len(full_desc) > len(job['description']):
                     job['description'] = full_desc
                 if job.get('company') in ('Unknown', '', None):
-                    details = fetch_bayt_job_details(job['job_url'], driver=driver) if driver else fetch_bayt_job_details(job['job_url'])
+                    details = fetch_bayt_job_details(job['job_url'])
                     if details.get('company'):
                         job['company'] = details['company']
             except Exception as e:

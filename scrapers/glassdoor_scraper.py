@@ -193,10 +193,13 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, d
         while len(candidates) < results_wanted and page <= max_pages:
             url = build_glassdoor_url(search_term, location, hours_old, page=page)
             driver.uc_open_with_reconnect(url, 4)
-            try:
-                driver.uc_gui_click_captcha()
-            except Exception:
-                pass
+            if "just a moment" in (getattr(driver, "title", "") or "").lower():
+                try:
+                    driver.uc_gui_click_captcha()
+                except Exception:
+                    pass
+                if hasattr(driver, "sleep"):
+                    driver.sleep(3)
 
             try:
                 driver.wait_for_element('li', timeout=8)

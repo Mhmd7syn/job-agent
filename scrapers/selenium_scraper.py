@@ -18,8 +18,14 @@ def SeleniumSession():
             print(f"Warning: Local Chrome binary not found at {chrome_bin}. Falling back to default.")
             chrome_bin = None
             
-        # Use UC Mode to bypass Cloudflare Turnstile
-        driver = Driver(uc=True, headless=True, binary_location=chrome_bin)
+        # Use UC Mode to bypass Cloudflare Turnstile with flags compatible with domain-level filtering
+        driver = Driver(
+            uc=True,
+            headless=True,
+            binary_location=chrome_bin,
+            disable_features="EncryptedClientHello,UseDnsHttpsSvcbAlpn,DnsOverHttps",
+            chromium_arg="disable-async-dns,disable-quic,disable-background-networking,disable-sync",
+        )
         yield driver
     finally:
         if driver:

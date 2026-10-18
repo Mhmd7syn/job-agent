@@ -99,10 +99,13 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
         while len(candidates) < results_wanted and page < max_pages:
             url = f"{base_url}&start={page}"
             driver.uc_open_with_reconnect(url, 4)
-            try:
-                driver.uc_gui_click_captcha()
-            except Exception:
-                pass
+            if "just a moment" in (getattr(driver, "title", "") or "").lower():
+                try:
+                    driver.uc_gui_click_captcha()
+                except Exception:
+                    pass
+                if hasattr(driver, "sleep"):
+                    driver.sleep(3)
             
             try:
                 driver.wait_for_element('div.css-pkv5jc', timeout=10)

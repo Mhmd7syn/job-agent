@@ -32,6 +32,11 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
         "--disable-dev-shm-usage",
         "--disable-quic",
         "--ignore-certificate-errors",
+        "--disable-features=EncryptedClientHello,UseDnsHttpsSvcbAlpn,DnsOverHttps",
+        "--disable-async-dns",
+        "--disable-background-networking",
+        "--disable-sync",
+        "--disable-default-apps",
     ]
     if not headless:
         default_args.append("--start-maximized")

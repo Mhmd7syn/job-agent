@@ -49,15 +49,17 @@ if __name__ == "__main__":
         SeleniumSession = None
 
     if LinkedInSession and scrape_linkedin_jobs_playwright and SeleniumSession:
-        print("\n--- Testing with Playwright & SeleniumBase ---")
+        print("\n--- Testing HTTP Scrapers (Tanqeeb, Bayt, Indeed) ---")
+        test_scraper("Tanqeeb", scrape_tanqeeb, term, loc, results, hours)
+        test_scraper("Bayt", scrape_bayt, term, loc, results, hours)
+        if scrape_indeed:
+            test_scraper("Indeed", scrape_indeed, term, loc, results, hours)
+
+        print("\n--- Testing Browser Scrapers (SeleniumBase - Wuzzuf, Glassdoor) ---")
         try:
             with SeleniumSession() as sb_driver:
                 test_scraper("Wuzzuf", scrape_wuzzuf, term, loc, results, hours, sb_driver)
-                test_scraper("Tanqeeb", scrape_tanqeeb, term, loc, results, hours)
-                test_scraper("Bayt", scrape_bayt, term, loc, results, hours, sb_driver)
                 test_scraper("Glassdoor", scrape_glassdoor, term, loc, results, hours, sb_driver)
-                if scrape_indeed:
-                    test_scraper("Indeed", scrape_indeed, term, loc, results, hours, sb_driver)
                     
             with LinkedInSession() as page:
                 print("\n--- Testing LinkedIn (Playwright) ---")

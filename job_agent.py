@@ -288,9 +288,9 @@ def main(run_start_time=None, reload_cfg=False):
     else:
         logging.info(f"=== Starting New Scan Session '{checkpoint.session_id}' ===")
 
-    http_sites = {'tanqeeb', 'bayt'} & sites_lower
+    http_sites = {'tanqeeb', 'bayt', 'indeed'} & sites_lower
     li_sites = {'linkedin', 'linkedin_posts'} & sites_lower
-    sb_sites = {'wuzzuf', 'glassdoor', 'indeed'} & sites_lower
+    sb_sites = {'wuzzuf', 'glassdoor'} & sites_lower
 
     total_searches = len(SEARCH_TERMS) * len(LOCATION)
     active_phases_count = sum([bool(http_sites), bool(li_sites), bool(sb_sites)])
@@ -336,12 +336,18 @@ def main(run_start_time=None, reload_cfg=False):
                         continue
 
                     phase_results = []
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
                         futures = []
                         if 'tanqeeb' in sites_lower:
                             futures.append(executor.submit(retry_scraper, scrape_tanqeeb, term, loc, RESULTS_PER_TERM, HOURS_OLD))
                         if 'bayt' in sites_lower:
                             futures.append(executor.submit(retry_scraper, scrape_bayt, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+                        if 'indeed' in sites_lower:
+                            try:
+                                from scrapers.indeed_scraper import scrape_indeed
+                                futures.append(executor.submit(retry_scraper, scrape_indeed, term, loc, RESULTS_PER_TERM, HOURS_OLD))
+                            except ImportError:
+                                pass
 
                         for future in concurrent.futures.as_completed(futures):
                             try:
@@ -455,11 +461,11 @@ def main(run_start_time=None, reload_cfg=False):
                         pbar.update(1)
 
     # -------------------------------------------------------------------------
-    # PHASE 3: Regional Browser Scrapers (SeleniumBase - Wuzzuf, Glassdoor, Indeed)
+    # PHASE 3: Regional Browser Scrapers (SeleniumBase - Wuzzuf, Glassdoor)
     # Browser session is isolated exclusively to SeleniumBase, then cleanly closed
     # -------------------------------------------------------------------------
     if sb_sites:
-        logging.info("🚀 [Phase 3/3] Starting Browser Scrapers (Wuzzuf, Glassdoor, Indeed)...")
+        logging.info("🚀 [Phase 3/3] Starting Browser Scrapers (Wuzzuf, Glassdoor)...")
         with tqdm(total=total_searches, desc="[Browser Scrapers]", unit="search") as pbar:
             sb_ctx = selenium_scraper.SeleniumSession() if getattr(selenium_scraper, 'SeleniumSession', None) else contextlib.nullcontext(None)
             with sb_ctx as sb_driver:
@@ -493,18 +499,6 @@ def main(run_start_time=None, reload_cfg=False):
                                         phase_results.append(res)
                                 except Exception as e:
                                     logging.error(f"⚠️ Glassdoor scraper failed for '{term}' in '{loc}': {e}")
-
-                            # Indeed
-                            if 'indeed' in sites_lower:
-                                try:
-                                    from scrapers.indeed_scraper import scrape_indeed
-                                    res = retry_scraper(scrape_indeed, term, loc, RESULTS_PER_TERM, HOURS_OLD, sb_driver)
-                                    if res is not None and not res.empty:
-                                        phase_results.append(res)
-                                except ImportError:
-                                    pass
-                                except Exception as e:
-                                    logging.error(f"⚠️ Indeed scraper failed for '{term}' in '{loc}': {e}")
 
                             if phase_results:
                                 saved_df = save_jobs_to_db(phase_results)
