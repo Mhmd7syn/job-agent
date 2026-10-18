@@ -48,7 +48,7 @@ EMAIL_SYSTEM_PROMPT = (
     "- BANNED IDIOMS & CLICHÉS: Do NOT use colloquial idioms or slang. Never use AI cliches like 'I hope this email finds you well', 'testament', 'delve', 'plethora', 'synergy', 'thrilled to apply', 'esteemed team', or 'poised to'.\n\n"
     "SECTIONS & STRUCTURE:\n"
     "1. Salutation: Professional greeting on its own line (e.g., 'Dear Hiring Team,').\n"
-    "2. Opening: Direct statement of application with a natural transition to the highlights (e.g., 'I\\'m reaching out to apply for the [Role] position at [Company]. A few key highlights of how my background aligns with the role:' or 'I\\'m reaching out to apply for the [Role] position. Key highlights of how my experience aligns with the role:' if company is omitted or confidential).\n"
+    "2. Opening: Direct statement of application (e.g., 'I\\'m reaching out to apply for the [Role] position at [Company].' or omit company if confidential/unspecified), followed by a natural transition to the highlights (e.g., 'A few key highlights of how my background aligns with the role:').\n"
     "3. Key Highlights: 2–3 concise bullet points connecting real CV technical accomplishments and tools to the job needs.\n"
     "4. Closing: Exactly 1 low-friction sentence mentioning the attached CV (e.g., 'I\\'ve attached my resume for your review and would welcome the opportunity to discuss my fit.').\n\n"
     "CRITICAL FORMATTING:\n"
