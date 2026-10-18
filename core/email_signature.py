@@ -127,7 +127,7 @@ def strip_signoff_from_body(body: str) -> str:
     """
     if not body:
         return ""
-    pattern = r"(?i)\n\s*(?:best\s+regards|sincerely|kind\s+regards|regards|warm\s+regards)[\s,:].*$"
+    pattern = r"(?i)\n\s*(?:best\s+regards|kind\s+regards|warm\s+regards|with\s+regards|regards|sincerely|warmly|cheers|best|thanks|thank\s+you|respectfully)[\s,:].*$"
     return re.sub(pattern, "", body, flags=re.DOTALL).rstrip()
 
 
@@ -178,19 +178,19 @@ def format_email_body_html(
         if any(tag in sig.lower() for tag in ("<p", "<div", "<table", "<span")):
             # If already contains full html tags, ensure body wrapper only if not present
             body_match = re.search(r"<body[^>]*>(.*?)</body>", sig, re.DOTALL | re.IGNORECASE)
-            sig_html = body_match.group(1).strip() if body_match else sig
+            sig_html = (body_match.group(1).strip() if body_match else sig).strip()
         else:
-            sig_lines = sig.split("\n")
+            sig_lines = sig.strip().split("\n")
             rendered_lines = [html.escape(line) if line.strip() else "&nbsp;" for line in sig_lines]
             sig_html = (
-                f"<div style='font-family: Aptos, Calibri, sans-serif; font-size: 11pt; color: #1e293b; margin-top: 14pt; line-height: 1.45;'>"
+                f"<div style='font-family: Aptos, Calibri, sans-serif; font-size: 11pt; color: #1e293b; line-height: 1.45;'>"
                 f"{'<br/>'.join(rendered_lines)}</div>"
             )
 
         return (
             f"<html><head><meta http-equiv='Content-Type' content='text/html; charset=utf-8'></head>"
             f"<body style='font-family: Aptos, Calibri, sans-serif; font-size: 11pt; color: #1e293b;'>"
-            f"{body_html}<br/>{sig_html}</body></html>"
+            f"{body_html}\n{sig_html}</body></html>"
         )
 
     return body_html

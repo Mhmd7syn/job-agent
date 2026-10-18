@@ -13,6 +13,8 @@ from appliers.email_worker import (
 )
 from core.database import DB_PATH
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def test_autopilot_state_management():
     """Verifies that state initializes and resets daily counters cleanly."""
@@ -91,9 +93,27 @@ def test_simulated_email_batch_execution():
     conn.commit()
     conn.close()
 
+    mock_draft = {
+        "status": "success",
+        "subject": "Test Application",
+        "body": "Dear Hiring Team,\n\nTest application body.",
+        "cv_path": os.path.join(BASE_DIR, "README.md")
+    }
+    mock_profile = {
+        "auto_apply_settings": {
+            "enabled": True,
+            "max_runs_per_day": 5,
+            "channels_enabled": {"email": True},
+            "smtp_email": "sender@test.com",
+            "smtp_app_password": "testpassword1234"
+        },
+        "personal_info": {"full_name": "Test Candidate"}
+    }
+
     try:
-        with patch("appliers.email_worker.send_smtp_email", return_value=True), \
-             patch("appliers.email_worker.launch_outlook_compose", return_value={"status": "success"}), \
+        with patch("appliers.email_worker.generate_email_draft", return_value=mock_draft), \
+             patch("appliers.email_worker.load_profile", return_value=mock_profile), \
+             patch("appliers.email_worker.send_smtp_email", return_value=True), \
              patch("appliers.email_worker.notify_telegram_candidate") as mock_tg:
 
             res = run_email_autopilot_batch(force=True, dry_run=False, batch_limit=1)
@@ -140,9 +160,27 @@ def test_email_batch_failure_notifies_telegram():
     conn.commit()
     conn.close()
 
+    mock_draft = {
+        "status": "success",
+        "subject": "Test Application",
+        "body": "Dear Hiring Team,\n\nTest application body.",
+        "cv_path": os.path.join(BASE_DIR, "README.md")
+    }
+    mock_profile = {
+        "auto_apply_settings": {
+            "enabled": True,
+            "max_runs_per_day": 5,
+            "channels_enabled": {"email": True},
+            "smtp_email": "sender@test.com",
+            "smtp_app_password": "testpassword1234"
+        },
+        "personal_info": {"full_name": "Test Candidate"}
+    }
+
     try:
-        with patch("appliers.email_worker.send_smtp_email", return_value=False), \
-             patch("appliers.email_worker.launch_outlook_compose", return_value={"status": "error"}), \
+        with patch("appliers.email_worker.generate_email_draft", return_value=mock_draft), \
+             patch("appliers.email_worker.load_profile", return_value=mock_profile), \
+             patch("appliers.email_worker.send_smtp_email", return_value=False), \
              patch("appliers.email_worker.notify_telegram_candidate") as mock_tg:
 
             res = run_email_autopilot_batch(force=True, dry_run=False, batch_limit=1)
