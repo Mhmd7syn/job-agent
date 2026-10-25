@@ -652,8 +652,8 @@ class TestTelegramBot(unittest.TestCase):
              patch.object(job_agent, "LOCATION", ["Egypt"]):
             job_agent.main()
 
-        # Verify sync_queued_telegram_jobs was called during the run
-        mock_sync_tg.assert_called()
+        # Verify sync_queued_telegram_jobs was called exactly once after scraping finished
+        mock_sync_tg.assert_called_once()
 
 
 if __name__ == "__main__":

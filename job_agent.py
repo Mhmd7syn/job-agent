@@ -300,7 +300,7 @@ def main(run_start_time=None, reload_cfg=False):
 
     write_progress(0, total_steps, "Initializing job search...", 0, is_running=True, start_time=run_start_time)
 
-    def _sync_telegram_jobs(label_prefix="Phase 0"):
+    def _sync_telegram_jobs(label_prefix="Telegram Sync"):
         """Fetches queued job messages/links from Telegram and merges them into the run."""
         try:
             from core.telegram_bot import sync_queued_telegram_jobs, get_bot_token
@@ -323,12 +323,6 @@ def main(run_start_time=None, reload_cfg=False):
                     logging.info(f"ℹ️ [{label_prefix}] Telegram bot token not configured; skipping sync.")
         except Exception as e:
             logging.warning(f"⚠️ Telegram sync error during scraping run: {e}")
-
-    # -------------------------------------------------------------------------
-    # PHASE 0: Telegram Message Sync (Mobile Forwarded Jobs)
-    # Fetch queued job links or raw descriptions sent to the Telegram bot
-    # -------------------------------------------------------------------------
-    _sync_telegram_jobs(label_prefix="Phase 0: Telegram Sync")
 
     def save_jobs_to_db(df_list):
         """Clean, normalize, score, and incrementally save scraped jobs to SQLite using core.job_utils."""
@@ -549,8 +543,8 @@ def main(run_start_time=None, reload_cfg=False):
     # Clear checkpoint file now that full run finished cleanly
     checkpoint.clear()
 
-    # Final check for any Telegram messages received while long scrapers were running
-    _sync_telegram_jobs(label_prefix="Final: Telegram Sync")
+    # Fetch queued Telegram jobs after platform scraping finishes
+    _sync_telegram_jobs(label_prefix="Telegram Sync")
 
     write_progress(total_steps, total_steps, "Search complete. Saving results...", total_jobs_saved[0], is_running=True, start_time=run_start_time)
 
