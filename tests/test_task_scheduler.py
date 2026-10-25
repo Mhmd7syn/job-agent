@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 from core.task_scheduler import (
     sync_autopilot_windows_task,
     get_autopilot_windows_task_status,
-    TASK_NAME
+    get_scraper_windows_task_status,
+    TASK_NAME,
+    SCRAPER_TASK_NAME
 )
 from web.app import app
 
@@ -72,6 +74,17 @@ class TestTaskScheduler(unittest.TestCase):
         status = get_autopilot_windows_task_status()
         self.assertTrue(status["exists"])
         self.assertEqual(status["status"], "ready")
+
+    @patch("core.task_scheduler.sys.platform", "win32")
+    @patch("core.task_scheduler.subprocess.run")
+    def test_get_scraper_task_status(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="Status: Ready\nNext Run: Tomorrow", stderr="")
+        status = get_scraper_windows_task_status()
+        self.assertTrue(status["exists"])
+        self.assertEqual(status["status"], "ready")
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        self.assertIn(SCRAPER_TASK_NAME, cmd)
 
     @patch("web.routers.autopilot.sync_autopilot_windows_task")
     def test_toggle_endpoint_invokes_task_sync(self, mock_sync):

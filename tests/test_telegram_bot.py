@@ -582,6 +582,65 @@ class TestTelegramBot(unittest.TestCase):
                 except Exception:
                     pass
 
+    @patch("core.telegram_bot.requests.get")
+    @patch("core.telegram_bot.process_message")
+    @patch("core.telegram_bot.send_summary_reply")
+    def test_sync_queued_telegram_jobs_returns_job_records(self, mock_reply, mock_proc, mock_get):
+        from core.telegram_bot import sync_queued_telegram_jobs
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "ok": True,
+            "result": [
+                {
+                    "update_id": 100,
+                    "message": {"chat": {"id": 123}, "text": "https://linkedin.com/jobs/view/999"}
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+        fake_job = {"title": "AI Engineer", "job_url": "https://linkedin.com/jobs/view/999", "relevance_score": 85}
+        mock_proc.return_value = [
+            {"status": "added", "title": "AI Engineer", "job_data": fake_job}
+        ]
+
+        res = sync_queued_telegram_jobs("test_token", "123")
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["count"], 1)
+        self.assertEqual(res["jobs"], ["AI Engineer"])
+        self.assertEqual(res["job_records"], [fake_job])
+
+    @patch("job_agent.process_scraped_batch")
+    @patch("job_agent.write_progress")
+    @patch("job_agent.ScanCheckpoint")
+    @patch("job_agent.cleanup_old_jobs")
+    @patch("job_agent.rescore_all_jobs", create=True)
+    @patch("core.telegram_bot.sync_queued_telegram_jobs")
+    @patch("core.telegram_bot.get_bot_token")
+    def test_job_agent_syncs_telegram_jobs_during_schedule_run(
+        self, mock_token, mock_sync_tg, mock_rescore, mock_cleanup, mock_checkpoint_cls, mock_write_progress, mock_batch
+    ):
+        import job_agent
+        mock_checkpoint = MagicMock()
+        mock_checkpoint.is_completed.return_value = True
+        mock_checkpoint_cls.return_value = mock_checkpoint
+        mock_token.return_value = "fake_bot_token"
+        fake_job = {"title": "Telegram Scraped Job", "job_url": "http://tg/1", "relevance_score": 90}
+        mock_sync_tg.return_value = {
+            "status": "success",
+            "count": 1,
+            "jobs": ["Telegram Scraped Job"],
+            "job_records": [fake_job]
+        }
+
+        with patch.object(job_agent, "SITES", ["tanqeeb"]), \
+             patch.object(job_agent, "SEARCH_TERMS", ["Python"]), \
+             patch.object(job_agent, "LOCATION", ["Egypt"]):
+            job_agent.main()
+
+        # Verify sync_queued_telegram_jobs was called during the run
+        mock_sync_tg.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()

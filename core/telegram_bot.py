@@ -511,7 +511,8 @@ def _scrape_and_persist_url(
                 "url": job_url,
                 "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
                 "is_liked": saved_job.get("status") == "liked",
-                "is_applied": saved_job.get("is_applied") == 1
+                "is_applied": saved_job.get("is_applied") == 1,
+                "job_data": saved_job
             }
         return {
             "status": "duplicate",
@@ -619,7 +620,8 @@ def _parse_and_persist_raw_text(
                 "score": score,
                 "is_scholarship": is_scholarship or saved_job.get("job_type") == "Scholarship",
                 "is_liked": saved_job.get("status") == "liked",
-                "is_applied": saved_job.get("is_applied") == 1
+                "is_applied": saved_job.get("is_applied") == 1,
+                "job_data": saved_job
             }
         return {
             "status": "duplicate",
@@ -1007,12 +1009,14 @@ def sync_queued_telegram_jobs(bot_token: Optional[str] = None, allowed_chat_id: 
         send_summary_reply(bot_token, target_chat_id, batch_results)
 
     added_titles = [r["title"] for r in batch_results if r.get("status") == "added"]
+    added_records = [r["job_data"] for r in batch_results if r.get("status") == "added" and "job_data" in r]
     dup_count = sum(1 for r in batch_results if r.get("status") == "duplicate")
 
     logger.info(f"Telegram sync complete: {len(added_titles)} added, {dup_count} duplicate(s).")
     return {
         "count": len(added_titles),
         "jobs": added_titles,
+        "job_records": added_records,
         "duplicates": dup_count,
         "status": "success"
     }

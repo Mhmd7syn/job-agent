@@ -7,8 +7,10 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 TASK_NAME = "Job Agent AutoPilot"
+SCRAPER_TASK_NAME = "Weekly Job Agent"
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VBS_PATH = os.path.join(BASE_DIR, "scripts", "run_autopilot_silent.vbs")
+SCRAPER_VBS_PATH = os.path.join(BASE_DIR, "scripts", "run_silent.vbs")
 
 
 def sync_autopilot_windows_task(settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -83,6 +85,22 @@ def get_autopilot_windows_task_status() -> Dict[str, Any]:
         return {"exists": False, "status": "unsupported_platform"}
 
     cmd = ["schtasks", "/query", "/tn", TASK_NAME, "/fo", "LIST"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        return {"exists": False, "status": "not_scheduled"}
+
+    return {
+        "exists": True,
+        "status": "ready" if "Ready" in res.stdout else "scheduled"
+    }
+
+
+def get_scraper_windows_task_status() -> Dict[str, Any]:
+    """Queries Windows Task Scheduler for current state of Scraper task."""
+    if sys.platform != "win32":
+        return {"exists": False, "status": "unsupported_platform"}
+
+    cmd = ["schtasks", "/query", "/tn", SCRAPER_TASK_NAME, "/fo", "LIST"]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         return {"exists": False, "status": "not_scheduled"}
