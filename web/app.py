@@ -79,6 +79,18 @@ def get_jobs(background_tasks: BackgroundTasks, apply_type: Optional[str] = None
             jobs = [j for j in jobs if (j.get("apply_type") or "").lower() == target or (j.get("apply_channel") or "").lower() == target]
     return {"jobs": jobs}
 
+@app.api_route("/api/rescore", methods=["GET", "POST"])
+def rescore_jobs():
+    """Rescores all jobs in the database against latest criteria and date penalties."""
+    global _last_rescore_date
+    try:
+        res = rescore_all_jobs()
+        _last_rescore_date = datetime.now().strftime("%Y-%m-%d")
+        return res
+    except Exception as e:
+        logging.error(f"Failed to rescore jobs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 class AddJobByUrlRequest(BaseModel):
     url: str = Field(default="")
     scraper_type: str = Field(default="auto")

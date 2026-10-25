@@ -75,11 +75,42 @@ async function refreshDashboard() {
     if (refreshBtn) refreshBtn.disabled = true;
 
     try {
-        const addedNewJobs = await syncTelegramJobsOnLaunch(true);
+        // 1. Fetch queued Telegram messages
+        let tgAddedCount = 0;
+        try {
+            const tgRes = await fetch('/api/telegram/sync');
+            if (tgRes.ok) {
+                const tgData = await tgRes.json();
+                tgAddedCount = (tgData && tgData.count) ? tgData.count : 0;
+            }
+        } catch (tgErr) {
+            console.warn('Telegram sync error during refresh:', tgErr);
+        }
+
+        // 2. Rescore all jobs in the database against current criteria & date penalties
+        let rescoreCount = 0;
+        try {
+            const rescoreRes = await fetch('/api/rescore', { method: 'POST' });
+            if (rescoreRes.ok) {
+                const rescoreData = await rescoreRes.json();
+                rescoreCount = rescoreData.rescored || 0;
+            }
+        } catch (rErr) {
+            console.warn('Rescore error during refresh:', rErr);
+        }
+
+        // 3. Fetch refreshed jobs and pending updates
         await fetchJobs();
         await checkPendingUpdates();
-        if (!addedNewJobs) {
-            showToast('Dashboard refreshed!', 'info', 'fa-arrows-rotate', 2000);
+
+        // 4. User feedback
+        if (tgAddedCount > 0) {
+            const jobWord = tgAddedCount === 1 ? 'job' : 'jobs';
+            showToast(`📥 ${tgAddedCount} new ${jobWord} fetched from Telegram & ${rescoreCount} jobs rescored!`, 'success', 'fa-paper-plane', 5000);
+        } else if (rescoreCount > 0) {
+            showToast(`✓ Dashboard refreshed & ${rescoreCount} jobs rescored!`, 'success', 'fa-arrows-rotate', 3000);
+        } else {
+            showToast('✓ Dashboard refreshed!', 'info', 'fa-arrows-rotate', 2000);
         }
     } catch (err) {
         console.error('Refresh error:', err);

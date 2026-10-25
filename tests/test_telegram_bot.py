@@ -582,6 +582,20 @@ class TestTelegramBot(unittest.TestCase):
                 except Exception:
                     pass
 
+    @patch("web.app.rescore_all_jobs")
+    def test_rescore_endpoint(self, mock_rescore):
+        from fastapi.testclient import TestClient
+        from web.app import app
+        mock_rescore.return_value = {"status": "success", "rescored": 42, "removed": 0, "duration_seconds": 0.5}
+
+        client = TestClient(app)
+        res = client.post("/api/rescore")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["rescored"], 42)
+        mock_rescore.assert_called_once()
+
     @patch("core.telegram_bot.requests.get")
     @patch("core.telegram_bot.process_message")
     @patch("core.telegram_bot.send_summary_reply")
