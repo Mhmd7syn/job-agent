@@ -32,6 +32,22 @@ REQUIREMENT_INDICATORS = (
     'should have', 'plus', 'preferred'
 )
 
+SKILL_CANONICAL_MAP = {
+    "ml": "machine learning",
+    "dl": "deep learning",
+    "nlp": "natural language processing",
+    "bi": "business intelligence",
+    "eda": "exploratory data analysis",
+    "api": "rest api",
+    "restful api": "rest api",
+    "data analytics": "data analysis",
+    "data analyst": "data analysis",
+    "statistics": "statistical analysis",
+    "teaching": "teacher",
+    "mentoring": "mentor",
+    "3d cnn": "cnn",
+}
+
 def extract_experience_years(text: str) -> Optional[int]:
     """
     Extracts the minimum required years of experience from job text.
@@ -181,15 +197,36 @@ def calculate_score(row, config=None, apply_date_penalty=True):
                 tech_score += 5
                 break
 
-    # Technical Skills in title (+8) or description (+3)
-    for kw in resume_keywords:
+    # Technical Skills in title (+8) or description (+3, capped to prevent keyword-stuffing inflation)
+    max_title_points = config.get("MAX_TITLE_TECH_POINTS", 8) if config else 8
+    max_desc_points = config.get("MAX_DESC_TECH_POINTS", 30) if config else 30
+    title_tech_score = 0
+    desc_tech_score = 0
+
+    seen_canonical_skills = set()
+    sorted_keywords = sorted(resume_keywords, key=lambda k: len(k) if k else 0, reverse=True)
+
+    for kw in sorted_keywords:
         if not kw:
             continue
+        canonical_skill = SKILL_CANONICAL_MAP.get(kw.strip().lower(), kw.strip().lower())
+        if canonical_skill in seen_canonical_skills:
+            continue
+
         pat = _get_word_pattern(kw)
         if pat.search(title):
-            tech_score += 8
+            title_tech_score += 8
+            seen_canonical_skills.add(canonical_skill)
         elif pat.search(desc):
-            tech_score += 3
+            desc_tech_score += 3
+            seen_canonical_skills.add(canonical_skill)
+
+    if max_title_points is not None:
+        title_tech_score = min(max_title_points, title_tech_score)
+    if max_desc_points is not None:
+        desc_tech_score = min(max_desc_points, desc_tech_score)
+
+    tech_score += title_tech_score + desc_tech_score
 
     # SIMPLE GATE: If no technical match at all, STOP!
     # Non-tech roles (Accountants, HR, Sales) die here without receiving generic boosts.
@@ -207,8 +244,8 @@ def calculate_score(row, config=None, apply_date_penalty=True):
             score += 15
             break
 
-    # Favorite Companies Boost
-    if any(comp in company for comp in favorite_companies):
+    # Favorite Companies Boost (word-boundary matched to prevent substring false-positives like 'iti' matching 'Meriti' or 'British')
+    if any(comp and _get_word_pattern(comp).search(company) for comp in favorite_companies):
         score += 15
 
     # Location check: fair +5 for Target Location OR Remote
@@ -252,7 +289,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     # -------------------------------------------------------------
     # STAGE 4: Recency / Daily Date Penalty
     # -------------------------------------------------------------
-    post_date_raw = row.get('date_posted')
+    post_date_raw = row.get('date_posted') or row.get('timestamp')
     if post_date_raw:
         try:
             if hasattr(post_date_raw, 'date'):

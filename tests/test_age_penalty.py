@@ -131,6 +131,93 @@ class TestDatePenalty(unittest.TestCase):
         # is_valid_job should be True because the job matches career criteria despite age penalty
         self.assertTrue(is_valid_job(old_job, config=self.base_config))
 
+    def test_description_keyword_points_capped(self):
+        # 10 keywords in desc = 30 pts. 20 keywords in desc must also be capped at 30 pts.
+        cfg = dict(self.base_config)
+        cfg["RESUME_KEYWORDS"] = [f"skill_{i}" for i in range(25)]
+        cfg["MAX_DESC_TECH_POINTS"] = 30
+
+        job_many_kw = {
+            "job_id": "test_many_kw",
+            "title": "Junior AI Engineer",
+            "company": "Tech Corp",
+            "location": "Cairo, Egypt",
+            "date_posted": date.today().isoformat(),
+            "description": " ".join([f"skill_{i}" for i in range(20)]),
+            "job_type": "Full Time",
+            "is_remote": False
+        }
+        # Title matches role ("AI Engineer": +20).
+        # Target level matches ("Junior": +15).
+        # Location matches ("Cairo": +5).
+        # Desc has 20 matched skills: 20 * 3 = 60, but capped at 30.
+        # Total base score = 20 + 30 + 15 + 5 = 70.
+        score = calculate_score(job_many_kw, cfg, apply_date_penalty=False)
+        self.assertEqual(score, 70)
+
+    def test_title_keywords_capped_at_one(self):
+        # Even with 3 skills in title, title tech points must be capped at 8 (1 keyword)
+        cfg = dict(self.base_config)
+        cfg["RESUME_KEYWORDS"] = ["python", "pytorch", "tensorflow"]
+        cfg["MAX_TITLE_TECH_POINTS"] = 8
+
+        job_multi_title = {
+            "job_id": "test_multi_title",
+            "title": "Junior AI Engineer - Python, PyTorch, TensorFlow",
+            "company": "Tech Corp",
+            "location": "Cairo, Egypt",
+            "date_posted": date.today().isoformat(),
+            "description": "We are seeking an engineer.",
+            "job_type": "Full Time",
+            "is_remote": False
+        }
+        # Title matches role ("AI Engineer": +20).
+        # Skills in title: python (+8), pytorch (+8), tensorflow (+8) = 24, capped at 8.
+        # Target level matches ("Junior": +15).
+        # Location matches ("Cairo": +5).
+        # Total = 20 + 8 + 15 + 5 = 48.
+        score = calculate_score(job_multi_title, cfg, apply_date_penalty=False)
+        self.assertEqual(score, 48)
+
+    def test_duplicate_skill_and_acronym_suppression(self):
+        # When both 'machine learning' and 'ml' appear, they map to the same canonical skill and count only once (+3)
+        cfg = dict(self.base_config)
+        cfg["RESUME_KEYWORDS"] = ["machine learning", "ml"]
+        cfg["ROLES"] = [{"title": "Software Engineer", "english_terms": ["Software Engineer"]}]
+
+        job_dup = {
+            "job_id": "test_dup",
+            "title": "Software Engineer",
+            "company": "Tech Corp",
+            "location": "Cairo, Egypt",
+            "date_posted": date.today().isoformat(),
+            "description": "Requires strong machine learning (ML) models and techniques.",
+            "job_type": "Full Time",
+            "is_remote": False
+        }
+        # Role matches "Software Engineer": +20.
+        # Desc matches both "machine learning" and "ml", but only counts once: +3.
+        # Location matches: +5.
+        # Total = 20 + 3 + 5 = 28.
+        score = calculate_score(job_dup, cfg, apply_date_penalty=False)
+        self.assertEqual(score, 28)
+
+    def test_favorite_company_word_boundary_prevents_false_positives(self):
+        cfg = dict(self.base_config)
+        cfg["FAVORITE_COMPANIES"] = ["iti"]
+
+        job_meriti = self._make_job(days_old=0)
+        job_meriti["company"] = "Meriti Inc"
+
+        job_real_iti = self._make_job(days_old=0)
+        job_real_iti["company"] = "Information Technology Institute (ITI)"
+
+        score_meriti = calculate_score(job_meriti, cfg, apply_date_penalty=False)
+        score_real_iti = calculate_score(job_real_iti, cfg, apply_date_penalty=False)
+
+        # Real ITI receives the +15 favorite boost, while Meriti Inc does not
+        self.assertEqual(score_real_iti - score_meriti, 15)
+
     def test_unrelated_job_remains_zero(self):
         unrelated = {
             "job_id": "unrelated",

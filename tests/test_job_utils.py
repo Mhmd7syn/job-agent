@@ -123,6 +123,12 @@ class TestJobUtils(unittest.TestCase):
         # Known company
         self.assertEqual(normalize_company("Google"), "Google")
 
+        # Company with review/star ratings
+        self.assertEqual(normalize_company("Valeo 3.7"), "Valeo")
+        self.assertEqual(normalize_company("Henkel 4.4 ★"), "Henkel")
+        self.assertEqual(normalize_company("Microsoft 4.0"), "Microsoft")
+        self.assertEqual(normalize_company("3M"), "3M")
+
         # Confidential with regex match
         desc_with_about = "About TechWave Solutions is a leading AI software company founded in 2020."
         extracted = normalize_company("Confidential", desc=desc_with_about)

@@ -171,7 +171,8 @@ def extract_company_from_desc(desc: str) -> str:
 
 def normalize_company(company: str = "", desc: str = "") -> str:
     """
-    Cleans company name, strips generic placeholders, and extracts from description if needed.
+    Cleans company name, strips generic placeholders, extracts from description if needed,
+    and strips trailing review/star ratings (e.g. 'Valeo 3.7', 'Henkel 4.4 ★', 'Microsoft 4.0').
     """
     c = str(company or "").strip()
     if not c or c.lower() in GENERIC_COMPANY_NAMES:
@@ -179,7 +180,9 @@ def normalize_company(company: str = "", desc: str = "") -> str:
         if extracted:
             return extracted
         return "Unknown" if not c else c.title()
-    return c
+    # Strip trailing review ratings like '3.7', '4.0 ★', '3.7★'
+    cleaned = re.sub(r'[\s·•|\-_]*\d+(?:[\.,]\d+)?\s*(?:★|\*|⭐)?\s*$', '', c).strip()
+    return cleaned if cleaned else c
 
 
 def parse_job_date(date_val: Any) -> str:
