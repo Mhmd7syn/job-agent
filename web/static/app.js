@@ -333,6 +333,7 @@ function createJobCard(job) {
     const div = document.createElement('div');
     div.className = `job-card ${job.status === 'liked' ? 'liked-bg' : ''}`;
     div.id = `job-${job.job_id}`;
+    div.setAttribute('data-job-id', job.job_id);
 
     // Format Date
     let dateStr = 'Unknown Date';
@@ -466,6 +467,36 @@ function createJobCard(job) {
 
     return div;
 }
+
+function refreshJobCard(jobId) {
+    if (!jobId) return;
+    const job = allJobs.find(j => String(j.job_id) === String(jobId));
+    if (!job) return;
+
+    // Update details modal button if currently viewing this job
+    const appliedToggleBtn = document.getElementById('job-details-applied-toggle-btn');
+    if (appliedToggleBtn && String(currentModalJobId) === String(jobId)) {
+        if (job.is_applied === 1) {
+            appliedToggleBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
+            appliedToggleBtn.style.backgroundColor = 'var(--success)';
+        } else {
+            appliedToggleBtn.innerHTML = '<i class="fa-solid fa-check"></i> Mark Applied';
+            appliedToggleBtn.style.backgroundColor = '';
+        }
+    }
+
+    // Replace or update the job card in the grid if present
+    const existingCard = document.getElementById(`job-${jobId}`) || document.querySelector(`.job-card[data-job-id="${jobId}"]`);
+    if (existingCard) {
+        const newCard = createJobCard(job);
+        existingCard.replaceWith(newCard);
+    } else {
+        applyFiltersAndSort();
+    }
+}
+
+// Global compatibility alias
+window.renderTable = applyFiltersAndSort;
 
 async function handleAction(jobId, action) {
     const card = document.getElementById(`job-${jobId}`);
@@ -3132,27 +3163,24 @@ async function sendDraftDirectSMTP() {
         const data = await res.json();
 
         if (res.ok && data.status === 'success') {
-            const statusBanner = document.getElementById('email-copilot-status-banner');
-            const statusText = document.getElementById('email-copilot-status-text');
-            if (statusBanner) {
-                statusBanner.style.display = 'flex';
-                if (statusText) statusText.textContent = `Email dispatched successfully via direct SMTP to ${recipient}!`;
-                statusBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
+            const targetJobId = currentEmailJobId;
 
-            if (smtpBtn) {
-                smtpBtn.style.display = 'none';
-            }
-
-            // Update local state in table
-            const job = allJobs.find(j => String(j.job_id) === String(currentEmailJobId));
+            // Update local state in allJobs
+            const job = allJobs.find(j => String(j.job_id) === String(targetJobId));
             if (job) {
                 job.is_applied = 1;
                 job.apply_status = 'applied';
                 job.applied_at = new Date().toISOString();
                 job.apply_type = 'email';
             }
-            renderTable();
+
+            // Close the email generation window and job details modal
+            hideEmailCopilotModal();
+            hideJobDetailsModal();
+
+            // Refresh the card of the job so it appears as marked
+            refreshJobCard(targetJobId);
+
             showToast('✓ Email sent directly via SMTP and job marked as applied!', 'success', 'fa-paper-plane');
         } else {
             const errMsg = data.detail || data.message || 'Failed to send email via SMTP.';
@@ -3199,24 +3227,18 @@ async function markCurrentEmailJobApplied() {
         });
 
         if (res.ok) {
+            const targetJobId = currentEmailJobId;
             // Update local state
-            const job = allJobs.find(j => String(j.job_id) === String(currentEmailJobId));
+            const job = allJobs.find(j => String(j.job_id) === String(targetJobId));
             if (job) {
                 job.is_applied = 1;
                 job.apply_status = 'applied';
             }
-            const appliedToggleBtn = document.getElementById('job-details-applied-toggle-btn');
-            if (appliedToggleBtn) {
-                appliedToggleBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
-                appliedToggleBtn.style.backgroundColor = 'var(--success)';
-            }
-            const cardAppliedBtn = document.querySelector(`.job-card[data-job-id="${currentEmailJobId}"] .btn-apply`);
-            if (cardAppliedBtn) {
-                cardAppliedBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
-                cardAppliedBtn.style.backgroundColor = 'var(--success)';
-            }
 
             hideEmailCopilotModal();
+            hideJobDetailsModal();
+            refreshJobCard(targetJobId);
+
             showToast('✓ Job marked as Applied successfully!', 'success', 'fa-circle-check');
         } else {
             showToast('Failed to mark job as applied.', 'danger', 'fa-circle-xmark');
@@ -3550,24 +3572,18 @@ async function markCurrentWhatsAppJobApplied() {
         });
 
         if (res.ok) {
+            const targetJobId = currentWhatsAppJobId;
             // Update local state
-            const job = allJobs.find(j => String(j.job_id) === String(currentWhatsAppJobId));
+            const job = allJobs.find(j => String(j.job_id) === String(targetJobId));
             if (job) {
                 job.is_applied = 1;
                 job.apply_status = 'applied';
             }
-            const appliedToggleBtn = document.getElementById('job-details-applied-toggle-btn');
-            if (appliedToggleBtn) {
-                appliedToggleBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
-                appliedToggleBtn.style.backgroundColor = 'var(--success)';
-            }
-            const cardAppliedBtn = document.querySelector(`.job-card[data-job-id="${currentWhatsAppJobId}"] .btn-apply`);
-            if (cardAppliedBtn) {
-                cardAppliedBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
-                cardAppliedBtn.style.backgroundColor = 'var(--success)';
-            }
 
             hideWhatsAppCopilotModal();
+            hideJobDetailsModal();
+            refreshJobCard(targetJobId);
+
             showToast('✓ Job marked as Applied via WhatsApp successfully!', 'success', 'fa-circle-check');
         } else {
             showToast('Failed to mark job as applied.', 'danger', 'fa-circle-xmark');
@@ -3856,23 +3872,17 @@ async function markCurrentEasyApplyJobApplied() {
         });
 
         if (res.ok) {
-            const job = allJobs.find(j => String(j.job_id) === String(currentEasyApplyJobId));
+            const targetJobId = currentEasyApplyJobId;
+            const job = allJobs.find(j => String(j.job_id) === String(targetJobId));
             if (job) {
                 job.is_applied = 1;
                 job.apply_status = 'applied';
             }
-            const appliedToggleBtn = document.getElementById('job-details-applied-toggle-btn');
-            if (appliedToggleBtn) {
-                appliedToggleBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
-                appliedToggleBtn.style.backgroundColor = 'var(--success)';
-            }
-            const cardAppliedBtn = document.querySelector(`.job-card[data-job-id="${currentEasyApplyJobId}"] .btn-apply`);
-            if (cardAppliedBtn) {
-                cardAppliedBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
-                cardAppliedBtn.style.backgroundColor = 'var(--success)';
-            }
 
             hideEasyApplyCopilotModal();
+            hideJobDetailsModal();
+            refreshJobCard(targetJobId);
+
             showToast('✓ Job marked as Applied via Easy Apply successfully!', 'success', 'fa-circle-check');
         } else {
             showToast('Failed to mark job as applied.', 'danger', 'fa-circle-xmark');
@@ -4252,23 +4262,17 @@ async function markCurrentAtsJobApplied() {
         });
 
         if (res.ok) {
-            const job = allJobs.find(j => String(j.job_id) === String(currentAtsJobId));
+            const targetJobId = currentAtsJobId;
+            const job = allJobs.find(j => String(j.job_id) === String(targetJobId));
             if (job) {
                 job.is_applied = 1;
                 job.apply_status = 'applied';
             }
-            const appliedToggleBtn = document.getElementById('job-details-applied-toggle-btn');
-            if (appliedToggleBtn) {
-                appliedToggleBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
-                appliedToggleBtn.style.backgroundColor = 'var(--success)';
-            }
-            const cardAppliedBtn = document.querySelector(`.job-card[data-job-id="${currentAtsJobId}"] .btn-apply`);
-            if (cardAppliedBtn) {
-                cardAppliedBtn.innerHTML = '<i class="fa-solid fa-check"></i> Applied';
-                cardAppliedBtn.style.backgroundColor = 'var(--success)';
-            }
 
             hideAtsCopilotModal();
+            hideJobDetailsModal();
+            refreshJobCard(targetJobId);
+
             showToast('✓ Job marked as Applied successfully!', 'success', 'fa-circle-check');
         } else {
             showToast('Failed to mark job as applied.', 'danger', 'fa-circle-xmark');
