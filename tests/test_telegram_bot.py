@@ -552,8 +552,9 @@ class TestTelegramBot(unittest.TestCase):
             mock_send.assert_called()
             self.assertIn("Unauthorized", mock_send.call_args[0][2])
 
+    @patch("web.app.get_bot_url", return_value="https://t.me/CustomTestBot")
     @patch("web.app.resolve_chat_id_for_username")
-    def test_web_telegram_config_endpoint(self, mock_resolve):
+    def test_web_telegram_config_endpoint(self, mock_resolve, mock_bot_url):
         from fastapi.testclient import TestClient
         from web.app import app
         mock_resolve.return_value = "998877"
