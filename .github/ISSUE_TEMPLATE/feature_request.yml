@@ -1,0 +1,42 @@
+name: 💡 Feature Request
+description: Suggest an idea or enhancement for Job Agent
+labels: ["type: feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make Job Agent better? We'd love to hear it!
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem or Motivation
+      description: Is your feature request related to a problem? A clear and concise description of the limitation.
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see implemented.
+      placeholder: Detailed description of the feature or behavior...
+    validations:
+      required: true
+  - type: dropdown
+    id: affected-benefit
+    attributes:
+      label: Affected Core Benefit
+      options:
+        - Scraping & Discovery
+        - Scoring & Matching Accuracy
+        - Applying Process (Copilot / Autopilot)
+        - User Experience & Dashboard
+        - Performance & Storage
+        - Developer Tooling & Tests
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives-considered
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you've thought about?

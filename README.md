@@ -1,5 +1,11 @@
 # Job Agent
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+[![CI](https://github.com/Mhmd7syn/job-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Mhmd7syn/job-agent/actions/workflows/ci.yml)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![GitHub Issues](https://img.shields.io/github/issues/Mhmd7syn/job-agent)](https://github.com/Mhmd7syn/job-agent/issues)
+
 > [!WARNING]
 > This project is actively under development and may have occasional issues. Recommendations and contributions are always welcome.
 
@@ -128,6 +134,13 @@ All preferences can be set from the dashboard. For advanced manual tuning, two f
 | `web/` | FastAPI server that powers the desktop dashboard backend |
 | `desktop_app.pyw` | Launches the PyWebview window connected to the FastAPI server |
 
+## Contributing
+
+Contributions are warmly welcome! Whether you are fixing bugs, improving scrapers, enhancing scoring heuristics, or adding new features:
+1. Review [CONTRIBUTING.md](CONTRIBUTING.md) for local environment setup, architecture overview, and testing instructions.
+2. Check open tasks in our [GitHub Issues](https://github.com/Mhmd7syn/job-agent/issues) — prioritized by urgency and difficulty.
+3. Adhere to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
-This project is for personal use to automate your job search process.
+This project is open-source software licensed under the [MIT License](LICENSE).
