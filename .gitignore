@@ -62,12 +62,3 @@ output/*.json
 ISSUES_QUEUE.md
 AUTO_APPLY_QUEUE.md
 graphify-out/
-
-# Problem & issue tracking
-problems
-problems.md
-PROBLEMS.md
-
-# Project & feature plans
-*PLAN*.md
-*plan*.md
