@@ -96,6 +96,13 @@ def save_profile(profile_data: Dict[str, Any]) -> bool:
         logging.error(f"Error saving {PROFILE_PATH}: {e}")
         return False
 
+def is_autopilot_enabled(profile: Optional[Dict[str, Any]] = None) -> bool:
+    """Strictly checks if autopilot is enabled. Always defaults to False."""
+    if profile is None:
+        profile = load_profile()
+    settings = profile.get("auto_apply_settings", {})
+    return bool(settings.get("enabled", False))
+
 def scan_resume_directory(base_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Scans an optional resume directory where subfolders match role titles.

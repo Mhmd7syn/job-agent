@@ -53,6 +53,11 @@ def on_startup():
         _last_rescore_date = datetime.now().strftime("%Y-%m-%d")
     except Exception as e:
         logging.error(f"Failed to rescore jobs on startup: {e}")
+    try:
+        from core.task_scheduler import sync_autopilot_windows_task
+        sync_autopilot_windows_task()
+    except Exception as e:
+        logging.error(f"Failed to synchronize AutoPilot Windows Task on startup: {e}")
 
 @app.on_event("shutdown")
 def on_shutdown():

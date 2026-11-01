@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchConfig();
     checkPendingUpdates();
     pollScraper();
+    fetchAutoPilotStatus();
     
     document.getElementById('search-input').addEventListener('input', applyFiltersAndSort);
     document.getElementById('show-not-related').addEventListener('change', applyFiltersAndSort);
@@ -112,6 +113,7 @@ async function refreshDashboard() {
         } else {
             showToast('✓ Dashboard refreshed!', 'info', 'fa-arrows-rotate', 2000);
         }
+        await fetchAutoPilotStatus();
     } catch (err) {
         console.error('Refresh error:', err);
         showToast('Refresh failed', 'danger', 'fa-triangle-exclamation');
@@ -1008,13 +1010,13 @@ function updateAutoPilotStatusUI(isEnabled) {
             title.innerHTML = '<i class="fa-solid fa-pause"></i> Auto-Pilot Engine: Paused';
         }
         if (badge) {
-            badge.textContent = 'PAUSED';
+            badge.textContent = 'PAUSED (DEFAULT)';
             badge.style.background = 'rgba(239, 68, 68, 0.2)';
             badge.style.color = '#fca5a5';
             badge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
         }
         if (desc) {
-            desc.textContent = 'Auto-Pilot background execution is paused. No automated emails or messages will be sent until you resume it here.';
+            desc.textContent = 'Auto-Pilot background execution is paused by default. No automated emails or messages will be sent until you resume it here.';
         }
         if (quickBtn) {
             quickBtn.innerHTML = '<i class="fa-solid fa-play"></i> Resume Auto-Pilot';
@@ -1024,14 +1026,54 @@ function updateAutoPilotStatusUI(isEnabled) {
     }
 }
 
-async function onAutoPilotToggleSwitchChange(isChecked) {
-    await setRemoteAutoPilotState(Boolean(isChecked));
+function showAutoPilotConfirmModal() {
+    const modal = document.getElementById('autopilot-confirm-modal');
+    if (modal) modal.classList.remove('hidden');
 }
 
-async function toggleAutoPilotQuickAction() {
+function cancelAutoPilotEnable() {
+    const modal = document.getElementById('autopilot-confirm-modal');
+    if (modal) modal.classList.add('hidden');
     const cb = document.getElementById('apply-autopilot-enabled');
-    const newState = cb ? !cb.checked : false;
-    await setRemoteAutoPilotState(newState);
+    if (cb) cb.checked = false;
+    updateAutoPilotStatusUI(false);
+}
+
+async function confirmAutoPilotEnable() {
+    const modal = document.getElementById('autopilot-confirm-modal');
+    if (modal) modal.classList.add('hidden');
+    await setRemoteAutoPilotState(true);
+}
+
+function onAutoPilotToggleSwitchChange(isChecked) {
+    if (isChecked) {
+        showAutoPilotConfirmModal();
+    } else {
+        setRemoteAutoPilotState(false);
+    }
+}
+
+function toggleAutoPilotQuickAction() {
+    const cb = document.getElementById('apply-autopilot-enabled');
+    const currentlyEnabled = cb ? cb.checked : false;
+    if (!currentlyEnabled) {
+        showAutoPilotConfirmModal();
+    } else {
+        setRemoteAutoPilotState(false);
+    }
+}
+
+async function fetchAutoPilotStatus() {
+    try {
+        const res = await fetch('/api/autopilot/status');
+        if (res.ok) {
+            const data = await res.json();
+            const isEnabled = Boolean(data.is_enabled);
+            updateAutoPilotStatusUI(isEnabled);
+        }
+    } catch (e) {
+        console.error('Error fetching autopilot status:', e);
+    }
 }
 
 async function setRemoteAutoPilotState(enableState) {

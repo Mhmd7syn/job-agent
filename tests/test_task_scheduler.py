@@ -86,21 +86,55 @@ class TestTaskScheduler(unittest.TestCase):
         cmd = mock_run.call_args[0][0]
         self.assertIn(SCRAPER_TASK_NAME, cmd)
 
+    @patch("web.routers.autopilot.save_profile")
     @patch("web.routers.autopilot.sync_autopilot_windows_task")
-    def test_toggle_endpoint_invokes_task_sync(self, mock_sync):
+    def test_toggle_endpoint_invokes_task_sync(self, mock_sync, mock_save):
         mock_sync.return_value = {"status": "success", "task_enabled": True}
         res = client.post("/api/autopilot/toggle-state", json={"enabled": True})
         self.assertEqual(res.status_code, 200)
         mock_sync.assert_called_once()
         self.assertTrue(mock_sync.call_args[0][0]["enabled"])
 
+    @patch("web.routers.profile.save_profile")
     @patch("web.routers.profile.sync_autopilot_windows_task")
-    def test_save_settings_endpoint_invokes_task_sync(self, mock_sync):
+    def test_save_settings_endpoint_invokes_task_sync(self, mock_sync, mock_save):
         mock_sync.return_value = {"status": "success", "task_enabled": False}
         res = client.post("/api/auto-apply/settings", json={"enabled": False, "max_runs_per_day": 3})
         self.assertEqual(res.status_code, 200)
         mock_sync.assert_called_once()
         self.assertFalse(mock_sync.call_args[0][0]["enabled"])
+
+    def test_autopilot_defaults_to_false(self):
+        from core.applicant_profile import AutoApplySettings, CandidateProfile, get_default_profile, is_autopilot_enabled
+        from core.quota_manager import is_autopilot_enabled as is_quota_autopilot_enabled
+
+        settings = AutoApplySettings()
+        self.assertFalse(settings.enabled)
+
+        profile = CandidateProfile()
+        self.assertFalse(profile.auto_apply_settings.enabled)
+
+        def_profile = get_default_profile()
+        self.assertFalse(def_profile["auto_apply_settings"]["enabled"])
+
+        self.assertFalse(is_autopilot_enabled(def_profile))
+        with patch("core.applicant_profile.load_profile", return_value=def_profile):
+            self.assertFalse(is_quota_autopilot_enabled())
+
+    @patch("web.routers.autopilot.load_profile")
+    def test_autopilot_status_endpoint_defaults_paused(self, mock_load):
+        mock_load.return_value = {
+            "auto_apply_settings": {
+                "enabled": False,
+                "batch_size_per_run": 3,
+                "max_runs_per_day": 5
+            }
+        }
+        res = client.get("/api/autopilot/status")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertFalse(data["is_enabled"])
+        self.assertTrue(data["is_paused"])
 
 
 if __name__ == "__main__":

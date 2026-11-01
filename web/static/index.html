@@ -386,10 +386,10 @@
                                         <div style="display: flex; align-items: center; gap: 0.6rem;">
                                             <span id="autopilot-status-indicator" style="background-color: #ef4444; width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #ef4444;"></span>
                                             <strong id="autopilot-status-title" style="font-size: 1.05rem; color: #f87171;"><i class="fa-solid fa-pause"></i> Auto-Pilot Engine: Paused</strong>
-                                            <span id="autopilot-status-badge" style="font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 999px; background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-weight: 700; border: 1px solid rgba(239, 68, 68, 0.4);">PAUSED</span>
+                                            <span id="autopilot-status-badge" style="font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 999px; background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-weight: 700; border: 1px solid rgba(239, 68, 68, 0.4);">PAUSED (DEFAULT)</span>
                                         </div>
                                         <p id="autopilot-status-desc" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.4rem; margin-bottom: 0; line-height: 1.45;">
-                                            Auto-Pilot background execution is paused. No automated emails or messages will be sent until you resume it here.
+                                            Auto-Pilot background execution is paused by default. No automated emails or messages will be sent until you resume it here.
                                         </p>
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -1191,7 +1191,7 @@
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 0.75rem;">
                     <h2><i class="fa-solid fa-paper-plane" style="color: #818cf8;"></i> Auto-Pilot & Applications Hub</h2>
-                    <span id="hub-paused-badge" class="tag" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); cursor: pointer;" onclick="openSettingsToAutoApply()" title="Auto-Pilot is currently paused. Click to resume in Settings."><i class="fa-solid fa-pause"></i> Paused in Settings</span>
+                    <span id="hub-paused-badge" class="tag" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); cursor: pointer;" onclick="openSettingsToAutoApply()" title="Auto-Pilot is paused by default. Click to configure in Settings."><i class="fa-solid fa-pause"></i> Paused (Default)</span>
                     <span id="hub-active-badge" class="tag hidden" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);"><i class="fa-solid fa-circle-check"></i> Active</span>
                     <span id="hub-running-badge" class="tag hidden" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);"><i class="fa-solid fa-spinner fa-spin"></i> Cycle Running</span>
                 </div>
@@ -1295,6 +1295,33 @@
             <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
                 <div style="font-size: 0.8rem; color: var(--text-muted);"><i class="fa-solid fa-shield-halved"></i> Daily quotas and anti-ban pacing automatically enforced.</div>
                 <button type="button" class="btn btn-secondary" onclick="hideApplicationsHub()"><i class="fa-solid fa-xmark"></i> Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto-Pilot Enable Safety Confirmation Modal -->
+    <div id="autopilot-confirm-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b;"></i> Enable Autonomous Auto-Pilot?</h2>
+                <button class="close-btn" onclick="cancelAutoPilotEnable()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem;">
+                <p style="color: var(--text-main); font-size: 0.92rem; line-height: 1.55; margin-bottom: 1rem;">
+                    Enabling <strong>Auto-Pilot</strong> allows the system to autonomously submit live job applications and dispatch messages (via direct SMTP email, WhatsApp Web, and portal forms) without manual review per job.
+                </p>
+                <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 0.6rem; padding: 0.85rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: #fbbf24;">
+                    <i class="fa-solid fa-shield-halved" style="margin-right: 0.4rem;"></i>
+                    <strong>Safety Checklist:</strong> Ensure your profile details, candidate resumes, email SMTP credentials, and daily quota limits are verified before continuing.
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+                    <button type="button" class="btn btn-secondary" onclick="cancelAutoPilotEnable()">
+                        <i class="fa-solid fa-xmark"></i> Cancel (Keep Paused)
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="confirmAutoPilotEnable()" style="background: #10b981; border-color: #10b981;">
+                        <i class="fa-solid fa-check"></i> Yes, Enable Auto-Pilot
+                    </button>
+                </div>
             </div>
         </div>
     </div>

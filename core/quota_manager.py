@@ -104,3 +104,8 @@ def save_autopilot_state(state: Dict[str, Any]) -> None:
 
 def log_autopilot_activity(message: str, state: Optional[Dict[str, Any]] = None) -> None:
     _default_manager.log_activity(message, state)
+
+def is_autopilot_enabled() -> bool:
+    """Checks whether AutoPilot is enabled in profile settings, defaulting to False."""
+    from core.applicant_profile import is_autopilot_enabled as _check_enabled
+    return _check_enabled()
