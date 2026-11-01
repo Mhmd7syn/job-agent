@@ -362,5 +362,40 @@ class TestDatePenalty(unittest.TestCase):
         score_both = calculate_score(job_both, cfg)
         self.assertEqual(score_clean - score_both, 10)
 
+    def test_compound_slash_role_matches_title_term(self):
+        # "AI/ML Engineer" must match role "AI Engineer" (+20 points)
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        cfg["RESUME_KEYWORDS"] = ["python"]
+
+        job_slash = self._make_job(days_old=0, title="Junior AI/ML Engineer", extra_skills="")
+        score = calculate_score(job_slash, cfg, apply_date_penalty=False)
+        # Role match (+20), Junior level (+15), Location (+5), python in desc (+3) = 43
+        self.assertGreaterEqual(score, 40)
+
+    def test_months_experience_does_not_penalize(self):
+        # "6 months of experience" must NOT be extracted as 6 years
+        cfg = dict(self.base_config)
+        cfg["ROLES"] = [{"title": "AI Engineer", "english_terms": ["AI Engineer"], "years_experience": 0}]
+        job_normal = self._make_job(days_old=0, extra_skills="")
+        job_months = self._make_job(days_old=0, extra_skills="Requires at least 6 months of hands-on experience.")
+        score_normal = calculate_score(job_normal, cfg)
+        score_months = calculate_score(job_months, cfg)
+        self.assertEqual(score_normal, score_months)
+
+    def test_excluded_company_word_boundary(self):
+        # Excluded company "meta" should not disqualify "Metadata Solutions"
+        cfg = dict(self.base_config)
+        cfg["EXCLUDED_COMPANIES"] = ["meta"]
+
+        job_meta = self._make_job(days_old=0)
+        job_meta["company"] = "Meta"
+
+        job_metadata = self._make_job(days_old=0)
+        job_metadata["company"] = "Metadata Solutions"
+
+        self.assertEqual(calculate_score(job_meta, cfg), 0)
+        self.assertGreater(calculate_score(job_metadata, cfg), 0)
+
 if __name__ == "__main__":
     unittest.main()

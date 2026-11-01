@@ -48,10 +48,37 @@ SKILL_CANONICAL_MAP = {
     "3d cnn": "cnn",
 }
 
+def matches_role_title(search_term: str, title: str) -> bool:
+    """
+    Matches role search terms in job titles.
+    Supports exact phrases and compound/slash roles (e.g. 'ai engineer' matching 'AI/ML Engineer').
+    """
+    search_term = search_term.strip().lower()
+    title_lower = title.lower()
+    title_clean = re.sub(r'[/\\_&,|-]', ' ', title_lower)
+
+    # 1. Exact phrase match
+    if search_term in title_lower or search_term in title_clean:
+        return True
+
+    # 2. Compound / slash role match (e.g. 'ai engineer' in 'AI/ML Engineer', 'data analyst' in 'Data & BI Analyst')
+    parts = search_term.split()
+    if len(parts) >= 2:
+        p_first = r'\b' + re.escape(parts[0]) + r'\b'
+        p_last = r'\b' + re.escape(parts[-1]) + r'\b'
+        m_first = re.search(p_first, title_clean)
+        m_last = re.search(p_last, title_clean)
+        if m_first and m_last and m_first.start() < m_last.start():
+            intervening = title_clean[m_first.end():m_last.start()].split()
+            if len(intervening) <= 4:
+                return True
+    return False
+
 def extract_experience_years(text: str) -> Optional[int]:
     """
     Extracts the minimum required years of experience from job text.
     Handles single numbers, ranges, degree duration exclusions, and company history filters.
+    Strictly requires year units (years/yrs) to avoid false penalties from '6 months', 'Python 3', etc.
     """
     if not text:
         return None
@@ -69,10 +96,15 @@ def extract_experience_years(text: str) -> Optional[int]:
         if any(ci in s_lower for ci in COMPANY_INDICATORS) and not any(ri in s_lower for ri in REQUIREMENT_INDICATORS):
             continue
 
-        s_clean_text = re.sub(r'^\s*\d+[\.\)\-]\s*', '', s_clean)
-        nums = [int(n) for n in re.findall(r'\b\d+\b', s_clean_text) if int(n) < 40]
-        if nums:
-            extracted.append(min(nums))
+        # Reject sentences specifying months/weeks rather than years
+        if re.search(r'\b\d+\s*(?:months?|mos?|weeks?|days?)\b', s_lower) and not re.search(r'\b\d+\s*(?:years?|yrs?)\b', s_lower):
+            continue
+
+        s_clean_text = re.sub(r'^\s*\d+[\.\)]\s*', '', s_clean)
+        for m in re.finditer(r'\b(\d+)(?:\s*(?:to|-)\s*(\d+))?\s*(?:\+)?\s*(?:years?|yrs?)\b', s_clean_text, flags=re.IGNORECASE):
+            nums = [int(n) for n in m.groups() if n is not None and int(n) < 40]
+            if nums:
+                extracted.append(min(nums))
 
     return min(extracted) if extracted else None
 
@@ -138,7 +170,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     # -------------------------------------------------------------
     # STAGE 1: Hard Disqualification Gate
     # -------------------------------------------------------------
-    if any(comp in company for comp in excluded_companies):
+    if any(comp and _get_word_pattern(comp).search(company) for comp in excluded_companies):
         return 0
 
     full_loc_desc = f"{loc_val} {title} {desc}"
@@ -183,8 +215,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     for term in all_search_terms:
         if not term:
             continue
-        term_clean = term.strip().lower()
-        if term_clean in title:
+        if matches_role_title(term, title):
             tech_score += 20
             role_matched = True
             break
