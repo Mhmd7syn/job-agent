@@ -3,7 +3,7 @@ import json
 import logging
 import threading
 import sqlite3
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

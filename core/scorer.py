@@ -5,6 +5,7 @@ import json
 import re
 import time
 import unicodedata
+from typing import Optional
 from functools import lru_cache
 from datetime import date, datetime
 from core.database import DB_PATH

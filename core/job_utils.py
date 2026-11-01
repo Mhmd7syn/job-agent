@@ -28,7 +28,9 @@ def make_job_id(title: str, company: str, job_url: str = "") -> str:
     """
     t = re.sub(r'[^\w\s]', ' ', str(title or '').lower()).strip()
     c = re.sub(r'[^\w\s]', ' ', str(company or '').lower()).strip()
-    jid = f"{re.sub(r'\s+', ' ', t)}|{re.sub(r'\s+', ' ', c)}"
+    t_clean = re.sub(r'\s+', ' ', t)
+    c_clean = re.sub(r'\s+', ' ', c)
+    jid = f"{t_clean}|{c_clean}"
     if len(jid.replace('|', '').strip()) < 3:
         raw_fallback = job_url or f"{title}_{company}"
         h = hashlib.md5(raw_fallback.encode('utf-8')).hexdigest()[:12]

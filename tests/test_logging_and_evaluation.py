@@ -1,4 +1,4 @@
-﻿import os
+import os
 import logging
 import pytest
 from job_agent import setup_logging, ConsoleFilter, _OUTPUT_DIR
