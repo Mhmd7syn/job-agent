@@ -1,10 +1,31 @@
 import json
 import logging
+import re
 import concurrent.futures
 from typing import Dict, Any, Optional, List, Callable, Union
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
+
+_BLOCK_TAGS = ['p', 'div', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']
+
+
+def html_to_text(raw_html: str) -> str:
+    """
+    Converts an HTML fragment to plain text while keeping its layout:
+    paragraphs and blocks are separated by blank lines, <br> starts a new
+    line, and <li> items become '• ' bullets.
+    """
+    soup = BeautifulSoup(raw_html, 'html.parser')
+    for br in soup.find_all('br'):
+        br.replace_with('\n')
+    for li in soup.find_all('li'):
+        li.insert_before('\n• ')
+    for tag in soup.find_all(_BLOCK_TAGS):
+        tag.insert_before('\n\n')
+        tag.insert_after('\n\n')
+    lines = [line.strip() for line in soup.get_text().split('\n')]
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(lines)).strip()
 
 
 def fetch_page_content(
@@ -106,7 +127,7 @@ def extract_json_ld_job(content: Union[BeautifulSoup, str]) -> Dict[str, Any]:
             # Description (clean HTML tags)
             raw_desc = item.get('description', '')
             if raw_desc:
-                clean_desc = BeautifulSoup(raw_desc, 'html.parser').get_text(separator='\n', strip=True)
+                clean_desc = html_to_text(raw_desc)
                 if len(clean_desc) > len(result['description']):
                     result['description'] = clean_desc
 
