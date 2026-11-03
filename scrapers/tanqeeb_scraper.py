@@ -12,8 +12,8 @@ import re
 import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.database import is_job_seen
-from core.job_utils import normalize_job_dict
+from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
+from core.job_utils import normalize_job_dict, make_job_id
 from scrapers.common import extract_json_ld_job, fetch_details_concurrently
 
 _IMPERSONATE_PROFILES = ["chrome120", "chrome110"]
@@ -261,6 +261,12 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                 if cutoff and date_posted < cutoff:
                     continue
 
+                card_job_id = make_job_id(title, company, href)
+                if is_job_id_seen(card_job_id):
+                    refresh_republished_job(card_job_id, job_url=href, date_posted=date_posted)
+                    added_in_page += 1
+                    continue
+
                 candidates.append({
                     'title': title,
                     'company': company,
@@ -295,8 +301,8 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                 if is_job_seen(apply_url):
                     logging.debug(f"Skipping Tanqeeb job already seen via apply link: {apply_url}")
                     try:
-                        from core.database import save_dropped_jobs
-                        save_dropped_jobs([{'job_url': job_url, 'title': job.get('title', ''), 'company': job.get('company', ''), 'site': 'tanqeeb'}])
+                        from core.database import save_job
+                        save_job({'job_url': job_url, 'apply_url': apply_url, 'title': job.get('title', ''), 'company': job.get('company', ''), 'site': 'tanqeeb', 'relevance_score': 0})
                     except Exception:
                         pass
                     return None
@@ -306,8 +312,8 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                     if scraped_job and scraped_job.get('title'):
                         scraped_job['apply_url'] = apply_url
                         try:
-                            from core.database import save_dropped_jobs
-                            save_dropped_jobs([{'job_url': job_url, 'title': job.get('title', ''), 'company': job.get('company', ''), 'site': 'tanqeeb'}])
+                            from core.database import save_job
+                            save_job({'job_url': job_url, 'apply_url': apply_url, 'title': job.get('title', ''), 'company': job.get('company', ''), 'site': 'tanqeeb', 'relevance_score': scraped_job.get('relevance_score', 0)})
                         except Exception:
                             pass
                         logging.info(f"    (Tanqeeb job '{job.get('title')}' scraped directly via {scraped_job.get('site')}: {apply_url})")

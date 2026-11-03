@@ -9,8 +9,8 @@ import concurrent.futures
 from bs4 import BeautifulSoup
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.database import is_job_seen
-from core.job_utils import normalize_job_dict
+from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
+from core.job_utils import normalize_job_dict, make_job_id
 from scrapers.common import fetch_page_content, extract_json_ld_job, fetch_details_concurrently
 
 def _parse_bayt_soup(soup):
@@ -141,6 +141,12 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, *args,
                         job_date = (datetime.datetime.now() - datetime.timedelta(days=1)).date()
 
                 if cutoff and job_date < cutoff:
+                    continue
+
+                card_job_id = make_job_id(title, company, href)
+                if is_job_id_seen(card_job_id):
+                    refresh_republished_job(card_job_id, job_url=href, date_posted=job_date)
+                    added_in_page += 1
                     continue
 
                 candidates.append({

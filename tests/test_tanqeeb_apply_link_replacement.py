@@ -259,14 +259,14 @@ class TestTanqeebAndApplyUrlDeduplication:
             # Unknown URL is not seen
             assert is_job_seen("https://unknown.com/job/999") is False
 
-    @patch("core.database.save_dropped_jobs")
+    @patch("core.database.save_job")
     @patch("scrapers.link_scraper.scrape_job_from_url")
     @patch("scrapers.tanqeeb_scraper.is_job_seen")
     @patch("scrapers.tanqeeb_scraper.fetch_tanqeeb_job_details")
     @patch("scrapers.tanqeeb_scraper.fetch_tanqeeb_full_description")
     @patch("scrapers.tanqeeb_scraper.fetch_with_retries")
     def test_tanqeeb_records_original_link_when_replaced(
-        self, mock_fetch_page, mock_fetch_desc, mock_fetch_details, mock_is_seen, mock_scrape_url, mock_save_dropped
+        self, mock_fetch_page, mock_fetch_desc, mock_fetch_details, mock_is_seen, mock_scrape_url, mock_save_job
     ):
         mock_is_seen.return_value = False
         mock_resp = MagicMock()
@@ -297,7 +297,7 @@ class TestTanqeebAndApplyUrlDeduplication:
         assert len(df) == 1
         assert df.iloc[0]["job_url"] == "https://www.linkedin.com/jobs/view/777888"
 
-        # Verify the original Tanqeeb link was recorded via save_dropped_jobs so it won't be re-fetched next time
-        mock_save_dropped.assert_called()
-        saved_urls = [call.args[0][0]["job_url"] for call in mock_save_dropped.call_args_list]
+        # Verify the original Tanqeeb link was recorded via save_job so it won't be re-fetched next time
+        mock_save_job.assert_called()
+        saved_urls = [call.args[0]["job_url"] for call in mock_save_job.call_args_list]
         assert any("777.html" in u for u in saved_urls)

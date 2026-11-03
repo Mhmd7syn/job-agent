@@ -47,6 +47,8 @@ def init_db():
 
     # Migrate any old 'applied' status
     cursor.execute("UPDATE jobs SET is_applied = 1, status = 'liked' WHERE status = 'applied'")
+    # Purge any legacy 'filtered' stubs
+    cursor.execute("DELETE FROM jobs WHERE status = 'filtered'")
     
     # Add index on job_url and apply_url for high-speed deduplication checks
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_url ON jobs(job_url)")
@@ -141,65 +143,31 @@ def save_job(job_dict):
         job_dict.get('workplace_setup', 'On-site')
     ))
     
-    # If we want to update the relevance score for an existing job that is still pending
+    date_posted = str(job_dict.get('date_posted', ''))
+    job_url = str(job_dict.get('job_url', ''))
+
+    # If we want to update the relevance score and date for an existing job that is still pending
     cursor.execute("""
         UPDATE jobs 
         SET relevance_score = ?, apply_type = ?, apply_payload = ?,
+            date_posted = CASE 
+                WHEN ? != '' AND (? > date_posted OR date_posted IS NULL OR date_posted = '') THEN ? 
+                ELSE date_posted 
+            END,
+            job_url = COALESCE(NULLIF(?, ''), job_url),
             apply_url = COALESCE(NULLIF(?, ''), apply_url),
             is_easy_apply = COALESCE(?, is_easy_apply),
             workplace_setup = COALESCE(NULLIF(?, ''), workplace_setup)
         WHERE job_id = ? AND status = 'pending'
-    """, (job_dict.get('relevance_score', 0), apply_type, apply_payload, apply_url, is_easy_apply, job_dict.get('workplace_setup', ''), job_dict.get('job_id', '')))
+    """, (
+        job_dict.get('relevance_score', 0), apply_type, apply_payload,
+        date_posted, date_posted, date_posted,
+        job_url, apply_url, is_easy_apply, job_dict.get('workplace_setup', ''),
+        job_dict.get('job_id', '')
+    ))
 
     conn.commit()
     conn.close()
-
-def save_dropped_jobs(job_records):
-    """
-    Saves minimal records (job_id, job_url, date_posted, timestamp) with status='filtered'
-    and empty description for jobs dropped during preliminary scoring stages.
-    Prevents re-scraping via is_job_seen() while allowing normal cleanup via retention days.
-    """
-    if not job_records:
-        return 0
-    conn = sqlite3.connect(DB_PATH, timeout=15)
-    cursor = conn.cursor()
-    now = datetime.now().isoformat()
-    
-    rows_to_insert = []
-    for j in job_records:
-        job_url = j.get('job_url', '')
-        if not job_url:
-            continue
-        job_id = j.get('job_id') or j.get('id') or job_url
-        date_posted = str(j.get('date_posted', '')) if j.get('date_posted') is not None else ''
-        title = j.get('title', '')
-        company = j.get('company', '')
-        site = j.get('site', '')
-        rows_to_insert.append((
-            job_id,
-            title,
-            company,
-            '',
-            job_url,
-            '',
-            date_posted,
-            site,
-            0,
-            '',
-            'filtered',
-            now
-        ))
-
-    cursor.executemany("""
-        INSERT OR IGNORE INTO jobs 
-        (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, rows_to_insert)
-    inserted_count = cursor.rowcount
-    conn.commit()
-    conn.close()
-    return inserted_count
 
 def save_or_update_job(job_dict, force_pending=True):
     """
@@ -462,6 +430,48 @@ def is_job_seen(job_url: str) -> bool:
     except Exception:
         return False
 
+def is_job_id_seen(job_id: str) -> bool:
+    """Fast check if job_id already exists in the DB.
+    Always returns False on any error so the scraper proceeds safely."""
+    if not job_id:
+        return False
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM jobs WHERE job_id = ? LIMIT 1", (job_id,))
+        found = cursor.fetchone() is not None
+        conn.close()
+        return found
+    except Exception:
+        return False
+
+def refresh_republished_job(job_id: str, job_url: str = "", date_posted: str = "") -> bool:
+    """
+    Updates date_posted and job_url for an existing job when republished,
+    avoiding redundant description fetches.
+    """
+    if not job_id:
+        return False
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        cursor = conn.cursor()
+        d_str = str(date_posted or "")
+        cursor.execute("""
+            UPDATE jobs 
+            SET date_posted = CASE 
+                    WHEN ? != '' AND (? > date_posted OR date_posted IS NULL OR date_posted = '') THEN ? 
+                    ELSE date_posted 
+                END,
+                job_url = COALESCE(NULLIF(?, ''), job_url)
+            WHERE job_id = ? AND status = 'pending'
+        """, (d_str, d_str, d_str, str(job_url or ""), job_id))
+        updated = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+        return updated
+    except Exception:
+        return False
+
 def get_job_by_url(job_url: str):
     """Returns the existing job dictionary if job_url matches (as job_url or apply_url), else None."""
     if not job_url:
@@ -623,11 +633,11 @@ def get_autopilot_applied_tracker(conn=None) -> Dict[str, Set]:
                 except Exception:
                     pass
 
-        # 2. Fetch all not_related and filtered jobs
+        # 2. Fetch all not_related jobs
         cursor.execute("""
             SELECT job_id, title, company, job_url, apply_url
             FROM jobs
-            WHERE status IN ('not_related', 'filtered')
+            WHERE status = 'not_related'
         """)
         not_related_rows = cursor.fetchall()
         
@@ -675,7 +685,7 @@ def is_job_eligible_for_autopilot(
     """
     Strict validation gate guaranteeing that AutoPilot will NOT apply for:
     1. Channels that are disabled in settings or unsupported for auto-apply.
-    2. Not-related jobs (status == 'not_related', status == 'filtered', status not in ('pending', 'liked')).
+    2. Not-related jobs (status == 'not_related', status not in ('pending', 'liked')).
     3. Jobs with non-positive relevance score (score <= 0) or below user threshold.
     4. Jobs failing core career criteria validation (is_valid_job).
     5. Jobs matching any URL or (title, company) marked 'not_related' in the system.
@@ -703,8 +713,6 @@ def is_job_eligible_for_autopilot(
     status = (job.get("status") or "pending").strip().lower()
     if status == "not_related":
         return False, "Job is marked as not related"
-    if status == "filtered":
-        return False, "Job is marked as filtered / dropped"
     if status == "applied":
         return False, "Job is already marked as applied (status='applied')"
     if status not in ("pending", "liked"):
@@ -853,7 +861,7 @@ def get_autopilot_candidate_jobs(
             WHERE is_applied = 0
               AND (apply_status IS NULL OR apply_status != 'applied')
               AND (status IS NULL OR status IN ('pending', 'liked'))
-              AND status NOT IN ('not_related', 'filtered', 'applied')
+              AND status NOT IN ('not_related', 'applied')
               AND apply_type IN ({placeholders})
               AND relevance_score > 0
               AND relevance_score >= ?

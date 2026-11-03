@@ -676,6 +676,14 @@ def scrape_job_from_url(url: str, scraper_type: str = "auto", raw_text: str = ""
     if not url and not raw_text:
         raise ValueError("Please provide a valid job URL or job post text.")
 
+    if url:
+        from core.database import is_job_seen, get_job_by_url
+        if is_job_seen(url):
+            cached = get_job_by_url(url)
+            if cached and cached.get("title") and cached.get("title") not in ["Unknown", "Not specified", ""]:
+                logger.info(f"⏭️ URL already in database, skipping re-scrape: {url}")
+                return cached
+
     has_scholarship_tag = is_scholarship or bool(re.search(r'(?:#scholarship|\bscholarships?\b|\bfellowships?\b|\bمنحة\b|\bمنح\b)', f"{url} {raw_text}", re.IGNORECASE))
 
     # Determine scraper type

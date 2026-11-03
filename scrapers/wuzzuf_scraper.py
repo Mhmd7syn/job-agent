@@ -9,8 +9,8 @@ import logging
 import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.database import is_job_seen
-from core.job_utils import normalize_job_dict
+from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
+from core.job_utils import normalize_job_dict, make_job_id
 from scrapers.common import fetch_page_content, extract_json_ld_job, fetch_details_concurrently
 
 def _parse_wuzzuf_soup(soup):
@@ -150,6 +150,12 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
 
                 company_tag = card.find('a', class_='css-ipsyv7')
                 company = company_tag.text.replace('-', '').strip() if company_tag else "Unknown"
+
+                card_job_id = make_job_id(title, company, job_url)
+                if is_job_id_seen(card_job_id):
+                    refresh_republished_job(card_job_id, job_url=job_url, date_posted=date_posted.date())
+                    added_in_page += 1
+                    continue
                 
                 loc_tag = card.find('span', class_='css-16x61xq')
                 loc = loc_tag.text.strip() if loc_tag else location

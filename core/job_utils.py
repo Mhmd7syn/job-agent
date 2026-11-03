@@ -352,9 +352,8 @@ def score_job_dict(job_dict: dict, config: dict = None) -> dict:
 
 def process_scraped_batch(df_list: list, config: dict = None) -> Optional[pd.DataFrame]:
     """
-    Cleans, normalizes, scores, and saves a batch of scraped DataFrames.
-    - Dropped records (failing preliminary Stage 1 & 2): saved via save_dropped_jobs with minimal links.
-    - Valid records (passing Stage 1 & 2): scored with date penalty, deduplicated, and saved via save_job.
+    Cleans, normalizes, scores, and saves a batch of scraped DataFrames to SQLite.
+    All jobs are preserved with full details, with non-matching scores clamped to 0.0.
     """
     if not df_list:
         return None
@@ -365,45 +364,26 @@ def process_scraped_batch(df_list: list, config: dict = None) -> Optional[pd.Dat
     batch_df = batch_df.drop_duplicates(subset=["job_url"])
 
     from core.scorer import load_latest_config
-    from core.database import save_job, save_dropped_jobs, get_jobs_by_status
+    from core.database import save_job
     import logging
 
     config = config or load_latest_config()
     records = batch_df.to_dict('records')
     normalized_records = [normalize_job_dict(r) for r in records]
 
-    dropped_records = []
-    valid_records = []
-
+    saved_count = 0
     for r in normalized_records:
         score_job_dict(r, config=config)
         is_schol = r.get('job_type') == 'Scholarship' or r.get('is_scholarship') is True
-        if r.get('base_score', 0) > 0 or is_schol:
-            valid_records.append(r)
+        if not is_schol and (r.get('base_score', 0) <= 0 or r.get('relevance_score', 0) <= 0):
+            r['relevance_score'] = 0.0
         else:
-            dropped_records.append(r)
-
-    if dropped_records:
-        save_dropped_jobs(dropped_records)
-        logging.info(f"Filtered {len(dropped_records)} non-matching job(s) from preliminary stages (links recorded to avoid re-scraping).")
-
-    if not valid_records:
-        return None
-
-    applied_or_rejected = get_jobs_by_status(['applied', 'not_related'])
-    exclude_ids = {j['job_id'] for j in applied_or_rejected}
-    valid_records = [r for r in valid_records if r['job_id'] not in exclude_ids]
-
-    if not valid_records:
-        return None
-
-    saved_count = 0
-    for r in valid_records:
+            r['relevance_score'] = max(0.0, float(r.get('relevance_score', 0.0)))
         save_job(r)
         saved_count += 1
 
     logging.info(f"💾 Incrementally saved {saved_count} job(s) to SQLite database.")
-    return pd.DataFrame(valid_records)
+    return pd.DataFrame(normalized_records)
 
 
 def normalize_phone_number(raw_phone: str, country: str = "") -> Optional[str]:

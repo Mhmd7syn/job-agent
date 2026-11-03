@@ -255,18 +255,26 @@ class TestJobUtils(unittest.TestCase):
                 }
             ])
 
+            from core.database import get_job_by_url
             saved_df = process_scraped_batch([df_raw])
             self.assertIsNotNone(saved_df)
-            self.assertEqual(len(saved_df), 1)  # Only AI engineer is saved as valid job
+            self.assertEqual(len(saved_df), 2)  # All jobs are preserved in database
 
-            # Accountant must be saved as dropped link (filtered)
+            # Both jobs are recorded and seen to prevent re-scraping
             self.assertTrue(is_job_seen("https://example.com/acc"))
-            # AI Engineer must be in pending jobs
             self.assertTrue(is_job_seen("https://example.com/ai"))
 
-            gui_jobs = get_jobs_by_status(['pending', 'liked', 'not_related'])
-            self.assertEqual(len(gui_jobs), 1)
-            self.assertEqual(gui_jobs[0]["title"], "Junior AI Engineer")
+            # Accountant is saved normally with full description and score 0.0
+            acc_job = get_job_by_url("https://example.com/acc")
+            self.assertIsNotNone(acc_job)
+            self.assertEqual(acc_job["relevance_score"], 0.0)
+            self.assertEqual(acc_job["description"], "Ledgers and balance sheets")
+            self.assertEqual(acc_job["status"], "pending")
+
+            # AI Engineer is saved with positive score
+            ai_job = get_job_by_url("https://example.com/ai")
+            self.assertIsNotNone(ai_job)
+            self.assertGreater(ai_job["relevance_score"], 0)
 
             if os.path.exists(test_db):
                 try:

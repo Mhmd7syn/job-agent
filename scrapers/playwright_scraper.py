@@ -10,7 +10,8 @@ import sys
 import logging
 import pandas as pd
 from core.llm_parser import extract_feed_posts_with_ai, extract_json_ld
-from core.database import is_job_seen
+from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
+from core.job_utils import make_job_id
 
 LOGIN_FAILED = False
 
@@ -355,6 +356,11 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
                     job_date = datetime.datetime.strptime(time_tag['datetime'][:10], "%Y-%m-%d").date()
                 except Exception:
                     pass
+
+            card_job_id = make_job_id(title, company, clean_url)
+            if is_job_id_seen(card_job_id):
+                refresh_republished_job(card_job_id, job_url=clean_url, date_posted=job_date)
+                continue
 
             # Fast fetch full description via job detail endpoint
             description = ""
