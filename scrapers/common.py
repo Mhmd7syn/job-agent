@@ -16,9 +16,17 @@ def html_to_text(raw_html: str) -> str:
     paragraphs and blocks are separated by blank lines, <br> starts a new
     line, and <li> items become '• ' bullets.
     """
+    if not raw_html or not isinstance(raw_html, str):
+        return ""
+
     soup = BeautifulSoup(raw_html, 'html.parser')
     for br in soup.find_all('br'):
         br.replace_with('\n')
+    for block in soup.find_all(['p', 'div']):
+        if block.find_parent('li'):
+            if block.find_next_sibling(['p', 'div']):
+                block.insert_after('\n')
+            block.unwrap()
     for li in soup.find_all('li'):
         li.insert_before('\n• ')
     for tag in soup.find_all(_BLOCK_TAGS):
