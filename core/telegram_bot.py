@@ -733,6 +733,12 @@ def process_message(bot_token: str, message: Dict[str, Any], allowed_chat_id: Op
     force_pending = False if is_liked else True
 
     found_urls = _extract_job_urls(text)
+    # Links hidden behind text (e.g. "Apply here") are only in the entities, not in the text
+    for entity in (message.get("entities") or []) + (message.get("caption_entities") or []):
+        if entity.get("type") == "text_link" and entity.get("url"):
+            entity_url = clean_url(entity["url"])
+            if entity_url not in found_urls:
+                found_urls.append(entity_url)
     if found_urls:
         for job_url in found_urls:
             res = _scrape_and_persist_url(job_url, is_scholarship, is_liked, is_applied, force_pending)

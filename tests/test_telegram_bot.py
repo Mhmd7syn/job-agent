@@ -140,6 +140,43 @@ class TestTelegramBot(unittest.TestCase):
         self.assertIn("Vodafone", reply_text)
         self.assertIn("88.5%", reply_text)
 
+    @patch("core.telegram_bot._scrape_and_persist_url")
+    @patch("core.telegram_bot.send_chat_action")
+    def test_process_message_with_hidden_text_link(self, mock_action, mock_scrape_url):
+        mock_scrape_url.return_value = {"title": "Data Engineer", "company": "Acme"}
+
+        msg = {
+            "chat": {"id": 12345678},
+            "from": {"id": 12345678, "username": "testuser"},
+            "text": "Apply here",
+            "entities": [
+                {"type": "text_link", "offset": 0, "length": 10, "url": "https://linkedin.com/jobs/view/987654"}
+            ]
+        }
+
+        process_message("fake_token", msg, allowed_chat_id="12345678", send_reply=False)
+
+        mock_scrape_url.assert_called_once_with("https://linkedin.com/jobs/view/987654", False, False, False, True)
+
+    @patch("core.telegram_bot._scrape_and_persist_url")
+    @patch("core.telegram_bot.send_chat_action")
+    def test_process_message_with_hidden_caption_link_and_duplicate_url(self, mock_action, mock_scrape_url):
+        mock_scrape_url.return_value = {"title": "Data Engineer", "company": "Acme"}
+
+        url = "https://linkedin.com/jobs/view/987654"
+        msg = {
+            "chat": {"id": 12345678},
+            "from": {"id": 12345678, "username": "testuser"},
+            "caption": f"Apply here {url}",
+            "caption_entities": [
+                {"type": "text_link", "offset": 0, "length": 10, "url": url}
+            ]
+        }
+
+        process_message("fake_token", msg, allowed_chat_id="12345678", send_reply=False)
+
+        mock_scrape_url.assert_called_once_with(url, False, False, False, True)
+
     @patch("core.telegram_bot.send_message")
     @patch("core.telegram_bot.send_chat_action")
     @patch("core.telegram_bot.scrape_job_from_url")
