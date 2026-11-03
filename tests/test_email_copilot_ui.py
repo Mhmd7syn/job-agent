@@ -11,14 +11,11 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-# Mock rescore_all_jobs so test server starts up instantly
-patch("core.scorer.rescore_all_jobs", return_value=None).start()
-patch("web.app.rescore_all_jobs", return_value=None).start()
-
 from web.app import app
 
 def run_server():
-    uvicorn.run(app, host="127.0.0.1", port=8008, log_level="error")
+    with patch("web.app.rescore_all_jobs", return_value=None):
+        uvicorn.run(app, host="127.0.0.1", port=8008, log_level="error")
 
 def test_email_copilot_modal_ui():
     """Verify in headless browser that Email Co-Pilot modal opens and renders correctly."""

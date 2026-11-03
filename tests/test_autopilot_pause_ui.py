@@ -10,10 +10,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-# Mock rescore_all_jobs so test server starts up instantly
-patch("core.scorer.rescore_all_jobs", return_value=None).start()
-patch("web.app.rescore_all_jobs", return_value=None).start()
-
 from web.app import app
 from core.applicant_profile import load_profile, save_profile
 
@@ -21,7 +17,8 @@ TEST_PORT = 8017
 
 def run_server():
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=TEST_PORT, log_level="error")
+    with patch("web.app.rescore_all_jobs", return_value=None):
+        uvicorn.run(app, host="127.0.0.1", port=TEST_PORT, log_level="error")
 
 def test_autopilot_paused_settings_ui():
     """Verify in headless browser that Auto-Pilot is paused by default and can be resumed/paused from Settings."""

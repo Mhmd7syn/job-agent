@@ -11,10 +11,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-# Mock rescore_all_jobs so startup is instantaneous
-patch("core.scorer.rescore_all_jobs", return_value=None).start()
-patch("web.app.rescore_all_jobs", return_value=None).start()
-
 from web.app import app
 from core.database import get_jobs_by_apply_type, get_jobs_by_status
 
@@ -73,7 +69,8 @@ TEST_UI_PORT = 8016
 
 def run_ui_server():
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=TEST_UI_PORT, log_level="error")
+    with patch("web.app.rescore_all_jobs", return_value=None):
+        uvicorn.run(app, host="127.0.0.1", port=TEST_UI_PORT, log_level="error")
 
 
 def test_ui_apply_method_filter():
