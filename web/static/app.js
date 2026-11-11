@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Sync queued mobile jobs on GUI launch or refresh
-    setTimeout(() => syncTelegramJobsOnLaunch(false), 600);
+    setTimeout(() => syncWhatsAppJobsOnLaunch(false), 600);
 });
 
 async function refreshDashboard() {
@@ -76,16 +76,16 @@ async function refreshDashboard() {
     if (refreshBtn) refreshBtn.disabled = true;
 
     try {
-        // 1. Fetch queued Telegram messages
-        let tgAddedCount = 0;
+        // 1. Fetch queued WhatsApp messages
+        let waAddedCount = 0;
         try {
-            const tgRes = await fetch('/api/telegram/sync');
-            if (tgRes.ok) {
-                const tgData = await tgRes.json();
-                tgAddedCount = (tgData && tgData.count) ? tgData.count : 0;
+            const waRes = await fetch('/api/whatsapp/sync');
+            if (waRes.ok) {
+                const waData = await waRes.json();
+                waAddedCount = (waData && waData.count) ? waData.count : 0;
             }
-        } catch (tgErr) {
-            console.warn('Telegram sync error during refresh:', tgErr);
+        } catch (waErr) {
+            console.warn('WhatsApp sync error during refresh:', waErr);
         }
 
         // 2. Rescore all jobs in the database against current criteria & date penalties
@@ -105,9 +105,9 @@ async function refreshDashboard() {
         await checkPendingUpdates();
 
         // 4. User feedback
-        if (tgAddedCount > 0) {
-            const jobWord = tgAddedCount === 1 ? 'job' : 'jobs';
-            showToast(`📥 ${tgAddedCount} new ${jobWord} fetched from Telegram & ${rescoreCount} jobs rescored!`, 'success', 'fa-paper-plane', 5000);
+        if (waAddedCount > 0) {
+            const jobWord = waAddedCount === 1 ? 'job' : 'jobs';
+            showToast(`📥 ${waAddedCount} new ${jobWord} fetched from WhatsApp & ${rescoreCount} jobs rescored!`, 'success', 'fa-paper-plane', 5000);
         } else if (rescoreCount > 0) {
             showToast(`✓ Dashboard refreshed & ${rescoreCount} jobs rescored!`, 'success', 'fa-arrows-rotate', 3000);
         } else {
@@ -123,14 +123,14 @@ async function refreshDashboard() {
     }
 }
 
-async function syncTelegramJobsOnLaunch(isManual = false) {
+async function syncWhatsAppJobsOnLaunch(isManual = false) {
     try {
-        const res = await fetch('/api/telegram/sync');
+        const res = await fetch('/api/whatsapp/sync');
         if (!res.ok) return false;
         const data = await res.json();
         if (data && data.count > 0) {
             const jobWord = data.count === 1 ? 'job' : 'jobs';
-            showToast(`📥 ${data.count} new ${jobWord} added by Telegram bot!`, 'success', 'fa-paper-plane', 6000);
+            showToast(`📥 ${data.count} new ${jobWord} added by WhatsApp sync!`, 'success', 'fa-paper-plane', 6000);
             fetchJobs(); // Refresh grid and update job count!
             return true;
         }
@@ -752,39 +752,33 @@ function refreshSettingsUI() {
     const retEl = document.getElementById('config-retention-days');
     if (retEl) retEl.value = currentConfig.job_retention_days || 90;
 
-    loadTelegramStatusUI();
+    loadWhatsAppStatusUI();
 }
 
-async function loadTelegramStatusUI() {
-    const userInput = document.getElementById('telegram-username');
-    const badge = document.getElementById('telegram-status-badge');
-    const openBotBtn = document.getElementById('telegram-open-bot-btn') || document.getElementById('telegram-open-web-btn');
+async function loadWhatsAppStatusUI() {
+    const phoneInput = document.getElementById('whatsapp-sync-phone');
+    const badge = document.getElementById('whatsapp-status-badge');
+    const openChatBtn = document.getElementById('whatsapp-open-chat-btn');
     if (!badge) return;
 
     try {
-        const res = await fetch('/api/telegram/status');
+        const res = await fetch('/api/whatsapp/status');
         const data = await res.json();
-        if (userInput && data.username !== undefined) {
-            userInput.value = (data.username || '').replace(/^@/, '');
+        if (phoneInput && data.phone_number !== undefined) {
+            phoneInput.value = data.phone_number || '';
         }
 
-        const botUrl = data.bot_url || (data.bot_username ? `https://t.me/${data.bot_username}` : '#');
-        if (openBotBtn) {
-            openBotBtn.href = botUrl;
+        if (openChatBtn && data.chat_url) {
+            openChatBtn.href = data.chat_url;
         }
 
-        if (data.username) {
-            const userDisplay = data.username.replace(/^@/, '');
-            if (data.has_chat_id) {
-                badge.innerHTML = `<span style="color: var(--success);"><i class="fa-solid fa-circle-check"></i> Connected to @${userDisplay}. Chat linked & ready to sync jobs!</span>`;
-            } else {
-                badge.innerHTML = `<span style="color: #f59e0b;"><i class="fa-solid fa-clock"></i> Configured for @${userDisplay}. Open the bot chat above & tap Start to link!</span>`;
-            }
+        if (data.is_configured) {
+            badge.innerHTML = `<span style="color: var(--success);"><i class="fa-solid fa-circle-check"></i> Connected to ${data.phone_number}. Mobile sync & notifications ready!</span>`;
         } else {
-            badge.innerHTML = '<span style="color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> Enter your Telegram username above to connect Mobile Sync.</span>';
+            badge.innerHTML = '<span style="color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> Enter your WhatsApp phone number above to enable Mobile Sync.</span>';
         }
     } catch (e) {
-        console.error('Failed to load Telegram status:', e);
+        console.error('Failed to load WhatsApp status:', e);
     }
 }
 
@@ -1442,22 +1436,22 @@ async function saveSettings() {
             // Save Candidate Profile and Auto-Apply settings concurrently
             await saveProfileAndApplySettingsFromDOM();
 
-            // Save Telegram username
-            const tgUserInput = document.getElementById('telegram-username');
-            if (tgUserInput) {
-                const tgUsername = tgUserInput.value.trim().replace(/^@/, '');
+            // Save WhatsApp phone
+            const waPhoneInput = document.getElementById('whatsapp-sync-phone');
+            if (waPhoneInput) {
+                const waPhone = waPhoneInput.value.trim();
                 try {
-                    const tgRes = await fetch('/api/telegram/config', {
+                    const waRes = await fetch('/api/whatsapp/config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username: tgUsername })
+                        body: JSON.stringify({ phone_number: waPhone })
                     });
-                    const tgData = await tgRes.json();
-                    if (tgData.status === 'success') {
-                        await loadTelegramStatusUI();
+                    const waData = await waRes.json();
+                    if (waData.status === 'success') {
+                        await loadWhatsAppStatusUI();
                     }
-                } catch (tgErr) {
-                    console.error("Failed to save Telegram config:", tgErr);
+                } catch (waErr) {
+                    console.error("Failed to save WhatsApp config:", waErr);
                 }
             }
 
@@ -3099,7 +3093,7 @@ async function openEmailCopilotModal(jobId) {
         } else {
             const errorMsg = data.detail || data.message || 'AI service is unavailable. Application draft discarded.';
             if (bodyEl) {
-                bodyEl.value = `⚠️ Application Discarded:\n\n${errorMsg}\n\nYou have been notified via Telegram.`;
+                bodyEl.value = `⚠️ Application Discarded:\n\n${errorMsg}\n\nYou have been notified via WhatsApp.`;
                 bodyEl.disabled = true;
             }
             const badgeEl = document.getElementById('email-copilot-engine-badge');
@@ -3114,7 +3108,7 @@ async function openEmailCopilotModal(jobId) {
     } catch (err) {
         console.error('Error generating draft:', err);
         if (bodyEl) {
-            bodyEl.value = '⚠️ Application Discarded: Error communicating with AI service. You have been notified via Telegram.';
+            bodyEl.value = '⚠️ Application Discarded: Error communicating with AI service. You have been notified via WhatsApp.';
             bodyEl.disabled = true;
         }
         const badgeEl = document.getElementById('email-copilot-engine-badge');

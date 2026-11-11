@@ -14,6 +14,7 @@ except ImportError:
 
 from core.database import get_job_by_id
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
+from core.config import get_chrome_binary_path
 from appliers.screening_resolver import ScreeningResolver
 
 logger = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
     session.current_step = "Launching Chrome browser..."
     session.log("Starting assisted headed Chrome session...")
 
-    chrome_bin = os.path.join(BASE_DIR, "chrome-win64", "chrome.exe")
+    chrome_bin = get_chrome_binary_path()
     user_data_dir = os.path.join(BASE_DIR, "playwright_profile")
 
     launch_args = [
@@ -217,7 +218,7 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
                 "ignore_default_args": ["--enable-automation"],
                 "viewport": None
             }
-            if os.path.exists(chrome_bin):
+            if chrome_bin:
                 launch_kwargs["executable_path"] = chrome_bin
             else:
                 launch_kwargs["channel"] = "chrome"

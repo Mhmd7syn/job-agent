@@ -123,12 +123,12 @@ def test_simulated_email_batch_execution():
         with patch("appliers.email_worker.generate_email_draft", return_value=mock_draft), \
              patch("appliers.email_worker.load_profile", return_value=mock_profile), \
              patch("appliers.email_worker.send_smtp_email", return_value=True), \
-             patch("appliers.email_worker.notify_telegram_candidate") as mock_tg:
+             patch("appliers.email_worker.notify_whatsapp_candidate") as mock_tg:
 
             res = run_email_autopilot_batch(force=True, dry_run=False, batch_limit=1)
             assert res["status"] == "success"
             assert res["processed_count"] >= 1
-            # Must NOT spam Telegram on success
+            # Must NOT spam WhatsApp on success
             mock_tg.assert_not_called()
 
             # Check DB was updated
@@ -152,8 +152,8 @@ def test_simulated_email_batch_execution():
         conn.close()
 
 
-def test_email_batch_failure_notifies_telegram():
-    """Verifies that an email delivery failure triggers a Telegram failure alert."""
+def test_email_batch_failure_notifies_whatsapp():
+    """Verifies that an email delivery failure triggers a WhatsApp failure alert."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT job_id, apply_payload FROM jobs WHERE apply_type = 'email' LIMIT 1")
@@ -190,7 +190,7 @@ def test_email_batch_failure_notifies_telegram():
         with patch("appliers.email_worker.generate_email_draft", return_value=mock_draft), \
              patch("appliers.email_worker.load_profile", return_value=mock_profile), \
              patch("appliers.email_worker.send_smtp_email", return_value=False), \
-             patch("appliers.email_worker.notify_telegram_candidate") as mock_tg:
+             patch("appliers.email_worker.notify_whatsapp_candidate") as mock_tg:
 
             res = run_email_autopilot_batch(force=True, dry_run=False, batch_limit=1)
             assert res["status"] == "success"

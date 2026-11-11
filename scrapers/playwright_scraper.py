@@ -12,6 +12,7 @@ import pandas as pd
 from core.llm_parser import extract_feed_posts_with_ai, extract_json_ld
 from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
 from core.job_utils import make_job_id
+from core.config import get_chrome_binary_path
 
 LOGIN_FAILED = False
 
@@ -50,7 +51,7 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
     ignore_default_args = kwargs.pop("ignore_default_args", ["--enable-automation", "--enable-blink-features=IdleDetection"])
     viewport = kwargs.pop("viewport", None)
 
-    chrome_bin = os.path.join(BASE_DIR, "chrome-win64", "chrome.exe")
+    chrome_bin = get_chrome_binary_path()
     
     launch_args = {
         "user_data_dir": user_data_dir,
@@ -61,7 +62,7 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
         **kwargs
     }
     
-    if os.path.exists(chrome_bin):
+    if chrome_bin:
         launch_args["executable_path"] = chrome_bin
     else:
         launch_args["channel"] = "chrome"

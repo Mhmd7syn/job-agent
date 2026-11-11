@@ -8,7 +8,7 @@ from appliers.master_orchestrator import (
     run_master_autopilot_cycle,
     get_applications_history,
     get_applications_aggregate_stats,
-    resolve_telegram_hitl_answer
+    resolve_whatsapp_hitl_answer
 )
 from core.applicant_profile import load_profile, save_profile
 from core.database import DB_PATH
@@ -55,9 +55,9 @@ def test_applications_history_api():
     assert res_search.status_code == 200
 
 
-def test_telegram_hitl_question_and_answer_cycle():
+def test_whatsapp_hitl_question_and_answer_cycle():
     """
-    Verifies that resolving a Telegram HITL question stores the answer permanently
+    Verifies that resolving a WhatsApp HITL question stores the answer permanently
     in candidate_profile.json (custom_qa_pairs).
     """
     profile = load_profile()
@@ -68,7 +68,7 @@ def test_telegram_hitl_question_and_answer_cycle():
     test_job_id = "test_hitl_mock_job"
 
     try:
-        success = resolve_telegram_hitl_answer(
+        success = resolve_whatsapp_hitl_answer(
             job_id=test_job_id,
             question=test_q,
             answer=test_a

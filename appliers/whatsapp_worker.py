@@ -29,7 +29,8 @@ from core.quota_manager import (
     save_autopilot_state,
     log_autopilot_activity,
 )
-from core.telegram_bot import notify_telegram_candidate
+from core.whatsapp_bot import notify_whatsapp_candidate
+from core.config import get_chrome_binary_path
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +272,7 @@ def run_whatsapp_autopilot_batch(
                 time.sleep(delay)
         else:
             log_autopilot_activity(f"Failed to send WhatsApp message to {phone} for '{title}'.", state)
-            notify_telegram_candidate(f"⚠️ Auto-Pilot Failed: Could not send WhatsApp message for '{title}' at {company} ({phone}).")
+            notify_whatsapp_candidate(f"⚠️ Auto-Pilot Failed: Could not send WhatsApp message for '{title}' at {company} ({phone}).")
             processed_jobs.append({
                 "job_id": job_id,
                 "title": title,
@@ -304,7 +305,7 @@ def _send_whatsapp_message_via_playwright(
     from playwright.sync_api import sync_playwright
 
     user_data_dir = os.path.join(BASE_DIR, "playwright_profile")
-    chrome_bin = os.path.join(BASE_DIR, "chrome-win64", "chrome.exe")
+    chrome_bin = get_chrome_binary_path()
 
     encoded_text = urllib.parse.quote(message)
     target_url = f"https://web.whatsapp.com/send?phone={phone}&text={encoded_text}"
@@ -319,8 +320,10 @@ def _send_whatsapp_message_via_playwright(
                 "--disable-dev-shm-usage"
             ]
         }
-        if os.path.exists(chrome_bin):
+        if chrome_bin:
             launch_kwargs["executable_path"] = chrome_bin
+        else:
+            launch_kwargs["channel"] = "chrome"
 
         context = p.chromium.launch_persistent_context(**launch_kwargs)
         page = context.pages[0] if context.pages else context.new_page()

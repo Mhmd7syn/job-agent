@@ -95,11 +95,11 @@ def test_simulated_whatsapp_batch_execution():
         with patch("appliers.whatsapp_worker.load_profile", return_value=mock_profile), \
              patch("appliers.whatsapp_worker.generate_whatsapp_pitch", return_value=mock_pitch), \
              patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=True), \
-             patch("appliers.whatsapp_worker.notify_telegram_candidate") as mock_tg:
+             patch("appliers.whatsapp_worker.notify_whatsapp_candidate") as mock_tg:
             res = run_whatsapp_autopilot_batch(force=True, dry_run=False, batch_limit=1)
             assert res["status"] == "success"
             assert res["processed_count"] >= 1
-            # Must NOT spam Telegram on success
+            # Must NOT spam WhatsApp on success
             mock_tg.assert_not_called()
 
             # Verify DB was updated
@@ -123,8 +123,8 @@ def test_simulated_whatsapp_batch_execution():
         conn.close()
 
 
-def test_whatsapp_batch_failure_notifies_telegram():
-    """Verifies that a WhatsApp delivery failure triggers a Telegram failure alert."""
+def test_whatsapp_batch_failure_notifies_whatsapp():
+    """Verifies that a WhatsApp delivery failure triggers a WhatsApp failure alert."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT job_id, apply_payload FROM jobs WHERE apply_type = 'whatsapp' LIMIT 1")
@@ -151,7 +151,7 @@ def test_whatsapp_batch_failure_notifies_telegram():
         with patch("appliers.whatsapp_worker.load_profile", return_value=mock_profile), \
              patch("appliers.whatsapp_worker.generate_whatsapp_pitch", return_value=mock_pitch), \
              patch("appliers.whatsapp_worker._send_whatsapp_message_via_playwright", return_value=False), \
-             patch("appliers.whatsapp_worker.notify_telegram_candidate") as mock_tg:
+             patch("appliers.whatsapp_worker.notify_whatsapp_candidate") as mock_tg:
 
             res = run_whatsapp_autopilot_batch(force=True, dry_run=False, batch_limit=1)
             assert res["status"] == "success"

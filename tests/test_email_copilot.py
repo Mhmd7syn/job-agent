@@ -40,8 +40,8 @@ def test_cv_resolution_for_target_roles():
             assert os.path.normpath(cv_path) == os.path.normpath(matching_role["resume_path"])
 
 
-def test_ai_unavailable_discards_and_notifies_telegram():
-    """Verify that when AI client is unavailable, draft generation is discarded and Telegram is notified."""
+def test_ai_unavailable_discards_and_notifies_whatsapp():
+    """Verify that when AI client is unavailable, draft generation is discarded and WhatsApp is notified."""
     sample_job = {
         "job_id": "job-test-1",
         "title": "Data Analyst",
@@ -51,7 +51,7 @@ def test_ai_unavailable_discards_and_notifies_telegram():
         "apply_payload": {"recipient_email": "hr@techcorp.com", "subject_hint": ""}
     }
     with patch("appliers.email_generator.client", None), \
-         patch("appliers.email_generator.notify_telegram_candidate") as mock_tg:
+         patch("appliers.email_generator.notify_whatsapp_candidate") as mock_tg:
         draft = generate_email_draft(job_data=sample_job)
         assert draft["status"] == "error"
         assert draft["reason"] == "ai_unavailable"
@@ -63,7 +63,7 @@ def test_ai_unavailable_discards_and_notifies_telegram():
         assert "Data Analyst" in tg_call_msg
 
 
-def test_ai_generation_failure_discards_and_notifies_telegram():
+def test_ai_generation_failure_discards_and_notifies_whatsapp():
     """Verify that when Gemini models fail, draft generation is discarded without heuristic fallback."""
     sample_job = {
         "job_id": "job-test-2",
@@ -77,7 +77,7 @@ def test_ai_generation_failure_discards_and_notifies_telegram():
     mock_client.models.generate_content.side_effect = RuntimeError("API quota exceeded")
 
     with patch("appliers.email_generator.client", mock_client), \
-         patch("appliers.email_generator.notify_telegram_candidate") as mock_tg:
+         patch("appliers.email_generator.notify_whatsapp_candidate") as mock_tg:
         draft = generate_email_draft(job_data=sample_job)
         assert draft["status"] == "error"
         assert draft["reason"] == "ai_unavailable"

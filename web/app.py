@@ -1,4 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, UploadFile, File, Query, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -27,10 +27,9 @@ from core.cv_parser import parse_cv_with_ai
 from core.scorer import rescore_all_jobs
 from scrapers.link_scraper import scrape_job_from_url
 import core.config as app_config
-from core.telegram_bot import (
-    sync_queued_telegram_jobs, stop_bot_thread, get_latest_chat_id_from_telegram,
-    get_bot_token, resolve_chat_id_for_username,
-    get_bot_url, get_bot_username
+from core.whatsapp_bot import (
+    sync_queued_whatsapp_jobs, get_candidate_phone, enqueue_incoming_message,
+    process_incoming_payload, normalize_phone_number
 )
 
 app = FastAPI(title="Job Dashboard")
@@ -61,10 +60,7 @@ def on_startup():
 
 @app.on_event("shutdown")
 def on_shutdown():
-    try:
-        stop_bot_thread()
-    except Exception as e:
-        logging.error(f"Error stopping Telegram Bot: {e}")
+    pass
 
 @app.get("/api/jobs")
 def get_jobs(background_tasks: BackgroundTasks, apply_type: Optional[str] = None):
@@ -160,146 +156,98 @@ async def update_config(request: Request, background_tasks: BackgroundTasks):
         return {"status": "error", "error": str(e)}
 ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 
-class TelegramConfigRequest(BaseModel):
-    username: str = Field(default="")
+class WhatsAppConfigRequest(BaseModel):
+    phone_number: str = Field(default="")
 
-@app.get("/api/telegram/status")
-def get_telegram_status():
-    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN", "") or get_bot_token()
-    username = getattr(app_config, "TELEGRAM_USERNAME", None)
-    if username is None:
-        username = os.getenv("TELEGRAM_USERNAME", "")
-    chat_id = getattr(app_config, "TELEGRAM_CHAT_ID", None)
-    if chat_id is None:
-        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-    bot_username = get_bot_username(token)
-    bot_url = get_bot_url(token)
+@app.get("/api/whatsapp/status")
+def get_whatsapp_status():
+    phone = getattr(app_config, "WHATSAPP_PHONE_NUMBER", None) or os.getenv("WHATSAPP_PHONE_NUMBER", "") or get_candidate_phone()
+    clean_p = normalize_phone_number(phone)
+    chat_url = f"https://wa.me/{clean_p.lstrip('+')}" if clean_p else "https://web.whatsapp.com"
     return {
-        "is_configured": bool(username or chat_id),
-        "is_running": bool(username or chat_id),
-        "username": username,
-        "chat_id": chat_id,
-        "has_chat_id": bool(chat_id),
-        "bot_username": bot_username,
-        "bot_url": bot_url
+        "is_configured": bool(clean_p),
+        "phone_number": clean_p,
+        "chat_url": chat_url
     }
 
-@app.post("/api/telegram/detect-chat")
-def detect_telegram_chat(req: TelegramConfigRequest):
-    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN", "") or get_bot_token()
-    info = None
-    for _ in range(4):
-        info = get_latest_chat_id_from_telegram(token)
-        if info and info.get("chat_id"):
-            break
-        time.sleep(0.5)
-
-    if not info or not info.get("chat_id"):
-        return {
-            "status": "not_found",
-            "message": "No recent message found yet. Please open the bot on Telegram and tap Start, then try again!"
-        }
-    return {
-        "status": "success",
-        "chat_id": info["chat_id"],
-        "username": info.get("username", ""),
-        "last_message": info.get("text", "")
-    }
-
-@app.post("/api/telegram/config")
-def save_telegram_config(req: TelegramConfigRequest):
-    new_username = req.username.strip().lstrip("@")
-    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or os.getenv("TELEGRAM_BOT_TOKEN", "") or get_bot_token()
-
-    current_username = getattr(app_config, "TELEGRAM_USERNAME", None)
-    if current_username is None:
-        current_username = os.getenv("TELEGRAM_USERNAME", "")
-    current_username = (current_username or "").lstrip("@").strip()
-
-    chat_id = getattr(app_config, "TELEGRAM_CHAT_ID", None)
-    if chat_id is None:
-        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-    chat_id = str(chat_id or "")
-
-    if new_username:
-        resolved = resolve_chat_id_for_username(token, new_username)
-        if resolved:
-            chat_id = resolved
-        elif current_username.lower() != new_username.lower():
-            chat_id = ""
-    else:
-        chat_id = ""
-
+@app.post("/api/whatsapp/config")
+def save_whatsapp_config(req: WhatsAppConfigRequest):
+    new_phone = normalize_phone_number(req.phone_number.strip())
     env_path = ENV_FILE_PATH
     lines = []
     if os.path.exists(env_path):
         with open(env_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-    updated_user = False
-    updated_chat = False
+    updated_phone = False
     new_lines = []
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("TELEGRAM_USERNAME"):
-            new_lines.append(f'TELEGRAM_USERNAME="{new_username}"\n')
-            updated_user = True
-        elif stripped.startswith("TELEGRAM_CHAT_ID"):
-            new_lines.append(f'TELEGRAM_CHAT_ID="{chat_id}"\n')
-            updated_chat = True
+        if stripped.startswith("WHATSAPP_PHONE_NUMBER"):
+            new_lines.append(f'WHATSAPP_PHONE_NUMBER="{new_phone}"\n')
+            updated_phone = True
+        elif stripped.startswith("TELEGRAM_"):
+            continue
         else:
             new_lines.append(line)
 
-    if not updated_user:
-        new_lines.append(f'TELEGRAM_USERNAME="{new_username}"\n')
-    if not updated_chat:
-        new_lines.append(f'TELEGRAM_CHAT_ID="{chat_id}"\n')
+    if not updated_phone:
+        new_lines.append(f'WHATSAPP_PHONE_NUMBER="{new_phone}"\n')
 
     with open(env_path, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
 
-    app_config.TELEGRAM_USERNAME = new_username
-    app_config.TELEGRAM_CHAT_ID = chat_id
-    os.environ["TELEGRAM_USERNAME"] = new_username
-    os.environ["TELEGRAM_CHAT_ID"] = chat_id
+    app_config.WHATSAPP_PHONE_NUMBER = new_phone
+    os.environ["WHATSAPP_PHONE_NUMBER"] = new_phone
     try:
         from dotenv import load_dotenv
         load_dotenv(dotenv_path=env_path, override=True)
     except Exception:
         pass
 
-    # Stop any old lingering threads if any
-    stop_bot_thread()
-
-    bot_username = get_bot_username(token)
-    bot_url = get_bot_url(token)
+    clean_digits = new_phone.lstrip('+')
+    chat_url = f"https://wa.me/{clean_digits}" if clean_digits else "https://web.whatsapp.com"
 
     return {
         "status": "success",
-        "username": new_username,
-        "chat_id": chat_id,
-        "bot_username": bot_username,
-        "bot_url": bot_url,
-        "message": f"Telegram username @{new_username} saved." if new_username else "Telegram username cleared."
+        "phone_number": new_phone,
+        "chat_url": chat_url,
+        "message": f"WhatsApp phone {new_phone} saved." if new_phone else "WhatsApp phone cleared."
     }
 
-@app.get("/api/telegram/sync")
-def sync_telegram_endpoint():
+@app.get("/api/whatsapp/sync")
+def sync_whatsapp_endpoint():
     """Triggered on app launch or GUI reload to sync queued jobs in one shot."""
-    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or ""
-    chat_id = getattr(app_config, "TELEGRAM_CHAT_ID", None) or ""
-    if not token:
-        return {"status": "not_configured", "count": 0, "jobs": [], "duplicates": 0}
-    return sync_queued_telegram_jobs(token, chat_id)
+    return sync_queued_whatsapp_jobs()
 
-@app.get("/api/telegram/check-new-jobs")
-def check_new_telegram_jobs():
-    """Alias for backwards compatibility with existing frontend calls."""
-    token = getattr(app_config, "TELEGRAM_BOT_TOKEN", None) or ""
-    chat_id = getattr(app_config, "TELEGRAM_CHAT_ID", None) or ""
-    if not token:
-        return {"count": 0, "jobs": [], "duplicates": 0}
-    return sync_queued_telegram_jobs(token, chat_id)
+@app.get("/api/whatsapp/check-new-jobs")
+def check_new_whatsapp_jobs():
+    return sync_queued_whatsapp_jobs()
+
+@app.get("/api/whatsapp/webhook")
+def whatsapp_webhook_verification(
+    request: Request,
+    hub_mode: Optional[str] = Query(None, alias="hub.mode"),
+    hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
+    hub_challenge: Optional[str] = Query(None, alias="hub.challenge")
+):
+    params = request.query_params
+    mode = hub_mode or params.get("hub_mode")
+    verify_token = hub_verify_token or params.get("hub_verify_token")
+    challenge = hub_challenge or params.get("hub_challenge")
+
+    expected_token = getattr(app_config, "WHATSAPP_VERIFY_TOKEN", None) or os.getenv("WHATSAPP_VERIFY_TOKEN", "job_agent_verify_token")
+    if mode == "subscribe" and verify_token == expected_token:
+        return Response(content=challenge or "", media_type="text/plain", status_code=200)
+    if not mode and challenge:
+        return Response(content=challenge, media_type="text/plain", status_code=200)
+    return Response(content="Verification failed", status_code=403)
+
+@app.post("/api/whatsapp/webhook")
+async def whatsapp_webhook_receiver(request: Request):
+    payload = await request.json()
+    res = process_incoming_payload(payload)
+    return {"status": "received", "result": res}
 
 from core.cv_parser import parse_cv_with_ai, generate_cv_proposals
 from core.config_tuner import _get_alert_path, save_proposals, apply_config_updates

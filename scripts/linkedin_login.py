@@ -28,6 +28,28 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=False
     ignore_default_args = kwargs.pop("ignore_default_args", ["--enable-automation", "--enable-blink-features=IdleDetection"])
     viewport = kwargs.pop("viewport", None)
 
+    try:
+        from core.config import get_chrome_binary_path
+        chrome_bin = get_chrome_binary_path()
+    except Exception:
+        c_bin = r"C:\automation\chrome-win64\chrome.exe"
+        chrome_bin = c_bin if os.path.exists(c_bin) else None
+
+    if chrome_bin:
+        try:
+            launch_args = {
+                "user_data_dir": user_data_dir,
+                "headless": headless,
+                "args": combined_args,
+                "ignore_default_args": ignore_default_args,
+                "viewport": viewport,
+                "executable_path": chrome_bin,
+                **kwargs
+            }
+            return playwright_instance.chromium.launch_persistent_context(**launch_args)
+        except Exception:
+            pass
+
     for channel in channels:
         try:
             launch_args = {

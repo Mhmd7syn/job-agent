@@ -83,7 +83,7 @@ class EmailDraftSchema(BaseModel):
 
 
 
-from core.telegram_bot import notify_telegram_candidate
+from core.whatsapp_bot import notify_whatsapp_candidate
 
 
 def generate_email_draft(
@@ -133,11 +133,11 @@ def generate_email_draft(
         except Exception as e:
             logger.warning(f"Could not extract CV text from {cv_path}: {e}")
 
-    # If no Gemini client, discard applying and notify via Telegram
+    # If no Gemini client, discard applying and notify via WhatsApp
     if not client:
         err_msg = "Gemini AI client is not initialized or API key is missing."
         logger.warning(f"Discarding email application for '{job_title}' at '{company}': {err_msg}")
-        notify_telegram_candidate(
+        notify_whatsapp_candidate(
             f"⚠️ Discarded Email Application: AI is unavailable for '{job_title}' at {company}."
         )
         return {
@@ -200,7 +200,7 @@ def generate_email_draft(
     if not parsed_draft:
         err_msg = f"All Gemini models failed ({last_error})."
         logger.warning(f"Discarding email application for '{job_title}' at '{company}': {err_msg}")
-        notify_telegram_candidate(
+        notify_whatsapp_candidate(
             f"⚠️ Discarded Email Application: AI generation failed for '{job_title}' at {company} ({last_error})."
         )
         return {

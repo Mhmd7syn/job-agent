@@ -300,14 +300,14 @@ def main(run_start_time=None, reload_cfg=False):
 
     write_progress(0, total_steps, "Initializing job search...", 0, is_running=True, start_time=run_start_time)
 
-    def _sync_telegram_jobs(label_prefix="Telegram Sync"):
-        """Fetches queued job messages/links from Telegram and merges them into the run."""
+    def _sync_whatsapp_jobs(label_prefix="WhatsApp Sync"):
+        """Fetches queued job messages/links from WhatsApp and merges them into the run."""
         try:
-            from core.telegram_bot import sync_queued_telegram_jobs, get_bot_token
-            if get_bot_token() or 'telegram' in sites_lower:
-                write_progress(current_step[0], total_steps, "Checking Telegram for queued messages...", total_jobs_saved[0], is_running=True, start_time=run_start_time)
-                logging.info(f"📱 [{label_prefix}] Checking for queued messages from Telegram...")
-                tg_res = sync_queued_telegram_jobs()
+            from core.whatsapp_bot import sync_queued_whatsapp_jobs, get_candidate_phone
+            if get_candidate_phone() or 'whatsapp' in sites_lower:
+                write_progress(current_step[0], total_steps, "Checking WhatsApp for queued messages...", total_jobs_saved[0], is_running=True, start_time=run_start_time)
+                logging.info(f"📱 [{label_prefix}] Checking for queued messages from WhatsApp...")
+                tg_res = sync_queued_whatsapp_jobs()
                 if tg_res and tg_res.get("count", 0) > 0:
                     count = tg_res["count"]
                     total_jobs_saved[0] += count
@@ -315,14 +315,14 @@ def main(run_start_time=None, reload_cfg=False):
                     if added_records:
                         df_tg = pd.DataFrame(added_records)
                         jobs_list.append(df_tg)
-                    logging.info(f"✓ [{label_prefix}] Fetched and processed {count} new job(s) from Telegram: {tg_res.get('jobs', [])}")
-                    write_progress(current_step[0], total_steps, f"Fetched {count} jobs from Telegram", total_jobs_saved[0], is_running=True, start_time=run_start_time)
+                    logging.info(f"✓ [{label_prefix}] Fetched and processed {count} new job(s) from WhatsApp: {tg_res.get('jobs', [])}")
+                    write_progress(current_step[0], total_steps, f"Fetched {count} jobs from WhatsApp", total_jobs_saved[0], is_running=True, start_time=run_start_time)
                 elif tg_res and tg_res.get("status") == "no_updates":
-                    logging.info(f"✓ [{label_prefix}] No new Telegram messages to process.")
+                    logging.info(f"✓ [{label_prefix}] No new WhatsApp messages to process.")
                 elif tg_res and tg_res.get("status") == "not_configured":
-                    logging.info(f"ℹ️ [{label_prefix}] Telegram bot token not configured; skipping sync.")
+                    logging.info(f"ℹ️ [{label_prefix}] WhatsApp phone not configured; skipping sync.")
         except Exception as e:
-            logging.warning(f"⚠️ Telegram sync error during scraping run: {e}")
+            logging.warning(f"⚠️ WhatsApp sync error during scraping run: {e}")
 
     def save_jobs_to_db(df_list):
         """Clean, normalize, score, and incrementally save scraped jobs to SQLite using core.job_utils."""
@@ -543,8 +543,8 @@ def main(run_start_time=None, reload_cfg=False):
     # Clear checkpoint file now that full run finished cleanly
     checkpoint.clear()
 
-    # Fetch queued Telegram jobs after platform scraping finishes
-    _sync_telegram_jobs(label_prefix="Telegram Sync")
+    # Fetch queued WhatsApp jobs after platform scraping finishes
+    _sync_whatsapp_jobs(label_prefix="WhatsApp Sync")
 
     write_progress(total_steps, total_steps, "Search complete. Saving results...", total_jobs_saved[0], is_running=True, start_time=run_start_time)
 

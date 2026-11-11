@@ -15,7 +15,7 @@ from appliers.master_orchestrator import (
     is_cycle_active,
     get_applications_history,
     get_applications_aggregate_stats,
-    resolve_telegram_hitl_answer
+    resolve_whatsapp_hitl_answer
 )
 from core.task_scheduler import sync_autopilot_windows_task, get_autopilot_windows_task_status
 
@@ -132,7 +132,7 @@ def applications_retry_endpoint(req: RetryApplicationRequest):
 
 @router.post("/api/autopilot/hitl-answer")
 def autopilot_hitl_answer_endpoint(req: HitlAnswerRequest):
-    success = resolve_telegram_hitl_answer(job_id=req.job_id, question=req.question, answer=req.answer)
+    success = resolve_whatsapp_hitl_answer(job_id=req.job_id, question=req.question, answer=req.answer)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save HITL answer")
     return {"status": "success", "message": "Answer saved and application resumed."}

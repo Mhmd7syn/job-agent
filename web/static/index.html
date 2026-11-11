@@ -31,7 +31,7 @@
         <button class="btn btn-primary" id="add-job-link-btn" onclick="showAddJobModal()" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
             <i class="fa-solid fa-plus"></i><span>Add Job Link</span>
         </button>
-        <button class="btn btn-secondary" id="refresh-btn" onclick="refreshDashboard()" title="Fetch Telegram messages, rescore jobs & refresh dashboard (Shortcut: F5 or Ctrl+R)" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+        <button class="btn btn-secondary" id="refresh-btn" onclick="refreshDashboard()" title="Fetch WhatsApp messages, rescore jobs & refresh dashboard (Shortcut: F5 or Ctrl+R)" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
             <i class="fa-solid fa-arrows-rotate" id="refresh-icon"></i><span>Refresh</span>
         </button>
         <button class="btn btn-secondary" onclick="showSettings()" style="position: relative;">
@@ -111,7 +111,7 @@
                                 <i class="fa-solid fa-building"></i> Companies & Filters
                             </button>
                             <button type="button" class="settings-subnav-pill" id="pill-matching-scrapers" onclick="switchSettingsSubSection('matching', 'scrapers')">
-                                <i class="fa-solid fa-sliders"></i> Scrapers & Telegram
+                                <i class="fa-solid fa-sliders"></i> Scrapers & WhatsApp
                             </button>
                         </div>
 
@@ -179,49 +179,28 @@
                             <div id="config-excluded-companies"></div>
                         </div>
 
-                        <!-- SubPane 1.5: Scraper Automation & Telegram -->
-                        <div id="subpane-matching-scrapers" class="settings-subsection-pane">
-                            <h3 style="margin-bottom: 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;">⚙️ Platforms & Scraping Rules</h3>
-                            <label>Active Job Sites (e.g., linkedin, linkedin_posts, wuzzuf, bayt, glassdoor, tanqeeb, indeed)</label>
-                            <div id="config-sites"></div>
-
-                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 0.8rem;">
-                                <div>
-                                    <label title="Minimum resume skills a job must match to be kept">Min Matched Skills</label>
-                                    <input type="number" id="config-min-matched-skills" min="1" max="10" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
-                                </div>
-                                <div>
-                                    <label>Results Per Search Term</label>
-                                    <input type="number" id="config-results-per-term" min="1" max="100" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
-                                </div>
-                                <div>
-                                    <label>Job Retention Days</label>
-                                    <input type="number" id="config-retention-days" min="1" max="365" class="input-field" style="width: 100%; padding: 0.6rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main);">
-                                </div>
-                            </div>
-
-                            <h3 style="margin: 1.5rem 0 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;"><i class="fa-brands fa-telegram" style="color: #229ED9; margin-right: 0.4rem;"></i> Telegram Mobile Sync</h3>
-                            <div style="background: rgba(34, 158, 217, 0.08); border: 1px solid rgba(34, 158, 217, 0.25); border-radius: 0.75rem; padding: 1rem;">
+                        <!-- SubPane 1.5: Scraper Automation & WhatsApp -->
+                            <h3 style="margin: 1.5rem 0 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;"><i class="fa-brands fa-whatsapp" style="color: #25D366; margin-right: 0.4rem;"></i> WhatsApp Mobile Sync</h3>
+                            <div style="background: rgba(37, 211, 102, 0.08); border: 1px solid rgba(37, 211, 102, 0.25); border-radius: 0.75rem; padding: 1rem;">
                                 <p style="margin-top: 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
-                                    Send job links or descriptions directly from your phone on Telegram. Job Agent automatically fetches, scores, and merges them on every scheduled scraping run and whenever you refresh the dashboard!
+                                    Send or forward job links or descriptions directly from your phone on WhatsApp. Job Agent automatically fetches, scores, and merges them on every scheduled scraping run and whenever you refresh the dashboard!
                                 </p>
                                 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                                     <div>
-                                        <label style="display: block; font-size: 0.82rem; margin-bottom: 0.25rem;">Your Telegram Username</label>
+                                        <label style="display: block; font-size: 0.82rem; margin-bottom: 0.25rem;">Your WhatsApp Phone Number</label>
                                         <div style="position: relative;">
-                                            <span style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.9rem; pointer-events: none;">@</span>
-                                            <input type="text" id="telegram-username" placeholder="your_username" class="input-field" style="width: 100%; box-sizing: border-box; padding: 0.55rem 0.55rem 0.55rem 1.8rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-size: 0.85rem;">
+                                            <input type="text" id="whatsapp-sync-phone" placeholder="+20 10..." class="input-field" style="width: 100%; box-sizing: border-box; padding: 0.55rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-size: 0.85rem; font-family: monospace;">
                                         </div>
                                         <p style="margin: 0.35rem 0 0; font-size: 0.76rem; color: var(--text-muted);">
-                                            Enter your Telegram username (@your_username). Open the bot chat on Telegram and send <code>/start</code> to pair your account.
+                                            Enter your phone with country code (e.g. +20 10...). Used for candidate alerts and mobile job synchronization.
                                         </p>
                                     </div>
-                                    <div id="telegram-link-container" style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
-                                        <a id="telegram-open-bot-btn" href="#" target="_blank" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; padding: 0.45rem 0.85rem; color: #229ED9; border-color: rgba(34, 158, 217, 0.4); text-decoration: none;">
-                                            <i class="fa-brands fa-telegram"></i> Open Telegram Bot &amp; Start ↗
+                                    <div id="whatsapp-link-container" style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                                        <a id="whatsapp-open-chat-btn" href="https://web.whatsapp.com" target="_blank" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; padding: 0.45rem 0.85rem; color: #25D366; border-color: rgba(37, 211, 102, 0.4); text-decoration: none;">
+                                            <i class="fa-brands fa-whatsapp"></i> Open WhatsApp Web ↗
                                         </a>
                                     </div>
-                                    <div id="telegram-status-badge" style="font-size: 0.8rem; color: var(--text-muted);"></div>
+                                    <div id="whatsapp-status-badge" style="font-size: 0.8rem; color: var(--text-muted);"></div>
                                 </div>
                             </div>
                         </div>

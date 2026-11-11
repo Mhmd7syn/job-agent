@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 
 from core.database import get_job_by_id, record_job_applied
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
-from core.telegram_bot import notify_telegram_candidate
+from core.whatsapp_bot import notify_whatsapp_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +118,9 @@ class BaseApplier(ABC):
         )
 
     def notify(self, context: ApplicationContext, result: ApplyResult) -> bool:
-        """Dispatches real-time candidate notification via Telegram."""
+        """Dispatches real-time candidate notification via WhatsApp."""
         if result.status == "success":
             msg = f"✓ Applied to '{context.job_title}' at {context.company} via {self.channel_name}."
         else:
             msg = f"⚠️ Auto-Pilot Failed: Could not apply to '{context.job_title}' at {context.company} via {self.channel_name} ({result.message})."
-        return notify_telegram_candidate(msg)
+        return notify_whatsapp_candidate(msg)

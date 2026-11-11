@@ -32,9 +32,28 @@ LINKEDIN_PASSWORD = decrypt_value(os.getenv("LINKEDIN_PASSWORD"))
 if os.getenv("GEMINI_API_KEY"):
     os.environ["GEMINI_API_KEY"] = decrypt_value(os.getenv("GEMINI_API_KEY"))
 
-TELEGRAM_BOT_TOKEN = decrypt_value(os.getenv("TELEGRAM_BOT_TOKEN"))
-TELEGRAM_CHAT_ID = decrypt_value(os.getenv("TELEGRAM_CHAT_ID"))
-TELEGRAM_USERNAME = decrypt_value(os.getenv("TELEGRAM_USERNAME"))
+WHATSAPP_PHONE_NUMBER = decrypt_value(os.getenv("WHATSAPP_PHONE_NUMBER"))
+WHATSAPP_API_TOKEN = decrypt_value(os.getenv("WHATSAPP_API_TOKEN"))
+WHATSAPP_PHONE_NUMBER_ID = decrypt_value(os.getenv("WHATSAPP_PHONE_NUMBER_ID"))
+WHATSAPP_VERIFY_TOKEN = decrypt_value(os.getenv("WHATSAPP_VERIFY_TOKEN", "job_agent_verify_token"))
+NGROK_DOMAIN = decrypt_value(os.getenv("NGROK_DOMAIN", "unexposed-affected-squatted.ngrok-free.dev"))
+
+
+def get_chrome_binary_path() -> str | None:
+    """Resolves path to the Chrome/Chromium executable across C: drive, env vars, and local paths."""
+    env_bin = os.getenv("CHROME_BIN") or os.getenv("CHROME_EXECUTABLE_PATH")
+    if env_bin and os.path.exists(env_bin):
+        return env_bin
+    c_drive_bin = r"C:\automation\chrome-win64\chrome.exe"
+    if os.path.exists(c_drive_bin):
+        return c_drive_bin
+    local_bin = os.path.join(BASE_DIR, "chrome-win64", "chrome.exe")
+    if os.path.exists(local_bin):
+        return local_bin
+    return None
+
+
+CHROME_BINARY_PATH = get_chrome_binary_path()
 
 
 config_json_path = os.path.join(os.path.dirname(__file__), 'config.json')

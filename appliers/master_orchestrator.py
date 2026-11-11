@@ -25,7 +25,7 @@ from core.quota_manager import (
     save_autopilot_state,
     log_autopilot_activity,
 )
-from core.telegram_bot import notify_telegram_candidate
+from core.whatsapp_bot import notify_whatsapp_candidate
 from appliers.email_worker import run_email_autopilot_batch
 from appliers.whatsapp_worker import run_whatsapp_autopilot_batch
 
@@ -49,7 +49,7 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
     1. Direct Email Worker (Batch 6)
     2. WhatsApp Worker (Batch 7)
     3. Autonomous Easy Apply & ATS Form Handler (Batch 8)
-    4. Telegram HITL loop for unresolved screening questions.
+    4. WhatsApp HITL loop for unresolved screening questions.
     """
     global _is_cycle_running
     with _cycle_lock:
@@ -93,7 +93,7 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
             except Exception as e:
                 logger.error(f"Email batch error in master cycle: {e}")
                 results["email_batch"] = {"status": "error", "message": str(e)}
-                notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Email batch failed ({str(e)[:100]}).")
+                notify_whatsapp_candidate(f"⚠️ Auto-Pilot Error: Email batch failed ({str(e)[:100]}).")
         else:
             log_autopilot_activity("Email channel is disabled in settings; skipping.", state)
             results["email_batch"] = {
@@ -110,7 +110,7 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
             except Exception as e:
                 logger.error(f"WhatsApp batch error in master cycle: {e}")
                 results["whatsapp_batch"] = {"status": "error", "message": str(e)}
-                notify_telegram_candidate(f"⚠️ Auto-Pilot Error: WhatsApp batch failed ({str(e)[:100]}).")
+                notify_whatsapp_candidate(f"⚠️ Auto-Pilot Error: WhatsApp batch failed ({str(e)[:100]}).")
         else:
             log_autopilot_activity("WhatsApp channel is disabled in settings; skipping.", state)
             results["whatsapp_batch"] = {
@@ -137,11 +137,11 @@ def run_master_autopilot_cycle(force: bool = False, dry_run: bool = False) -> Di
                 )
                 results["easy_apply_batch"] = ea_results
                 if ea_results.get("status") == "error":
-                    notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Form jobs error ({ea_results.get('message', '')[:100]}).")
+                    notify_whatsapp_candidate(f"⚠️ Auto-Pilot Error: Form jobs error ({ea_results.get('message', '')[:100]}).")
             except Exception as e:
                 logger.error(f"Form jobs error in master cycle: {e}")
                 results["easy_apply_batch"] = {"status": "error", "message": str(e)}
-                notify_telegram_candidate(f"⚠️ Auto-Pilot Error: Form jobs batch failed ({str(e)[:100]}).")
+                notify_whatsapp_candidate(f"⚠️ Auto-Pilot Error: Form jobs batch failed ({str(e)[:100]}).")
         else:
             log_autopilot_activity("Form channels (Easy Apply / Platform) are disabled in settings; skipping.", state)
             results["easy_apply_batch"] = {
@@ -171,7 +171,7 @@ def _process_autonomous_form_jobs(
 ) -> Dict[str, Any]:
     """
     Evaluates unapplied Easy Apply and ATS jobs, resolving screening questions,
-    and delegating unanswerable questions to Telegram HITL.
+    and delegating unanswerable questions to WhatsApp HITL.
     """
     if enabled_types is None:
         profile = load_profile()
@@ -292,9 +292,9 @@ def _process_autonomous_form_jobs(
     }
 
 
-def send_telegram_hitl_question(job_id: str, question: str) -> bool:
+def send_whatsapp_hitl_question(job_id: str, question: str) -> bool:
     """
-    Sends a Human-In-The-Loop prompt to Telegram when an unknown screening question is encountered.
+    Sends a Human-In-The-Loop prompt to WhatsApp when an unknown screening question is encountered.
     """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -315,11 +315,11 @@ def send_telegram_hitl_question(job_id: str, question: str) -> bool:
         f"Question: _{question}_\n\n"
         f"Reply with: `/answer {job_id} <your answer>`"
     )
-    notify_telegram_candidate(text)
+    notify_whatsapp_candidate(text)
     return True
 
 
-def resolve_telegram_hitl_answer(job_id: str, question: str, answer: str) -> bool:
+def resolve_whatsapp_hitl_answer(job_id: str, question: str, answer: str) -> bool:
     """
     Stores candidate's answer permanently in candidate_profile.json under custom_qa_pairs
     and clears pending_questions in the database.
@@ -337,7 +337,7 @@ def resolve_telegram_hitl_answer(job_id: str, question: str, answer: str) -> boo
     conn.close()
 
     log_autopilot_activity(f"Resolved HITL question for {job_id}. Saved '{question[:30]}...' to custom Q&A.")
-    notify_telegram_candidate(f"✓ Saved answer for *{question[:30]}...* to permanent profile!")
+    notify_whatsapp_candidate(f"✓ Saved answer for *{question[:30]}...* to permanent profile!")
     return True
 
 

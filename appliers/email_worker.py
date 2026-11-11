@@ -27,7 +27,7 @@ from core.database import (
     register_autopilot_applied,
 )
 from core.applicant_profile import load_profile, get_resume_for_role
-from core.telegram_bot import notify_telegram_candidate
+from core.whatsapp_bot import notify_whatsapp_candidate
 from core.quota_manager import (
     AUTOPILOT_STATE_FILE,
     DailyQuotaManager,
@@ -107,7 +107,7 @@ def run_email_autopilot_batch(
     3. Generates tailored cold email drafts & subject hints.
     4. Automatically attaches role CV PDF from configuration.
     5. Dispatches via direct SMTP.
-    6. Updates database records and sends Telegram notification.
+    6. Updates database records and sends WhatsApp notification.
     """
     profile = load_profile()
     settings = profile.get("auto_apply_settings", {})
@@ -337,7 +337,7 @@ def run_email_autopilot_batch(
                 time.sleep(jitter)
         else:
             log_autopilot_activity(f"Failed to send email to {recipient_email} for '{title}'.", state)
-            notify_telegram_candidate(f"⚠️ Auto-Pilot Failed: Could not send email for '{title}' at {company} ({recipient_email}).")
+            notify_whatsapp_candidate(f"⚠️ Auto-Pilot Failed: Could not send email for '{title}' at {company} ({recipient_email}).")
             processed_jobs.append({
                 "job_id": job_id,
                 "title": title,
