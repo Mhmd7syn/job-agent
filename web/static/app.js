@@ -64,9 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
             refreshDashboard();
         }
     });
-
-    // Sync queued mobile jobs on GUI launch or refresh
-    setTimeout(() => syncWhatsAppJobsOnLaunch(false), 600);
 });
 
 async function refreshDashboard() {

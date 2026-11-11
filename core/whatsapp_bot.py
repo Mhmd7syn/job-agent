@@ -5,6 +5,10 @@ import json
 import time
 import logging
 import threading
+import socket
+import shutil
+import subprocess
+import contextlib
 import requests
 from typing import Optional, Dict, Any, List
 
@@ -564,6 +568,13 @@ def process_incoming_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                         enqueue_incoming_message(sender=sender, text=body, message_id=msg_id)
                         res = process_message({"from": sender, "text": body, "id": msg_id}, send_reply=True)
                         results.extend(res)
+                        if msg_id:
+                            st = get_state()
+                            p_ids = set(st.get("processed_ids", []))
+                            p_ids.add(msg_id)
+                            st["processed_ids"] = list(p_ids)[-500:]
+                            st["queued_messages"] = [m for m in st.get("queued_messages", []) if m.get("id") != msg_id]
+                            save_state(st)
     except Exception as e:
         logger.warning(f"Error extracting Meta webhook payload: {e}")
 
@@ -576,25 +587,167 @@ def process_incoming_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             enqueue_incoming_message(sender=str(sender), text=str(body), message_id=str(m_id) if m_id else None)
             res = process_message({"from": str(sender), "text": str(body)}, send_reply=True)
             results.extend(res)
+            if m_id:
+                st = get_state()
+                p_ids = set(st.get("processed_ids", []))
+                p_ids.add(str(m_id))
+                st["processed_ids"] = list(p_ids)[-500:]
+                st["queued_messages"] = [m for m in st.get("queued_messages", []) if m.get("id") != str(m_id)]
+                save_state(st)
 
     return results
 
 
-def sync_queued_whatsapp_jobs(candidate_phone: Optional[str] = None) -> Dict[str, Any]:
+_tunnel_sync_lock = threading.Lock()
+
+
+def resolve_ngrok_bin() -> Optional[str]:
+    """Finds ngrok binary across PATH, WindowsApps, and local automation folder."""
+    bin_path = shutil.which("ngrok")
+    if bin_path and os.path.exists(bin_path):
+        return bin_path
+    win_apps = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WindowsApps", "ngrok.exe")
+    if os.path.exists(win_apps):
+        return win_apps
+    auto_bin = r"C:\automation\ngrok\ngrok.exe"
+    if os.path.exists(auto_bin):
+        return auto_bin
+    return None
+
+
+def is_port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.25) -> bool:
+    """Checks whether a local TCP port is actively listening."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(timeout)
+        try:
+            return s.connect_ex((host, port)) == 0
+        except Exception:
+            return False
+
+
+@contextlib.contextmanager
+def managed_local_server(port: int = 8000, timeout: float = 5.0):
     """
-    Performs a one-shot batch synchronization with WhatsApp queue:
-    - Processes queued messages buffered in whatsapp_state.json.
-    - Prevents duplicate processing via message IDs.
-    - Sends one consolidated summary message if multiple jobs were processed.
-    - Returns summary dict: {"count": added_count, "jobs": added_job_titles, "job_records": added_records, "duplicates": dup_count}.
+    Context manager ensuring local HTTP server is listening on port 8000 to accept webhooks.
+    - If port 8000 is already open (e.g. desktop app or uvicorn is running), reuses it.
+    - If port 8000 is not open, spawns a temporary uvicorn subprocess and shuts it down on exit.
     """
+    if is_port_open(port):
+        yield {"server_active": True, "reused_server": True, "process": None}
+        return
+
+    logger.info(f"Local server on port {port} is not running. Starting temporary listener for webhook intake...")
+    python_exe = sys.executable.replace("pythonw.exe", "python.exe").replace("job-agent-w.exe", "job-agent.exe")
+    creationflags = 0x08000000 if sys.platform == "win32" else 0
+    cmd = [python_exe, "-m", "uvicorn", "web.app:app", "--host", "127.0.0.1", "--port", str(port)]
+    proc = None
+    started = False
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=BASE_DIR,
+            creationflags=creationflags
+        )
+        start_t = time.time()
+        while time.time() - start_t < timeout:
+            if is_port_open(port):
+                started = True
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.1)
+
+        yield {"server_active": started, "reused_server": False, "process": proc}
+    finally:
+        if proc and proc.poll() is None:
+            logger.info(f"Shutting down temporary local listener on port {port}...")
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except (subprocess.TimeoutExpired, Exception):
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+
+@contextlib.contextmanager
+def managed_ngrok_tunnel(local_port: int = 8000, domain: Optional[str] = None, timeout: float = 5.0):
+    """
+    Context manager for on-demand ngrok tunnel lifecycle.
+    - Reuses existing external tunnel if port 4040 is already open and NEVER terminates it.
+    - Otherwise, starts an ngrok tunnel subprocess and terminates it immediately on context exit.
+    """
+    external_tunnel = is_port_open(4040)
+    if external_tunnel:
+        logger.info("External ngrok tunnel detected on port 4040. Reusing external tunnel without termination.")
+        yield {"tunnel_active": True, "reused_external": True, "domain": domain, "process": None}
+        return
+
+    target_domain = domain
+    if not target_domain:
+        try:
+            from core import config as app_config
+            target_domain = getattr(app_config, "NGROK_DOMAIN", "") or os.getenv("NGROK_DOMAIN", "")
+        except Exception:
+            target_domain = os.getenv("NGROK_DOMAIN", "")
+
+    ngrok_bin = resolve_ngrok_bin()
+    if not ngrok_bin or not target_domain:
+        logger.debug(f"ngrok on-demand tunnel skipped: bin={ngrok_bin}, domain={target_domain}")
+        yield {"tunnel_active": False, "reused_external": False, "domain": target_domain, "process": None}
+        return
+
+    logger.info(f"Starting on-demand ngrok tunnel for port {local_port} (domain: {target_domain})...")
+    creationflags = 0x08000000 if sys.platform == "win32" else 0
+    cmd = [ngrok_bin, "http", str(local_port), f"--url={target_domain}"]
+    proc = None
+    started = False
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags
+        )
+        start_t = time.time()
+        while time.time() - start_t < timeout:
+            if is_port_open(4040):
+                started = True
+                break
+            if proc.poll() is not None:
+                logger.warning(f"ngrok process exited prematurely with code {proc.returncode}")
+                break
+            time.sleep(0.1)
+
+        if started:
+            logger.info("On-demand ngrok tunnel successfully established on port 4040.")
+        else:
+            logger.warning("Timed out waiting for on-demand ngrok tunnel on port 4040.")
+
+        yield {"tunnel_active": started, "reused_external": False, "domain": target_domain, "process": proc}
+    finally:
+        if proc and proc.poll() is None:
+            logger.info("Shutting down on-demand ngrok tunnel...")
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except (subprocess.TimeoutExpired, Exception):
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            logger.info("On-demand ngrok tunnel terminated.")
+
+
+def _process_whatsapp_queue(candidate_phone: Optional[str] = None) -> Dict[str, Any]:
+    """Processes messages buffered in whatsapp_state.json and aggregates with any webhook additions."""
     phone = candidate_phone or get_candidate_phone()
     state = get_state()
     queued = state.get("queued_messages", [])
     processed_ids = set(state.get("processed_ids", []))
-
-    if not queued:
-        return {"count": 0, "jobs": [], "job_records": [], "duplicates": 0, "status": "no_updates"}
 
     batch_results: List[Dict[str, Any]] = []
     unprocessed_queue = []
@@ -624,11 +777,53 @@ def sync_queued_whatsapp_jobs(candidate_phone: Optional[str] = None) -> Dict[str
     added_records = [r["job_data"] for r in batch_results if r.get("status") == "added" and "job_data" in r]
     dup_count = sum(1 for r in batch_results if r.get("status") == "duplicate")
 
+    # Ingest any new jobs recorded during this fetch cycle (e.g. from active webhook)
+    for title in get_and_clear_new_whatsapp_jobs():
+        if title not in added_titles:
+            added_titles.append(title)
+
+    status_str = "success" if (added_titles or dup_count > 0) else "no_updates"
+
     logger.info(f"WhatsApp sync complete: {len(added_titles)} added, {dup_count} duplicate(s).")
     return {
         "count": len(added_titles),
         "jobs": added_titles,
         "job_records": added_records,
         "duplicates": dup_count,
-        "status": "success"
+        "status": status_str
     }
+
+
+def sync_queued_whatsapp_jobs(
+    candidate_phone: Optional[str] = None,
+    manage_tunnel: bool = True,
+    ingress_timeout: Optional[float] = None,
+    local_port: int = 8000
+) -> Dict[str, Any]:
+    """
+    Performs on-demand synchronization of WhatsApp messages:
+    - If manage_tunnel is True:
+        1. Ensures local HTTP server is listening on local_port.
+        2. Spins up ngrok tunnel on-demand (reusing external tunnel if already open on 4040).
+        3. Waits for ingress window to allow Meta's retrying webhooks to deliver pending messages.
+        4. Processes all queued messages.
+        5. Shuts down the on-demand tunnel immediately after processing (external tunnels preserved).
+    - If manage_tunnel is False: processes local queued messages directly without tunnel lifecycle.
+    """
+    if not manage_tunnel:
+        return _process_whatsapp_queue(candidate_phone=candidate_phone)
+
+    timeout_val = ingress_timeout
+    if timeout_val is None:
+        try:
+            timeout_val = float(os.getenv("WHATSAPP_INGRESS_TIMEOUT", "3.0"))
+        except (ValueError, TypeError):
+            timeout_val = 3.0
+
+    with _tunnel_sync_lock:
+        with managed_local_server(port=local_port):
+            with managed_ngrok_tunnel(local_port=local_port) as tunnel_info:
+                if tunnel_info.get("tunnel_active") and timeout_val > 0:
+                    logger.info(f"Tunnel active. Ingesting pending WhatsApp webhook messages for {timeout_val}s...")
+                    time.sleep(timeout_val)
+                return _process_whatsapp_queue(candidate_phone=candidate_phone)

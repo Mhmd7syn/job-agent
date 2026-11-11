@@ -216,13 +216,13 @@ def save_whatsapp_config(req: WhatsAppConfigRequest):
     }
 
 @app.get("/api/whatsapp/sync")
-def sync_whatsapp_endpoint():
-    """Triggered on app launch or GUI reload to sync queued jobs in one shot."""
-    return sync_queued_whatsapp_jobs()
+def sync_whatsapp_endpoint(fetch: bool = True):
+    """Triggered on manual refresh / sync to fetch queued jobs on-demand with tunnel."""
+    return sync_queued_whatsapp_jobs(manage_tunnel=fetch)
 
 @app.get("/api/whatsapp/check-new-jobs")
 def check_new_whatsapp_jobs():
-    return sync_queued_whatsapp_jobs()
+    return sync_queued_whatsapp_jobs(manage_tunnel=False)
 
 @app.get("/api/whatsapp/webhook")
 def whatsapp_webhook_verification(

@@ -324,6 +324,9 @@ def main(run_start_time=None, reload_cfg=False):
         except Exception as e:
             logging.warning(f"⚠️ WhatsApp sync error during scraping run: {e}")
 
+    # Fetch queued WhatsApp jobs at start of scraping cycle
+    _sync_whatsapp_jobs(label_prefix="WhatsApp Pre-Run Sync")
+
     def save_jobs_to_db(df_list):
         """Clean, normalize, score, and incrementally save scraped jobs to SQLite using core.job_utils."""
         return process_scraped_batch(df_list)
@@ -542,9 +545,6 @@ def main(run_start_time=None, reload_cfg=False):
 
     # Clear checkpoint file now that full run finished cleanly
     checkpoint.clear()
-
-    # Fetch queued WhatsApp jobs after platform scraping finishes
-    _sync_whatsapp_jobs(label_prefix="WhatsApp Sync")
 
     write_progress(total_steps, total_steps, "Search complete. Saving results...", total_jobs_saved[0], is_running=True, start_time=run_start_time)
 
