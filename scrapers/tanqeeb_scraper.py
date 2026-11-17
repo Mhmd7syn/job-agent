@@ -157,7 +157,7 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
     if location.lower() == "worldwide" or location.lower() == "remote":
         query += " remote"
         
-    base_url = f"https://egypt.tanqeeb.com/jobs/search?keywords={urllib.parse.quote(query)}"
+    base_url = f"https://egypt.tanqeeb.com/jobs/search?keywords={urllib.parse.quote(query)}&order_by=recent"
     
     # Apply search period filter if hours_old is provided
     if hours_old:
@@ -179,7 +179,7 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
     page = 1
     candidates = []
     seen_urls = set()
-    while len(candidates) < results_wanted and page <= 3:
+    while len(candidates) < results_wanted and page <= 5:
         url = f"{base_url}&page_no={page}"
         response = fetch_with_retries(url)
         if not response:
@@ -205,7 +205,6 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
             if not cards_found:
                 break
 
-            added_in_page = 0
             for a_tag, card in cards_found:
                 if len(candidates) >= results_wanted:
                     break
@@ -264,7 +263,6 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                 card_job_id = make_job_id(title, company, href)
                 if is_job_id_seen(card_job_id):
                     refresh_republished_job(card_job_id, job_url=href, date_posted=date_posted)
-                    added_in_page += 1
                     continue
 
                 candidates.append({
@@ -278,11 +276,7 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                     'site': 'tanqeeb',
                     'date_posted': date_posted
                 })
-                added_in_page += 1
 
-            if added_in_page == 0:
-                break
-                
         except Exception as e:
             logging.error(f"⚠️ Tanqeeb Scraper Error: {e}")
             break

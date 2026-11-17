@@ -314,81 +314,95 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
         from bs4 import BeautifulSoup
         encoded_term = urllib.parse.quote(term)
         encoded_loc = urllib.parse.quote(location)
-        url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={encoded_term}&location={encoded_loc}&start=0"
+        base_url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={encoded_term}&location={encoded_loc}&sortBy=DD"
         if hours_old:
             if hours_old <= 24:
-                url += "&f_TPR=r86400"
+                base_url += "&f_TPR=r86400"
             elif hours_old <= 168:
-                url += "&f_TPR=r604800"
+                base_url += "&f_TPR=r604800"
             else:
-                url += "&f_TPR=r2592000"
+                base_url += "&f_TPR=r2592000"
 
-        r = c_requests.get(url, impersonate="chrome120", timeout=8)
-        if r.status_code != 200 or not r.text:
-            return pd.DataFrame()
+        seen_urls = set()
+        page = 0
+        max_pages = 5
 
-        soup = BeautifulSoup(r.text, 'html.parser')
-        cards = soup.find_all('li')
-        if not cards:
-            return pd.DataFrame()
-
-        for card in cards:
-            if len(jobs) >= results_wanted:
+        while len(jobs) < results_wanted and page < max_pages:
+            start_offset = page * 25
+            url = f"{base_url}&start={start_offset}"
+            r = c_requests.get(url, impersonate="chrome120", timeout=8)
+            if r.status_code != 200 or not r.text:
                 break
-            a_tag = card.find('a', class_='base-card__full-link')
-            if not a_tag or not a_tag.get('href'):
-                continue
-            clean_url = a_tag['href'].split('?')[0]
-            if is_job_seen(clean_url):
-                continue
 
-            t_elem = card.find('h3', class_='base-search-card__title')
-            comp_elem = card.find('h4', class_='base-search-card__subtitle')
-            loc_elem = card.find('span', class_='job-search-card__location')
-            time_tag = card.find('time')
+            soup = BeautifulSoup(r.text, 'html.parser')
+            cards = soup.find_all('li')
+            if not cards:
+                break
 
-            title = t_elem.text.strip() if t_elem else "Unknown"
-            company = comp_elem.text.strip() if comp_elem else "Unknown"
-            loc_val = loc_elem.text.strip() if loc_elem else location
+            valid_cards_in_page = 0
+            for card in cards:
+                if len(jobs) >= results_wanted:
+                    break
+                a_tag = card.find('a', class_='base-card__full-link')
+                if not a_tag or not a_tag.get('href'):
+                    continue
+                valid_cards_in_page += 1
+                clean_url = a_tag['href'].split('?')[0]
+                if clean_url in seen_urls or is_job_seen(clean_url):
+                    continue
+                seen_urls.add(clean_url)
 
-            job_date = datetime.date.today()
-            if time_tag and time_tag.get('datetime'):
-                try:
-                    job_date = datetime.datetime.strptime(time_tag['datetime'][:10], "%Y-%m-%d").date()
-                except Exception:
-                    pass
+                t_elem = card.find('h3', class_='base-search-card__title')
+                comp_elem = card.find('h4', class_='base-search-card__subtitle')
+                loc_elem = card.find('span', class_='job-search-card__location')
+                time_tag = card.find('time')
 
-            card_job_id = make_job_id(title, company, clean_url)
-            if is_job_id_seen(card_job_id):
-                refresh_republished_job(card_job_id, job_url=clean_url, date_posted=job_date)
-                continue
+                title = t_elem.text.strip() if t_elem else "Unknown"
+                company = comp_elem.text.strip() if comp_elem else "Unknown"
+                loc_val = loc_elem.text.strip() if loc_elem else location
 
-            # Fast fetch full description via job detail endpoint
-            description = ""
-            m_id = re.search(r'(\d{8,12})', clean_url)
-            if m_id:
-                try:
-                    detail_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{m_id.group(1)}"
-                    dr = c_requests.get(detail_url, impersonate="chrome120", timeout=5)
-                    if dr.status_code == 200 and dr.text:
-                        dsoup = BeautifulSoup(dr.text, 'html.parser')
-                        dtext = dsoup.find('div', class_='show-more-less-html__markup')
-                        if dtext:
-                            description = dtext.get_text(separator='\n', strip=True)
-                except Exception:
-                    pass
+                job_date = datetime.date.today()
+                if time_tag and time_tag.get('datetime'):
+                    try:
+                        job_date = datetime.datetime.strptime(time_tag['datetime'][:10], "%Y-%m-%d").date()
+                    except Exception:
+                        pass
 
-            jobs.append({
-                'title': title,
-                'company': company,
-                'location': loc_val,
-                'job_url': clean_url,
-                'description': description,
-                'site': 'linkedin',
-                'is_remote': 'remote' in str(loc_val).lower() or 'remote' in location.lower(),
-                'date_posted': job_date,
-                'job_type': 'Not specified'
-            })
+                card_job_id = make_job_id(title, company, clean_url)
+                if is_job_id_seen(card_job_id):
+                    refresh_republished_job(card_job_id, job_url=clean_url, date_posted=job_date)
+                    continue
+
+                # Fast fetch full description via job detail endpoint
+                description = ""
+                m_id = re.search(r'(\d{8,12})', clean_url)
+                if m_id:
+                    try:
+                        detail_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{m_id.group(1)}"
+                        dr = c_requests.get(detail_url, impersonate="chrome120", timeout=5)
+                        if dr.status_code == 200 and dr.text:
+                            dsoup = BeautifulSoup(dr.text, 'html.parser')
+                            dtext = dsoup.find('div', class_='show-more-less-html__markup')
+                            if dtext:
+                                description = dtext.get_text(separator='\n', strip=True)
+                    except Exception:
+                        pass
+
+                jobs.append({
+                    'title': title,
+                    'company': company,
+                    'location': loc_val,
+                    'job_url': clean_url,
+                    'description': description,
+                    'site': 'linkedin',
+                    'is_remote': 'remote' in str(loc_val).lower() or 'remote' in location.lower(),
+                    'date_posted': job_date,
+                    'job_type': 'Not specified'
+                })
+
+            if valid_cards_in_page == 0:
+                break
+            page += 1
 
         if jobs:
             logging.info(f"⚡ LinkedIn Guest API extracted {len(jobs)} jobs in < 2s.")
@@ -406,7 +420,7 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
 
     encoded_term = urllib.parse.quote(term)
     encoded_loc = urllib.parse.quote(location)
-    url = f"https://www.linkedin.com/jobs/search/?keywords={encoded_term}&location={encoded_loc}&sortBy=DD"
+    base_search_url = f"https://www.linkedin.com/jobs/search/?keywords={encoded_term}&location={encoded_loc}&sortBy=DD"
     if hours_old:
         if hours_old <= 24:
             tpr_val = 86400
@@ -414,31 +428,45 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
             tpr_val = 604800
         else:
             tpr_val = 2592000
-        url += f"&f_TPR=r{tpr_val}"
+        base_search_url += f"&f_TPR=r{tpr_val}"
 
     logging.info(f"🔍 Searching LinkedIn Jobs (Playwright): {term} in {location}")
     try:
-        page.goto(url, wait_until="domcontentloaded", timeout=40000)
-        page.wait_for_timeout(random.randint(2000, 4000))
+        collected_links = []
+        seen_collected = set()
+        page_idx = 0
+        max_search_pages = 3
 
-        auto_login_if_needed(page)
-
-        if "login" in page.url or "authwall" in page.url:
+        while len(collected_links) < results_wanted and page_idx < max_search_pages:
+            url = f"{base_search_url}&start={page_idx * 25}" if page_idx > 0 else base_search_url
             page.goto(url, wait_until="domcontentloaded", timeout=40000)
             page.wait_for_timeout(random.randint(2000, 4000))
 
-        # Scroll to load job list
-        for _ in range(3):
-            page.mouse.wheel(0, 1000)
-            page.wait_for_timeout(700)
+            auto_login_if_needed(page)
 
-        links = page.evaluate(_JOB_LINK_EXTRACTOR_JS)
-        # Pre-AI deduplication: skip URLs already in DB before navigating
-        new_links = [url for url in links if not is_job_seen(url)]
-        skipped = len(links) - len(new_links)
-        if skipped:
-            logging.info(f"    ⏭️ Skipping {skipped} already-known job(s) (dedup cache)")
-        links = new_links[:results_wanted]
+            if "login" in page.url or "authwall" in page.url:
+                page.goto(url, wait_until="domcontentloaded", timeout=40000)
+                page.wait_for_timeout(random.randint(2000, 4000))
+
+            # Scroll to load job list
+            for _ in range(3):
+                page.mouse.wheel(0, 1000)
+                page.wait_for_timeout(700)
+
+            raw_links = page.evaluate(_JOB_LINK_EXTRACTOR_JS)
+            if not raw_links:
+                break
+
+            for u in raw_links:
+                if len(collected_links) >= results_wanted:
+                    break
+                if u not in seen_collected and not is_job_seen(u):
+                    seen_collected.add(u)
+                    collected_links.append(u)
+
+            page_idx += 1
+
+        links = collected_links[:results_wanted]
 
         for job_url in links:
             try:

@@ -188,7 +188,7 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, d
         candidates = []
         seen_urls = set()
         page = 1
-        max_pages = 3
+        max_pages = 5
 
         while len(candidates) < results_wanted and page <= max_pages:
             url = build_glassdoor_url(search_term, location, hours_old, page=page)
@@ -222,10 +222,13 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, d
                         partner_map[jid] = {'url': full_p, 'is_easy_apply': is_ea}
 
             job_cards = soup.find_all('li')
-            if not job_cards:
+            has_listing = any(
+                card.find('a', href=lambda h: h and ('job-listing' in str(h) or '/partner/' in str(h)))
+                for card in job_cards
+            )
+            if not job_cards or not has_listing:
                 break
 
-            added_in_page = 0
             for card in job_cards:
                 if len(candidates) >= results_wanted:
                     break
@@ -284,10 +287,7 @@ def scrape_glassdoor(search_term, location, results_wanted=15, hours_old=None, d
                     'site': 'glassdoor',
                     'date_posted': datetime.datetime.now().date()
                 })
-                added_in_page += 1
 
-            if added_in_page == 0:
-                break
             page += 1
 
         # Fetch full job descriptions and details

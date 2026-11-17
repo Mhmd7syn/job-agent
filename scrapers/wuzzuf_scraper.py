@@ -94,7 +94,7 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
         candidates = []
         seen_urls = set()
         page = 0
-        max_pages = 3
+        max_pages = 5
 
         while len(candidates) < results_wanted and page < max_pages:
             url = f"{base_url}&start={page}"
@@ -119,7 +119,6 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
             if not job_cards:
                 break
 
-            added_in_page = 0
             for card in job_cards:
                 if len(candidates) >= results_wanted:
                     break
@@ -154,7 +153,6 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
                 card_job_id = make_job_id(title, company, job_url)
                 if is_job_id_seen(card_job_id):
                     refresh_republished_job(card_job_id, job_url=job_url, date_posted=date_posted.date())
-                    added_in_page += 1
                     continue
                 
                 loc_tag = card.find('span', class_='css-16x61xq')
@@ -187,10 +185,7 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
                     'site': 'wuzzuf',
                     'date_posted': date_posted.date()
                 })
-                added_in_page += 1
 
-            if added_in_page == 0:
-                break
             page += 1
 
         # Concurrent description fetching

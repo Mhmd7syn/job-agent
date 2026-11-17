@@ -80,7 +80,7 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, *args,
     candidates = []
     seen_urls = set()
     page = 1
-    max_pages = 3
+    max_pages = 5
 
     try:
         while len(candidates) < results_wanted and page <= max_pages:
@@ -94,7 +94,6 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, *args,
             if not job_cards:
                 break
 
-            added_in_page = 0
             for card in job_cards:
                 if len(candidates) >= results_wanted:
                     break
@@ -146,7 +145,6 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, *args,
                 card_job_id = make_job_id(title, company, href)
                 if is_job_id_seen(card_job_id):
                     refresh_republished_job(card_job_id, job_url=href, date_posted=job_date)
-                    added_in_page += 1
                     continue
 
                 candidates.append({
@@ -160,10 +158,7 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, *args,
                     'site': 'bayt',
                     'date_posted': job_date
                 })
-                added_in_page += 1
 
-            if added_in_page == 0:
-                break
             page += 1
 
         # Concurrent description fetching
