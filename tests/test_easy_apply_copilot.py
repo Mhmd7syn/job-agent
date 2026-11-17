@@ -181,3 +181,59 @@ def test_decoupled_easy_apply_workflow(client):
     cursor.execute("UPDATE jobs SET is_applied = ?, apply_status = ? WHERE job_id = ?", (initial_applied, "applied" if initial_applied else "unapplied", test_job_id))
     conn.commit()
     conn.close()
+
+
+def test_edge_binary_and_browser_launch_kwargs(monkeypatch):
+    """Verify that browser configuration defaults to Microsoft Edge with proper channel resolution."""
+    from core.config import get_edge_binary_path, get_browser_launch_kwargs, get_browser_user_data_dir
+
+    # Edge default
+    monkeypatch.delenv("BROWSER_CHANNEL", raising=False)
+    kwargs_default = get_browser_launch_kwargs()
+    assert kwargs_default.get("channel") == "msedge"
+
+    # Explicit Edge channel
+    kwargs_edge = get_browser_launch_kwargs(channel="msedge")
+    assert kwargs_edge.get("channel") == "msedge"
+
+    # Fallback / explicit Chrome channel
+    kwargs_chrome = get_browser_launch_kwargs(channel="chrome")
+    assert kwargs_chrome.get("channel") == "chrome" or "executable_path" in kwargs_chrome
+
+    # User data dir fallback
+    monkeypatch.delenv("EDGE_USER_DATA_DIR", raising=False)
+    monkeypatch.delenv("PLAYWRIGHT_USER_DATA_DIR", raising=False)
+    assert get_browser_user_data_dir().endswith("playwright_profile")
+
+
+def test_detect_cloudflare_challenge():
+    """Verify detection of Cloudflare Turnstile / anti-bot challenge screens."""
+    from unittest.mock import MagicMock
+    from appliers.easy_apply_copilot import detect_cloudflare_challenge
+
+    # Normal page: not blocked
+    normal_page = MagicMock()
+    normal_page.title.return_value = "Software Engineer Job Application - Glassdoor"
+    normal_page.query_selector.return_value = None
+    normal_page.locator.return_value.inner_text.return_value = "Apply for this role by submitting your resume."
+    assert detect_cloudflare_challenge(normal_page) is False
+
+    # Blocked page: title indicates Just a moment
+    blocked_title_page = MagicMock()
+    blocked_title_page.title.return_value = "Just a moment... | Glassdoor"
+    assert detect_cloudflare_challenge(blocked_title_page) is True
+
+    # Blocked page: challenge selector present
+    blocked_selector_page = MagicMock()
+    blocked_selector_page.title.return_value = "Glassdoor"
+    mock_el = MagicMock()
+    mock_el.is_visible.return_value = True
+    blocked_selector_page.query_selector.side_effect = lambda sel: mock_el if sel == ".cf-turnstile" else None
+    assert detect_cloudflare_challenge(blocked_selector_page) is True
+
+    # Blocked page: verification text in body
+    blocked_text_page = MagicMock()
+    blocked_text_page.title.return_value = "Glassdoor"
+    blocked_text_page.query_selector.return_value = None
+    blocked_text_page.locator.return_value.inner_text.return_value = "Please verify you are human to continue to glassdoor.com"
+    assert detect_cloudflare_challenge(blocked_text_page) is True

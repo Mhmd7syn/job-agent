@@ -12,7 +12,12 @@ import pandas as pd
 from core.llm_parser import extract_feed_posts_with_ai, extract_json_ld
 from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
 from core.job_utils import make_job_id
-from core.config import get_chrome_binary_path
+from core.config import (
+    get_chrome_binary_path,
+    get_edge_binary_path,
+    get_browser_user_data_dir,
+    get_browser_launch_kwargs,
+)
 
 LOGIN_FAILED = False
 
@@ -21,12 +26,12 @@ if sys.stdout.encoding.lower() != 'utf-8':
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root (parent of scrapers/)
 env_path = os.path.join(BASE_DIR, '.env')
-USER_DATA_DIR = os.path.join(BASE_DIR, "playwright_profile")
+USER_DATA_DIR = get_browser_user_data_dir()
 load_dotenv(dotenv_path=env_path)
 
 
 def launch_persistent_browser(playwright_instance, user_data_dir, headless=True, **kwargs):
-    """Launch browser persistently using local Google Chrome or Microsoft Edge to save disk space and bypass anti-bot checks."""
+    """Launch browser persistently using Microsoft Edge or local Chrome to save disk space and bypass anti-bot checks."""
     default_args = [
         "--disable-blink-features=AutomationControlled",
         "--disable-infobars",
@@ -51,7 +56,8 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
     ignore_default_args = kwargs.pop("ignore_default_args", ["--enable-automation", "--enable-blink-features=IdleDetection"])
     viewport = kwargs.pop("viewport", None)
 
-    chrome_bin = get_chrome_binary_path()
+    channel_override = kwargs.pop("channel", None)
+    browser_launch_kwargs = get_browser_launch_kwargs(channel=channel_override)
     
     launch_args = {
         "user_data_dir": user_data_dir,
@@ -59,13 +65,9 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
         "args": combined_args,
         "ignore_default_args": ignore_default_args,
         "viewport": viewport,
+        **browser_launch_kwargs,
         **kwargs
     }
-    
-    if chrome_bin:
-        launch_args["executable_path"] = chrome_bin
-    else:
-        launch_args["channel"] = "chrome"
 
     return playwright_instance.chromium.launch_persistent_context(**launch_args)
 def auto_login_if_needed(page):

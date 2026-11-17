@@ -14,7 +14,12 @@ except ImportError:
 
 from core.database import get_job_by_id
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
-from core.config import get_chrome_binary_path
+from core.config import (
+    get_chrome_binary_path,
+    get_edge_binary_path,
+    get_browser_user_data_dir,
+    get_browser_launch_kwargs,
+)
 from appliers.screening_resolver import ScreeningResolver
 
 logger = logging.getLogger(__name__)
@@ -177,23 +182,55 @@ def launch_easy_apply_session(job_id: str, headed: bool = True) -> Dict[str, Any
     }
 
 
+def detect_cloudflare_challenge(page) -> bool:
+    """
+    Checks whether the page is displaying a Cloudflare Turnstile or anti-bot challenge
+    (e.g. Glassdoor's 'humans only' verification).
+    """
+    try:
+        title = (page.title() or "").lower()
+        if any(keyword in title for keyword in ["just a moment...", "security check", "attention required", "cloudflare"]):
+            return True
+
+        challenge_selectors = [
+            "#challenge-running",
+            "#challenge-stage",
+            ".cf-turnstile",
+            "iframe[src*='challenges.cloudflare.com']",
+            "iframe[title*='Cloudflare']",
+            "#cf-wrapper"
+        ]
+        for sel in challenge_selectors:
+            el = page.query_selector(sel)
+            if el and el.is_visible():
+                return True
+
+        body_text = page.locator("body").inner_text(timeout=1000).lower()
+        if "verify you are human" in body_text or "checking your browser" in body_text:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True):
     """
     Core assisted browser execution loop:
-    1. Launches headed Chrome with persistent profile.
+    1. Launches headed Microsoft Edge with persistent profile.
     2. Navigates to job listing.
-    3. Finds and triggers Easy Apply modal.
-    4. Pre-fills contact details, uploads CV, and answers screening questions.
-    5. PAUSES before the final Submit button for the user to review and click!
+    3. Detects and handles Cloudflare / Turnstile challenges with graceful user grace period.
+    4. Finds and triggers Easy Apply modal.
+    5. Pre-fills contact details, uploads CV, and answers screening questions.
+    6. PAUSES before the final Submit button for the user to review and click!
     """
     from playwright.sync_api import sync_playwright
 
     session.status = "launching"
-    session.current_step = "Launching Chrome browser..."
-    session.log("Starting assisted headed Chrome session...")
+    session.current_step = "Launching Edge browser..."
+    session.log("Starting assisted Microsoft Edge session...")
 
-    chrome_bin = get_chrome_binary_path()
-    user_data_dir = os.path.join(BASE_DIR, "playwright_profile")
+    user_data_dir = get_browser_user_data_dir()
+    browser_launch_kwargs = get_browser_launch_kwargs()
 
     launch_args = [
         "--disable-blink-features=AutomationControlled",
@@ -216,14 +253,12 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
                 "headless": False if headed else True,
                 "args": launch_args,
                 "ignore_default_args": ["--enable-automation"],
-                "viewport": None
+                "viewport": None,
+                **browser_launch_kwargs
             }
-            if chrome_bin:
-                launch_kwargs["executable_path"] = chrome_bin
-            else:
-                launch_kwargs["channel"] = "chrome"
 
-            session.log(f"Opening browser profile at: {user_data_dir}")
+            channel_display = launch_kwargs.get("channel") or "custom binary"
+            session.log(f"Opening browser profile at: {user_data_dir} via {channel_display}")
             try:
                 context = p.chromium.launch_persistent_context(**launch_kwargs)
             except Exception as e:
@@ -248,6 +283,33 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
                 session.log(f"Navigation note: {nav_err}")
 
             time.sleep(2.5)
+
+            # Check for Cloudflare / Turnstile challenge
+            if detect_cloudflare_challenge(page):
+                session.log("⚠️ Cloudflare / 'Verify you are human' verification challenge detected.")
+                session.status = "paused_for_review"
+                session.current_step = "Waiting for human verification in Edge window..."
+
+                if headed:
+                    session.log("Please complete the verification challenge directly in the open Edge browser window to proceed.")
+                    cleared = False
+                    for _ in range(30):
+                        time.sleep(2.0)
+                        if not detect_cloudflare_challenge(page):
+                            cleared = True
+                            session.log("✓ Verification challenge cleared. Resuming Easy Apply automation.")
+                            session.status = "prefilling"
+                            break
+                    if not cleared:
+                        session.status = "error"
+                        session.error_message = "Timed out waiting for challenge completion in browser window."
+                        session.log("Verification challenge was not cleared within the grace period.")
+                        return
+                else:
+                    session.status = "error"
+                    session.error_message = "Blocked by Cloudflare challenge in headless mode."
+                    session.log("Cannot solve verification challenge in headless mode.")
+                    return
 
             # 2. Locate and Click Easy Apply Button
             session.status = "opening_modal"

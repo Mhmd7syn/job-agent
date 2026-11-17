@@ -56,6 +56,63 @@ def get_chrome_binary_path() -> str | None:
 CHROME_BINARY_PATH = get_chrome_binary_path()
 
 
+def get_edge_binary_path() -> str | None:
+    """Resolves path to the Microsoft Edge executable across standard Windows paths, env vars, and local paths."""
+    env_bin = os.getenv("EDGE_BIN") or os.getenv("EDGE_EXECUTABLE_PATH")
+    if env_bin and os.path.exists(env_bin):
+        return env_bin
+    standard_paths = [
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    ]
+    local_app_data = os.getenv("LOCALAPPDATA")
+    if local_app_data:
+        standard_paths.append(os.path.join(local_app_data, r"Microsoft\Edge\Application\msedge.exe"))
+    for p in standard_paths:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+EDGE_BINARY_PATH = get_edge_binary_path()
+
+
+def get_browser_user_data_dir() -> str:
+    """Resolves the persistent user data directory for browser automation profiles."""
+    return (
+        os.getenv("EDGE_USER_DATA_DIR")
+        or os.getenv("PLAYWRIGHT_USER_DATA_DIR")
+        or os.path.join(BASE_DIR, "playwright_profile")
+    )
+
+
+def get_browser_launch_kwargs(channel: str | None = None) -> dict:
+    """
+    Resolves Playwright launch arguments (channel or executable_path).
+    Defaults to Microsoft Edge ('msedge') to bypass Cloudflare Turnstile and anti-bot checks.
+    """
+    pref_channel = (channel or os.getenv("BROWSER_CHANNEL", "msedge")).lower()
+    if pref_channel in ("msedge", "edge"):
+        edge_bin = get_edge_binary_path()
+        if edge_bin:
+            return {"channel": "msedge", "executable_path": edge_bin}
+        return {"channel": "msedge"}
+    elif pref_channel == "chrome":
+        chrome_bin = get_chrome_binary_path()
+        if chrome_bin:
+            return {"executable_path": chrome_bin}
+        return {"channel": "chrome"}
+
+    # Fallback: Prefer Edge when available, otherwise Chrome
+    edge_bin = get_edge_binary_path()
+    if edge_bin:
+        return {"channel": "msedge", "executable_path": edge_bin}
+    chrome_bin = get_chrome_binary_path()
+    if chrome_bin:
+        return {"executable_path": chrome_bin}
+    return {"channel": "msedge"}
+
+
 config_json_path = os.path.join(os.path.dirname(__file__), 'config.json')
 default_json_path = os.path.join(os.path.dirname(__file__), 'config.default.json')
 if not os.path.exists(config_json_path) and os.path.exists(default_json_path):

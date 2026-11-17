@@ -17,7 +17,13 @@ except ImportError:
 from core.database import DB_PATH, get_job_by_id, record_job_applied
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
 from core.cv_parser import extract_text_from_file
-from core.config import get_chrome_binary_path
+from core.config import (
+    get_chrome_binary_path,
+    get_edge_binary_path,
+    get_browser_user_data_dir,
+    get_browser_launch_kwargs,
+)
+from appliers.easy_apply_copilot import detect_cloudflare_challenge
 from appliers.screening_resolver import ScreeningResolver
 
 logger = logging.getLogger(__name__)
@@ -446,11 +452,11 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
     from playwright.sync_api import sync_playwright
 
     session.status = "launching"
-    session.current_step = "Launching Chrome browser..."
-    session.log(f"Starting assisted session for {session.platform_name}...")
+    session.current_step = "Launching Edge browser..."
+    session.log(f"Starting assisted session for {session.platform_name} with Microsoft Edge...")
 
-    chrome_bin = get_chrome_binary_path()
-    user_data_dir = os.path.join(BASE_DIR, "playwright_profile")
+    user_data_dir = get_browser_user_data_dir()
+    browser_launch_kwargs = get_browser_launch_kwargs()
 
     launch_args = [
         "--disable-blink-features=AutomationControlled",
@@ -473,14 +479,12 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
                 "headless": False if headed else True,
                 "args": launch_args,
                 "ignore_default_args": ["--enable-automation"],
-                "viewport": None
+                "viewport": None,
+                **browser_launch_kwargs
             }
-            if chrome_bin:
-                launch_kwargs["executable_path"] = chrome_bin
-            else:
-                launch_kwargs["channel"] = "chrome"
 
-            session.log(f"Opening browser profile at: {user_data_dir}")
+            channel_display = launch_kwargs.get("channel") or "custom binary"
+            session.log(f"Opening browser profile at: {user_data_dir} via {channel_display}")
             try:
                 context = p.chromium.launch_persistent_context(**launch_kwargs)
             except Exception as e:
@@ -504,6 +508,33 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
                 session.log(f"Navigation note: {nav_err}")
 
             time.sleep(3.0)
+
+            # Check for Cloudflare / Turnstile challenge
+            if detect_cloudflare_challenge(page):
+                session.log("⚠️ Cloudflare / 'Verify you are human' verification challenge detected.")
+                session.status = "paused_for_review"
+                session.current_step = "Waiting for human verification in Edge window..."
+
+                if headed:
+                    session.log("Please complete the verification challenge directly in the open Edge browser window to proceed.")
+                    cleared = False
+                    for _ in range(30):
+                        time.sleep(2.0)
+                        if not detect_cloudflare_challenge(page):
+                            cleared = True
+                            session.log("✓ Verification challenge cleared. Resuming ATS application.")
+                            session.status = "prefilling"
+                            break
+                    if not cleared:
+                        session.status = "error"
+                        session.error_message = "Timed out waiting for challenge completion in browser window."
+                        session.log("Verification challenge was not cleared within the grace period.")
+                        return
+                else:
+                    session.status = "error"
+                    session.error_message = "Blocked by Cloudflare challenge in headless mode."
+                    session.log("Cannot solve verification challenge in headless mode.")
+                    return
 
             # Check if there is an "Apply" or "Apply for this job" button to open the form
             apply_anchors = [
