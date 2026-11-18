@@ -44,6 +44,10 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
         "--disable-background-networking",
         "--disable-sync",
         "--disable-default-apps",
+        "--no-restore-session-state",
+        "--disable-session-crashed-bubble",
+        "--no-first-run",
+        "--no-default-browser-check",
     ]
     if not headless:
         default_args.append("--start-maximized")
@@ -106,10 +110,10 @@ def auto_login_if_needed(page):
                 page.wait_for_timeout(random.randint(3000, 5000))
 
                 if "challenge" in page.url or "checkpoint" in page.url:
-                    logging.warning("⚠️ LinkedIn is asking for a security check. Please run linkedin_login.py manually.")
+                    logging.warning("⚠️ LinkedIn is asking for a security check. Please run scripts/login.py manually.")
                     LOGIN_FAILED = True
                 elif "login" in page.url or "authwall" in page.url:
-                    logging.error("❌ Auto-login failed (possibly due to headless mode). Please run linkedin_login.py manually.")
+                    logging.error("❌ Auto-login failed (possibly due to headless mode). Please run scripts/login.py manually.")
                     LOGIN_FAILED = True
                 else:
                     logging.info("✅ Auto-login submitted and seems successful!")
@@ -146,7 +150,8 @@ class LinkedInSession:
                 headless=True
             )
             self._context.grant_permissions(['clipboard-read', 'clipboard-write'])
-            self.page = self._context.pages[0] if self._context.pages else self._context.new_page()
+            from core.config import get_clean_browser_page
+            self.page = get_clean_browser_page(self._context)
             Stealth().apply_stealth_sync(self.page)
             # Warm-up: confirm login state once for the whole session
             try:

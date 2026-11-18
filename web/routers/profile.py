@@ -1,8 +1,11 @@
 import os
+import sys
 import shutil
 import logging
-from typing import Dict, Any, Optional
+import subprocess
+from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from pydantic import BaseModel
 
 from core.applicant_profile import load_profile, save_profile, scan_resume_directory
 from core.database import backfill_job_classifications
@@ -10,6 +13,8 @@ from core.task_scheduler import sync_autopilot_windows_task
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+login_process = None
 
 
 @router.get("/api/profile")
@@ -88,3 +93,84 @@ def save_auto_apply_settings_endpoint(settings_data: Dict[str, Any]):
 def classify_all_jobs_endpoint():
     count = backfill_job_classifications()
     return {"status": "success", "classified_count": count}
+
+
+class LaunchLoginRequest(BaseModel):
+    sites: Optional[List[str]] = None
+
+
+@router.post("/api/auth/launch-login")
+def launch_login_endpoint(req: Optional[LaunchLoginRequest] = None):
+    """
+    Launches scripts/login.py to allow the user to authenticate across job search platforms.
+    All sessions and cookies are saved to the persistent profile for scraper and applier reuse.
+    """
+    global login_process
+    if login_process and login_process.poll() is None:
+        return {"status": "already_running", "message": "Login browser is already open."}
+
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    script_path = os.path.join(root_dir, "scripts", "login.py")
+
+    venv_python = os.path.join(root_dir, "venv", "Scripts", "python.exe")
+    python_exe = venv_python if os.path.exists(venv_python) else sys.executable
+
+    cmd = [python_exe, script_path]
+    if req and req.sites:
+        cmd.extend(req.sites)
+
+    creationflags = 0
+    if os.name == "nt":
+        # Launch with its own console window so the user sees instructions & can press Enter or close window
+        creationflags = subprocess.CREATE_NEW_CONSOLE
+
+    try:
+        login_process = subprocess.Popen(
+            cmd,
+            cwd=root_dir,
+            creationflags=creationflags,
+        )
+        return {
+            "status": "started",
+            "message": "Login browser launched. Log in and close the window or press Enter in the terminal to save.",
+            "pid": login_process.pid,
+        }
+    except Exception as e:
+        logger.error(f"Failed to launch login script: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+@router.get("/api/auth/login-status")
+def login_status_endpoint():
+    """Checks whether the interactive login manager is currently running."""
+    global login_process
+    is_running = False
+    if login_process and login_process.poll() is None:
+        is_running = True
+    return {
+        "is_running": is_running,
+        "pid": login_process.pid if is_running else None,
+        "exit_code": login_process.poll() if login_process else None,
+    }
+
+
+@router.post("/api/auth/stop-login")
+def stop_login_endpoint():
+    """Terminates any active login session process."""
+    global login_process
+    if login_process and login_process.poll() is None:
+        try:
+            login_process.terminate()
+            return {"status": "stopped"}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+    return {"status": "not_running"}
+
+
+@router.get("/api/auth/platforms")
+def platform_auth_status_endpoint():
+    """Returns the active login and session status for all supported job platforms."""
+    from core.auth_status import check_platform_auth_status
+    return {"platforms": check_platform_auth_status()}
+
+

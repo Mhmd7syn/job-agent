@@ -27,7 +27,7 @@ def start_desktop_app():
     )
 
     # Wait until the FastAPI server is actively listening before launching WebView (prevents ERR_CONNECTION_REFUSED)
-    for _ in range(40):
+    for _ in range(80):
         try:
             with socket.create_connection(("127.0.0.1", 8000), timeout=0.25):
                 break

@@ -171,7 +171,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     # -------------------------------------------------------------
     # STAGE 1: Hard Disqualification Gate
     # -------------------------------------------------------------
-    if any(comp and _get_word_pattern(comp).search(company) for comp in excluded_companies):
+    if any(comp and (comp in company) and _get_word_pattern(comp).search(company) for comp in excluded_companies):
         return 0
 
     full_loc_desc = f"{loc_val} {title} {desc}"
@@ -185,7 +185,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
 
     # Hard Disqualification: Seniority level in LEVEL_EXCLUDE
     for syn in effective_excluded_synonyms:
-        if syn and _get_word_pattern(syn).search(clean_level_scope):
+        if syn and (syn in clean_level_scope) and _get_word_pattern(syn).search(clean_level_scope):
             return 0
 
     # Excluded seniority or title keywords in Title / Career Level
@@ -193,9 +193,10 @@ def calculate_score(row, config=None, apply_date_penalty=True):
         if not kw:
             continue
         kw_clean = kw.strip().lower()
-        pat = _get_word_pattern(kw_clean)
-        if pat.search(title) or (kw_clean in SENIORITY_EXCLUDE_KEYWORDS and pat.search(clean_level_scope)):
-            return 0
+        if kw_clean in title or (kw_clean in SENIORITY_EXCLUDE_KEYWORDS and kw_clean in clean_level_scope):
+            pat = _get_word_pattern(kw_clean)
+            if pat.search(title) or (kw_clean in SENIORITY_EXCLUDE_KEYWORDS and pat.search(clean_level_scope)):
+                return 0
 
     is_scholarship = (
         job_type_val in ('scholarship', 'competition', 'hackathon')
@@ -241,15 +242,15 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     for kw in sorted_keywords:
         if not kw:
             continue
-        canonical_skill = SKILL_CANONICAL_MAP.get(kw.strip().lower(), kw.strip().lower())
+        kw_clean = kw.strip().lower()
+        canonical_skill = SKILL_CANONICAL_MAP.get(kw_clean, kw_clean)
         if canonical_skill in seen_canonical_skills:
             continue
 
-        pat = _get_word_pattern(kw)
-        if pat.search(title):
+        if kw_clean in title and _get_word_pattern(kw).search(title):
             title_tech_score += 8
             seen_canonical_skills.add(canonical_skill)
-        elif pat.search(desc):
+        elif kw_clean in desc and _get_word_pattern(kw).search(desc):
             desc_tech_score += 3
             seen_canonical_skills.add(canonical_skill)
 
@@ -272,12 +273,12 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     # -------------------------------------------------------------
     # Target Seniority Level Boost
     for lvl in target_level_synonyms:
-        if lvl and _get_word_pattern(lvl).search(clean_level_scope):
+        if lvl and (lvl in clean_level_scope) and _get_word_pattern(lvl).search(clean_level_scope):
             score += 15
             break
 
     # Favorite Companies Boost (word-boundary matched to prevent substring false-positives like 'iti' matching 'Meriti' or 'British')
-    if any(comp and _get_word_pattern(comp).search(company) for comp in favorite_companies):
+    if any(comp and (comp in company) and _get_word_pattern(comp).search(company) for comp in favorite_companies):
         score += 15
 
     # Location check: fair +5 for Target Location OR Remote
@@ -297,7 +298,7 @@ def calculate_score(row, config=None, apply_date_penalty=True):
             continue
         kw_clean = kw.strip().lower()
         if kw_clean not in SENIORITY_EXCLUDE_KEYWORDS:
-            if _get_word_pattern(kw_clean).search(desc):
+            if (kw_clean in desc) and _get_word_pattern(kw_clean).search(desc):
                 score -= 15
 
     # Experience Penalty (5 points per year gap)
@@ -355,7 +356,11 @@ def rescore_all_jobs():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    cursor.execute("SELECT * FROM jobs WHERE status IN ('pending', 'liked', 'not_related')")
+    cursor.execute("""
+        SELECT job_id, relevance_score, title, description, company, job_type, location, date_posted, timestamp 
+        FROM jobs 
+        WHERE status IN ('pending', 'liked', 'not_related')
+    """)
     rows = cursor.fetchall()
     
     jobs_to_update = []
@@ -363,20 +368,23 @@ def rescore_all_jobs():
     for row in rows:
         job_dict = dict(row)
         job_id = job_dict['job_id']
+        current_score = job_dict.get('relevance_score')
         final_score = calculate_score(job_dict, config=config, apply_date_penalty=True)
-        jobs_to_update.append((final_score, job_id))
+        if current_score is None or current_score != final_score:
+            jobs_to_update.append((final_score, job_id))
             
     if jobs_to_update:
         cursor.executemany("UPDATE jobs SET relevance_score = ? WHERE job_id = ?", jobs_to_update)
+        conn.commit()
         
-    conn.commit()
     conn.close()
     
     duration = round(time.time() - t0, 3)
-    logging.info(f"Rescored {len(jobs_to_update)} jobs in {duration}s")
+    logging.info(f"Rescored {len(rows)} jobs (updated {len(jobs_to_update)}) in {duration}s")
     return {
         "status": "success",
-        "rescored": len(jobs_to_update),
+        "rescored": len(rows),
+        "updated": len(jobs_to_update),
         "removed": 0,
         "duration_seconds": duration
     }

@@ -13,6 +13,7 @@ import time
 import tempfile
 import uuid
 import shutil
+import threading
 from datetime import datetime
 
 # Add the parent directory to sys.path so we can import core modules
@@ -32,7 +33,10 @@ from core.whatsapp_bot import (
     process_incoming_payload, normalize_phone_number
 )
 
+from starlette.middleware.gzip import GZipMiddleware
+
 app = FastAPI(title="Job Dashboard")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Mount static files
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -43,34 +47,47 @@ def read_root():
     return FileResponse(os.path.join(static_dir, "index.html"))
 
 _last_rescore_date = None
+_rescore_lock = threading.Lock()
+_is_rescoring = False
 
-@app.on_event("startup")
-def on_startup():
-    global _last_rescore_date
+def _run_background_rescore():
+    global _last_rescore_date, _is_rescoring
+    if not _rescore_lock.acquire(blocking=False):
+        return
     try:
+        _is_rescoring = True
         rescore_all_jobs()
         _last_rescore_date = datetime.now().strftime("%Y-%m-%d")
     except Exception as e:
-        logging.error(f"Failed to rescore jobs on startup: {e}")
+        logging.error(f"Failed to rescore jobs in background: {e}")
+    finally:
+        _is_rescoring = False
+        _rescore_lock.release()
+
+def _startup_background_tasks():
     try:
         from core.task_scheduler import sync_autopilot_windows_task
         sync_autopilot_windows_task()
     except Exception as e:
         logging.error(f"Failed to synchronize AutoPilot Windows Task on startup: {e}")
+    _run_background_rescore()
+
+@app.on_event("startup")
+def on_startup():
+    threading.Thread(target=_startup_background_tasks, daemon=True, name="startup_worker").start()
 
 @app.on_event("shutdown")
 def on_shutdown():
     pass
 
 @app.get("/api/jobs")
-def get_jobs(background_tasks: BackgroundTasks, apply_type: Optional[str] = None):
+def get_jobs(background_tasks: BackgroundTasks, apply_type: Optional[str] = None, include_description: bool = False):
     """Returns all jobs so the frontend can filter them by status and optional apply_type."""
-    global _last_rescore_date
+    global _last_rescore_date, _is_rescoring
     today_str = datetime.now().strftime("%Y-%m-%d")
-    if _last_rescore_date != today_str:
-        background_tasks.add_task(rescore_all_jobs)
-        _last_rescore_date = today_str
-    jobs = get_jobs_by_status(['pending', 'liked', 'not_related'])
+    if _last_rescore_date != today_str and not _is_rescoring:
+        background_tasks.add_task(_run_background_rescore)
+    jobs = get_jobs_by_status(['pending', 'liked', 'not_related'], include_description=include_description)
     if apply_type and apply_type != "all":
         target = apply_type.lower()
         if target == "easy_apply":
@@ -80,6 +97,14 @@ def get_jobs(background_tasks: BackgroundTasks, apply_type: Optional[str] = None
         else:
             jobs = [j for j in jobs if (j.get("apply_type") or "").lower() == target or (j.get("apply_channel") or "").lower() == target]
     return {"jobs": jobs}
+
+@app.get("/api/jobs/{job_id}")
+def get_job_detail(job_id: str):
+    """Returns full job details including description for modal views."""
+    job = get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
 @app.api_route("/api/rescore", methods=["GET", "POST"])
 def rescore_jobs():

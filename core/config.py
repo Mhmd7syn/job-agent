@@ -81,10 +81,10 @@ EDGE_BINARY_PATH = get_edge_binary_path()
 
 
 def get_browser_user_data_dir() -> str:
-    """Resolves the persistent user data directory for browser automation profiles."""
+    """Resolves the persistent user data directory for Playwright browser automation profiles."""
     return (
-        os.getenv("EDGE_USER_DATA_DIR")
-        or os.getenv("PLAYWRIGHT_USER_DATA_DIR")
+        os.getenv("PLAYWRIGHT_USER_DATA_DIR")
+        or os.getenv("EDGE_USER_DATA_DIR")
         or os.path.join(BASE_DIR, "playwright_profile")
     )
 
@@ -114,6 +114,23 @@ def get_browser_launch_kwargs(channel: str | None = None) -> dict:
     if chrome_bin:
         return {"executable_path": chrome_bin}
     return {"channel": "msedge"}
+
+
+def get_clean_browser_page(context):
+    """
+    Ensures a single fresh page/tab in the persistent browser context.
+    Closes any existing or restored leftover tabs from previous sessions.
+    """
+    pages = list(getattr(context, "pages", []))
+    if not pages:
+        return context.new_page()
+    primary_page = pages[0]
+    for old_page in pages[1:]:
+        try:
+            old_page.close()
+        except Exception:
+            pass
+    return primary_page
 
 
 config_json_path = os.path.join(os.path.dirname(__file__), 'config.json')

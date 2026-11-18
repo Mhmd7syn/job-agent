@@ -22,6 +22,7 @@ from core.config import (
     get_edge_binary_path,
     get_browser_user_data_dir,
     get_browser_launch_kwargs,
+    get_clean_browser_page,
 )
 from appliers.easy_apply_copilot import detect_cloudflare_challenge
 from appliers.screening_resolver import ScreeningResolver
@@ -459,7 +460,11 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
         "--disable-infobars",
         "--no-sandbox",
         "--disable-dev-shm-usage",
-        "--start-maximized"
+        "--start-maximized",
+        "--no-restore-session-state",
+        "--disable-session-crashed-bubble",
+        "--no-first-run",
+        "--no-default-browser-check",
     ]
 
     resolver = ScreeningResolver(
@@ -491,7 +496,7 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
                 context = p.chromium.launch_persistent_context(**launch_kwargs)
 
             session.browser_context = context
-            page = context.pages[0] if context.pages else context.new_page()
+            page = get_clean_browser_page(context)
 
             # 1. Navigate to ATS portal URL
             session.status = "navigating"

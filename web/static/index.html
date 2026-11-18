@@ -180,6 +180,59 @@
                         </div>
 
                         <!-- SubPane 1.5: Scraper Automation & WhatsApp -->
+                        <div id="subpane-matching-scrapers" class="settings-subsection-pane">
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;">
+                                <i class="fa-solid fa-key" style="color: var(--accent); margin-right: 0.4rem;"></i> Platform Logins & Browser Sessions
+                            </h3>
+                            <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 0.75rem; padding: 1rem; margin-bottom: 1.5rem;">
+                                <p style="margin-top: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.45;">
+                                    Authenticate your job search accounts once (LinkedIn, Tanqeeb, Glassdoor, Bayt, Wuzzuf, Indeed, and WhatsApp Web). All cookies and login tokens are safely preserved in your persistent profile (<code>playwright_profile</code>) and reused automatically by scrapers, Easy Apply, and ATS copilots without repeated login prompts.
+                                </p>
+                                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem;">
+                                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                                        <button type="button" class="btn btn-primary" id="btn-launch-login" onclick="launchLoginHelper()">
+                                            <i class="fa-solid fa-arrow-up-right-from-square" id="login-btn-icon"></i>
+                                            <i class="fa-solid fa-spinner fa-spin hidden" id="login-btn-spinner"></i>
+                                            <span id="login-btn-text">Log In to All Platforms</span>
+                                        </button>
+                                        <div class="dropdown-container" style="display: inline-block; position: relative;">
+                                            <button type="button" class="btn btn-secondary" onclick="toggleLoginDropdown()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+                                                <span>Specific Site</span> <i class="fa-solid fa-chevron-down" style="font-size: 0.75rem;"></i>
+                                            </button>
+                                            <div id="login-sites-dropdown" class="dropdown-menu hidden" style="position: absolute; top: 100%; left: 0; margin-top: 0.35rem; background: var(--card-bg, #1e293b); border: 1px solid var(--card-border); border-radius: 0.5rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 1000; min-width: 180px; padding: 0.4rem 0;">
+                                                <a href="javascript:void(0)" onclick="launchLoginHelper('linkedin')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">💼 LinkedIn</a>
+                                                <a href="javascript:void(0)" onclick="launchLoginHelper('tanqeeb')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">🔍 Tanqeeb</a>
+                                                <a href="javascript:void(0)" onclick="launchLoginHelper('glassdoor')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">🏢 Glassdoor</a>
+                                                <a href="javascript:void(0)" onclick="launchLoginHelper('bayt')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">🌐 Bayt</a>
+                                                <a href="javascript:void(0)" onclick="launchLoginHelper('wuzzuf')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">🎯 Wuzzuf</a>
+                                                <a href="javascript:void(0)" onclick="launchLoginHelper('indeed')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">📄 Indeed</a>
+                                                <a href="javascript:void(0)" onclick="launchLoginHelper('whatsapp')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">💬 WhatsApp Web</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="login-status-badge" style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-muted);">
+                                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10B981;"></span>
+                                        <span>Persistent Profile Ready</span>
+                                    </div>
+                                </div>
+
+                                <div style="margin-top: 1.25rem; border-top: 1px solid var(--card-border); padding-top: 1rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">
+                                            <i class="fa-solid fa-signal" style="color: var(--accent); margin-right: 0.35rem;"></i> Live Platform Connection Status
+                                        </span>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="loadPlatformAuthStatus(true)" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;">
+                                            <i class="fa-solid fa-rotate" id="refresh-auth-icon"></i> Check Status
+                                        </button>
+                                    </div>
+                                    <div id="platforms-status-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.65rem;">
+                                        <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 0.5rem;">
+                                            Checking platform login status...
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <h3 style="margin: 1.5rem 0 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;"><i class="fa-brands fa-whatsapp" style="color: #25D366; margin-right: 0.4rem;"></i> WhatsApp Mobile Sync</h3>
                             <div style="background: rgba(37, 211, 102, 0.08); border: 1px solid rgba(37, 211, 102, 0.25); border-radius: 0.75rem; padding: 1rem;">
                                 <p style="margin-top: 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
@@ -494,6 +547,16 @@
                                     <input type="checkbox" id="chan-platform" checked style="width: 1.1rem; height: 1.1rem; margin: 0; accent-color: var(--accent);">
                                     <span>🌐 Company ATS Portals (Greenhouse, Lever, etc.)</span>
                                 </label>
+                            </div>
+
+                            <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 0.6rem; padding: 0.85rem 1rem; margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;">
+                                <div style="font-size: 0.82rem; color: var(--text-muted);">
+                                    <strong style="color: var(--text-main);"><i class="fa-solid fa-key" style="color: var(--accent); margin-right: 0.35rem;"></i>Platform Logins:</strong>
+                                    Need to authenticate LinkedIn, Glassdoor, or Tanqeeb for Auto-Apply & Scrapers?
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="launchLoginHelper()" style="font-size: 0.82rem; padding: 0.35rem 0.75rem;">
+                                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Log In to Platforms
+                                </button>
                             </div>
                         </div>
                     </div>

@@ -35,6 +35,7 @@ from core.config import (
     get_edge_binary_path,
     get_browser_user_data_dir,
     get_browser_launch_kwargs,
+    get_clean_browser_page,
 )
 
 logger = logging.getLogger(__name__)
@@ -323,13 +324,17 @@ def _send_whatsapp_message_via_playwright(
             "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
-                "--disable-dev-shm-usage"
+                "--disable-dev-shm-usage",
+                "--no-restore-session-state",
+                "--disable-session-crashed-bubble",
+                "--no-first-run",
+                "--no-default-browser-check",
             ],
             **browser_launch_kwargs
         }
 
         context = p.chromium.launch_persistent_context(**launch_kwargs)
-        page = context.pages[0] if context.pages else context.new_page()
+        page = get_clean_browser_page(context)
 
         try:
             page.goto(target_url, timeout=35000, wait_until="domcontentloaded")

@@ -750,6 +750,8 @@ function refreshSettingsUI() {
     if (retEl) retEl.value = currentConfig.job_retention_days || 90;
 
     loadWhatsAppStatusUI();
+    checkLoginStatusUI();
+    loadPlatformAuthStatus();
 }
 
 async function loadWhatsAppStatusUI() {
@@ -776,6 +778,178 @@ async function loadWhatsAppStatusUI() {
         }
     } catch (e) {
         console.error('Failed to load WhatsApp status:', e);
+    }
+}
+
+let loginStatusPollInterval = null;
+
+function toggleLoginDropdown() {
+    const dropdown = document.getElementById('login-sites-dropdown');
+    if (dropdown) dropdown.classList.toggle('hidden');
+}
+
+document.addEventListener('click', function(e) {
+    const dropdown = document.getElementById('login-sites-dropdown');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        if (!e.target.closest('.dropdown-container')) {
+            dropdown.classList.add('hidden');
+        }
+    }
+});
+
+async function checkLoginStatusUI() {
+    try {
+        const res = await fetch('/api/auth/login-status');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.is_running) {
+            const btn = document.getElementById('btn-launch-login');
+            const icon = document.getElementById('login-btn-icon');
+            const spinner = document.getElementById('login-btn-spinner');
+            const text = document.getElementById('login-btn-text');
+            const statusBadge = document.getElementById('login-status-badge');
+
+            if (btn) btn.disabled = true;
+            if (icon) icon.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            if (text) text.textContent = 'Browser Open (Saving on Close)';
+            if (statusBadge) {
+                statusBadge.innerHTML = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#F59E0B; animation:pulse-dot 1.5s infinite;"></span> <span style="color:#F59E0B; font-weight:600;">Login Browser Active</span>`;
+            }
+            startLoginStatusPolling();
+        }
+    } catch (e) {
+        // silent catch
+    }
+}
+
+async function launchLoginHelper(site = null) {
+    const btn = document.getElementById('btn-launch-login');
+    const icon = document.getElementById('login-btn-icon');
+    const spinner = document.getElementById('login-btn-spinner');
+    const text = document.getElementById('login-btn-text');
+    const statusBadge = document.getElementById('login-status-badge');
+    const dropdown = document.getElementById('login-sites-dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+
+    try {
+        if (icon) icon.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+        if (text) text.textContent = site ? `Opening ${site.toUpperCase()}...` : 'Launching Browser...';
+        if (btn) btn.disabled = true;
+
+        const payload = site ? { sites: [site] } : {};
+        const res = await fetch('/api/auth/launch-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (data.status === 'started' || data.status === 'already_running') {
+            showToast(data.message || 'Login browser launched. Log in and close the window to save.', 'info');
+            if (statusBadge) {
+                statusBadge.innerHTML = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#F59E0B; animation:pulse-dot 1.5s infinite;"></span> <span style="color:#F59E0B; font-weight:600;">Login Browser Active</span>`;
+            }
+            if (text) text.textContent = 'Browser Open (Saving on Close)';
+            startLoginStatusPolling();
+        } else {
+            showToast(data.error || 'Failed to start login helper.', 'error');
+            resetLoginButton();
+        }
+    } catch (err) {
+        showToast('Network error launching login helper: ' + err.message, 'error');
+        resetLoginButton();
+    }
+}
+
+function resetLoginButton() {
+    const btn = document.getElementById('btn-launch-login');
+    const icon = document.getElementById('login-btn-icon');
+    const spinner = document.getElementById('login-btn-spinner');
+    const text = document.getElementById('login-btn-text');
+    const statusBadge = document.getElementById('login-status-badge');
+
+    if (btn) btn.disabled = false;
+    if (icon) icon.classList.remove('hidden');
+    if (spinner) spinner.classList.add('hidden');
+    if (text) text.textContent = 'Log In to All Platforms';
+    if (statusBadge) {
+        statusBadge.innerHTML = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10B981;"></span> <span>Persistent Profile Ready</span>`;
+    }
+}
+
+function startLoginStatusPolling() {
+    if (loginStatusPollInterval) clearInterval(loginStatusPollInterval);
+    loginStatusPollInterval = setInterval(async () => {
+        try {
+            const res = await fetch('/api/auth/login-status');
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data.is_running) {
+                clearInterval(loginStatusPollInterval);
+                loginStatusPollInterval = null;
+                resetLoginButton();
+                showToast('Login session finished and saved to persistent profile!', 'success');
+                loadPlatformAuthStatus();
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, 2500);
+}
+
+async function loadPlatformAuthStatus(showNotice = false) {
+    const grid = document.getElementById('platforms-status-grid');
+    const refreshIcon = document.getElementById('refresh-auth-icon');
+    if (refreshIcon) refreshIcon.classList.add('fa-spin');
+
+    try {
+        const res = await fetch('/api/auth/platforms');
+        if (!res.ok) throw new Error('Status endpoint returned ' + res.status);
+        const data = await res.json();
+        const platforms = data.platforms || {};
+
+        if (!grid) return;
+        grid.innerHTML = '';
+
+        for (const [key, p] of Object.entries(platforms)) {
+            const card = document.createElement('div');
+            card.style.cssText = 'background: rgba(0, 0, 0, 0.25); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 0.65rem 0.75rem; display: flex; flex-direction: column; gap: 0.45rem;';
+
+            const statusBadge = p.logged_in
+                ? `<span style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem; padding: 0.15rem 0.45rem; border-radius: 0.3rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.3rem;"><i class="fa-solid fa-circle-check"></i> Logged In</span>`
+                : `<span style="background: rgba(156, 163, 175, 0.12); color: var(--text-muted); border: 1px solid rgba(156, 163, 175, 0.25); font-size: 0.72rem; padding: 0.15rem 0.45rem; border-radius: 0.3rem; font-weight: 500; display: inline-flex; align-items: center; gap: 0.3rem;"><i class="fa-solid fa-circle-xmark"></i> Not Logged In</span>`;
+
+            const actionBtn = p.logged_in
+                ? `<button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" onclick="launchLoginHelper('${key}')">Re-login</button>`
+                : `<button type="button" class="btn btn-primary btn-sm" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" onclick="launchLoginHelper('${key}')"><i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.65rem;"></i> Log In</button>`;
+
+            card.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 0.45rem; font-weight: 600; font-size: 0.85rem; color: var(--text-main);">
+                        <i class="${p.icon}" style="color: ${p.color};"></i>
+                        <span>${p.name}</span>
+                    </div>
+                    ${statusBadge}
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.2rem;">
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">${p.status}</span>
+                    ${actionBtn}
+                </div>
+            `;
+            grid.appendChild(card);
+        }
+
+        if (showNotice) {
+            showToast('Platform login status refreshed!', 'info');
+        }
+    } catch (err) {
+        if (grid) {
+            grid.innerHTML = `<div style="grid-column: 1/-1; color: var(--danger); font-size: 0.8rem; text-align: center; padding: 0.5rem;">Failed to load platform status: ${err.message}</div>`;
+        }
+    } finally {
+        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
     }
 }
 
@@ -2851,7 +3025,33 @@ function openJobDetailsModal(jobId) {
         `;
     }
 
-    if (contentEl) contentEl.textContent = currentModalJobText;
+    if (!job.description) {
+        if (contentEl) contentEl.innerHTML = '<div style="padding: 1.5rem; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i>Loading full description...</div>';
+        fetch(`/api/jobs/${encodeURIComponent(jobId)}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(fullJob => {
+                if (fullJob && fullJob.description) {
+                    job.description = fullJob.description;
+                    if (fullJob.apply_payload && typeof fullJob.apply_payload === 'object') {
+                        job.apply_payload = fullJob.apply_payload;
+                    }
+                    if (currentModalJobId === jobId) {
+                        currentModalJobText = fullJob.description;
+                        if (contentEl) contentEl.textContent = fullJob.description;
+                    }
+                } else if (currentModalJobId === jobId && contentEl) {
+                    contentEl.textContent = 'No job description text provided.';
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching job detail:', err);
+                if (currentModalJobId === jobId && contentEl) {
+                    contentEl.textContent = 'No job description text provided.';
+                }
+            });
+    } else {
+        if (contentEl) contentEl.textContent = currentModalJobText;
+    }
 
     // View Original Job link - ONLY show when distinct from primary action destination
     const normJobUrl = (job.job_url || '').trim().replace(/\/+$/, '');

@@ -17,7 +17,7 @@ if not "%IS_DIRTY%"=="" (
 )
 
 echo Checking for updates from GitHub...
-git fetch origin main:refs/remotes/origin/main >nul 2>&1
+git -c http.timeout=3 fetch origin main:refs/remotes/origin/main >nul 2>&1
 set "NEW_COMMITS="
 for /f "tokens=*" %%i in ('git rev-list HEAD..origin/main 2^>nul') do set "NEW_COMMITS=%%i"
 if "%NEW_COMMITS%"=="" goto LaunchApp

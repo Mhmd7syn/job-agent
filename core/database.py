@@ -299,14 +299,21 @@ def save_or_update_job(job_dict, force_pending=True):
         conn.close()
         return inserted, True
 
-def get_jobs_by_status(status_list):
+def get_jobs_by_status(status_list, include_description: bool = False):
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
     placeholders = ','.join('?' for _ in status_list)
+    if include_description:
+        cols = "*"
+    else:
+        cols = """job_id, title, company, location, job_url, job_type, date_posted, 
+                  site, relevance_score, '' AS description, status, timestamp, is_applied, apply_type, 
+                  apply_payload, applied_at, apply_channel, apply_status, pending_questions, 
+                  apply_url, is_easy_apply, workplace_setup"""
     cursor.execute(f"""
-        SELECT * FROM jobs 
+        SELECT {cols} FROM jobs 
         WHERE status IN ({placeholders})
         ORDER BY relevance_score DESC, date_posted DESC
     """, status_list)

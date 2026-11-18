@@ -237,3 +237,32 @@ def test_detect_cloudflare_challenge():
     blocked_text_page.query_selector.return_value = None
     blocked_text_page.locator.return_value.inner_text.return_value = "Please verify you are human to continue to glassdoor.com"
     assert detect_cloudflare_challenge(blocked_text_page) is True
+
+
+def test_get_clean_browser_page_closes_excess_tabs():
+    """Verify that get_clean_browser_page keeps only the first page and closes old leftover tabs."""
+    from unittest.mock import MagicMock
+    from core.config import get_clean_browser_page
+
+    # Case 1: Multiple restored/leftover tabs
+    mock_p0 = MagicMock(name="p0")
+    mock_p1 = MagicMock(name="p1")
+    mock_p2 = MagicMock(name="p2")
+    mock_ctx = MagicMock()
+    mock_ctx.pages = [mock_p0, mock_p1, mock_p2]
+
+    primary = get_clean_browser_page(mock_ctx)
+    assert primary == mock_p0
+    assert mock_p0.close.call_count == 0
+    mock_p1.close.assert_called_once()
+    mock_p2.close.assert_called_once()
+
+    # Case 2: Zero pages
+    mock_ctx_empty = MagicMock()
+    mock_ctx_empty.pages = []
+    mock_new_page = MagicMock(name="new_p")
+    mock_ctx_empty.new_page.return_value = mock_new_page
+
+    result = get_clean_browser_page(mock_ctx_empty)
+    assert result == mock_new_page
+    mock_ctx_empty.new_page.assert_called_once()
