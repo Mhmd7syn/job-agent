@@ -35,11 +35,10 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
     default_args = [
         "--disable-blink-features=AutomationControlled",
         "--disable-infobars",
-        "--no-sandbox",
         "--disable-dev-shm-usage",
         "--disable-quic",
         "--ignore-certificate-errors",
-        "--disable-features=EncryptedClientHello,UseDnsHttpsSvcbAlpn,DnsOverHttps",
+        "--disable-features=EncryptedClientHello,UseDnsHttpsSvcbAlpn,DnsOverHttps,msEdgeSingleSignOn,msEdgeAutoSignIn,msImplicitSignIn",
         "--disable-async-dns",
         "--disable-background-networking",
         "--disable-sync",
@@ -57,7 +56,15 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
     custom_args = kwargs.pop("args", [])
     combined_args = list(set(default_args + custom_args))
     
-    ignore_default_args = kwargs.pop("ignore_default_args", ["--enable-automation", "--enable-blink-features=IdleDetection"])
+    ignore_default_args = kwargs.pop(
+        "ignore_default_args",
+        [
+            "--enable-automation",
+            "--enable-blink-features=IdleDetection",
+            "--disable-extensions",
+            "--disable-component-update",
+        ],
+    )
     viewport = kwargs.pop("viewport", None)
 
     channel_override = kwargs.pop("channel", None)

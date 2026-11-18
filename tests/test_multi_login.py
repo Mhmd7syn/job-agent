@@ -19,7 +19,7 @@ def test_supported_sites_registry():
 
 def test_persistent_profile_directory():
     assert USER_DATA_DIR is not None
-    assert "playwright_profile" in USER_DATA_DIR or os.getenv("EDGE_USER_DATA_DIR")
+    assert "job_agent" in USER_DATA_DIR or "playwright_profile" in USER_DATA_DIR or os.getenv("EDGE_USER_DATA_DIR")
 
 
 @patch("scripts.login.launch_persistent_browser")
@@ -45,6 +45,24 @@ def test_multi_login_opens_tabs_without_clearing_profile(mock_wait, mock_pw, moc
 
     # Ensure pages navigated to the target URLs
     assert mock_page.goto.called
+
+
+@patch("scripts.login.launch_persistent_browser")
+@patch("scripts.login.sync_playwright")
+@patch("scripts.login.wait_for_user_completion")
+def test_multi_login_closes_extra_startup_pages(mock_wait, mock_pw, mock_launch):
+    mock_context = MagicMock()
+    mock_p0 = MagicMock(name="p0")
+    mock_p1 = MagicMock(name="p1")
+    mock_context.pages = [mock_p0, mock_p1]
+    mock_launch.return_value = mock_context
+
+    multi_login(selected_keys=["linkedin"])
+
+    # First page navigates to target
+    assert mock_p0.goto.called
+    # Extra default/restored startup page should be closed
+    mock_p1.close.assert_called_once()
 
 
 @patch("scripts.login.multi_login")

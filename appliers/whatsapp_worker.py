@@ -323,13 +323,14 @@ def _send_whatsapp_message_via_playwright(
             "headless": False if headed else True,
             "args": [
                 "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--no-restore-session-state",
                 "--disable-session-crashed-bubble",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--disable-features=msEdgeSingleSignOn,msEdgeAutoSignIn,msImplicitSignIn",
             ],
+            "ignore_default_args": ["--enable-automation", "--disable-extensions", "--disable-component-update"],
             **browser_launch_kwargs
         }
 

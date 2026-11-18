@@ -183,7 +183,7 @@ def test_decoupled_easy_apply_workflow(client):
     conn.close()
 
 
-def test_edge_binary_and_browser_launch_kwargs(monkeypatch):
+def test_edge_binary_and_browser_launch_kwargs(monkeypatch, tmp_path):
     """Verify that browser configuration defaults to Microsoft Edge with proper channel resolution."""
     from core.config import get_edge_binary_path, get_browser_launch_kwargs, get_browser_user_data_dir
 
@@ -203,6 +203,12 @@ def test_edge_binary_and_browser_launch_kwargs(monkeypatch):
     # User data dir fallback
     monkeypatch.delenv("EDGE_USER_DATA_DIR", raising=False)
     monkeypatch.delenv("PLAYWRIGHT_USER_DATA_DIR", raising=False)
+    resolved = get_browser_user_data_dir()
+    assert resolved.endswith("job_agent") or resolved.endswith("playwright_profile")
+
+    # Fallback to playwright_profile when neither Edge User Data nor LOCALAPPDATA is available
+    monkeypatch.setattr("core.config.BASE_DIR", str(tmp_path))
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\nonexistent_path_for_testing")
     assert get_browser_user_data_dir().endswith("playwright_profile")
 
 

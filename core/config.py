@@ -80,13 +80,50 @@ def get_edge_binary_path() -> str | None:
 EDGE_BINARY_PATH = get_edge_binary_path()
 
 
+def get_edge_user_data_root() -> str:
+    """Resolves path to the Microsoft Edge User Data directory across env vars and standard Windows paths."""
+    env_dir = os.getenv("EDGE_USER_DATA_DIR")
+    if env_dir:
+        return env_dir
+    local_app_data = os.getenv("LOCALAPPDATA")
+    if local_app_data:
+        standard_path = os.path.join(local_app_data, r"Microsoft\Edge\User Data")
+        if os.path.exists(standard_path):
+            return standard_path
+    return os.path.join(BASE_DIR, "playwright_profile")
+
+
 def get_browser_user_data_dir() -> str:
-    """Resolves the persistent user data directory for Playwright browser automation profiles."""
-    return (
-        os.getenv("PLAYWRIGHT_USER_DATA_DIR")
-        or os.getenv("EDGE_USER_DATA_DIR")
-        or os.path.join(BASE_DIR, "playwright_profile")
-    )
+    """
+    Resolves the persistent user data directory for Playwright browser automation profiles.
+    Defaults to the dedicated 'job_agent' profile located within Edge's native User Data root.
+    Ensures the profile directory exists before returning.
+    """
+    if os.getenv("PLAYWRIGHT_USER_DATA_DIR"):
+        path = os.getenv("PLAYWRIGHT_USER_DATA_DIR")
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    root = get_edge_user_data_root()
+    # If the root is already a fallback outside of Edge's User Data (e.g. playwright_profile)
+    if os.path.basename(os.path.normpath(root)).lower() == "playwright_profile":
+        os.makedirs(root, exist_ok=True)
+        return root
+
+    profile_name = os.getenv("EDGE_PROFILE_DIRECTORY", "job_agent")
+    norm_root = os.path.normpath(root)
+    if os.path.basename(norm_root).lower() == profile_name.lower():
+        profile_path = norm_root
+    else:
+        profile_path = os.path.join(norm_root, profile_name)
+
+    os.makedirs(profile_path, exist_ok=True)
+    try:
+        from core.auth_status import sync_profile_storage
+        sync_profile_storage(profile_path)
+    except Exception:
+        pass
+    return profile_path
 
 
 def get_browser_launch_kwargs(channel: str | None = None) -> dict:

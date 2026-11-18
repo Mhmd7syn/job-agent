@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import threading
+import subprocess
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 
@@ -15,12 +16,29 @@ try:
         get_browser_user_data_dir,
         get_browser_launch_kwargs,
         get_chrome_binary_path,
+        get_edge_binary_path,
+        get_clean_browser_page,
     )
     USER_DATA_DIR = get_browser_user_data_dir()
 except Exception:
     USER_DATA_DIR = os.path.join(BASE_DIR, "playwright_profile")
     get_browser_launch_kwargs = None
     get_chrome_binary_path = None
+    get_edge_binary_path = None
+    get_clean_browser_page = None
+
+if get_clean_browser_page is None:
+    def get_clean_browser_page(context):
+        pages = list(getattr(context, "pages", []))
+        if not pages:
+            return context.new_page()
+        primary_page = pages[0]
+        for old_page in pages[1:]:
+            try:
+                old_page.close()
+            except Exception:
+                pass
+        return primary_page
 
 os.makedirs(USER_DATA_DIR, exist_ok=True)
 
@@ -32,15 +50,15 @@ SUPPORTED_SITES = {
     },
     "tanqeeb": {
         "name": "Tanqeeb",
-        "url": "https://egypt.tanqeeb.com/en/login",
+        "url": "https://egypt.tanqeeb.com/users/login",
     },
     "glassdoor": {
         "name": "Glassdoor",
-        "url": "https://www.glassdoor.com/profile/login_input.htm",
+        "url": "https://www.glassdoor.com/member/home/index.htm",
     },
     "bayt": {
         "name": "Bayt",
-        "url": "https://www.bayt.com/en/login/",
+        "url": "https://www.bayt.com/en/my-workspace/",
     },
     "wuzzuf": {
         "name": "Wuzzuf",
@@ -65,11 +83,10 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=False
     default_args = [
         "--disable-blink-features=AutomationControlled",
         "--disable-infobars",
-        "--no-sandbox",
         "--disable-dev-shm-usage",
         "--disable-quic",
         "--ignore-certificate-errors",
-        "--disable-features=EncryptedClientHello,UseDnsHttpsSvcbAlpn,DnsOverHttps",
+        "--disable-features=EncryptedClientHello,UseDnsHttpsSvcbAlpn,DnsOverHttps,msEdgeSingleSignOn,msEdgeAutoSignIn,msImplicitSignIn",
         "--disable-async-dns",
         "--disable-background-networking",
         "--disable-sync",
@@ -89,7 +106,12 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=False
 
     ignore_default_args = kwargs.pop(
         "ignore_default_args",
-        ["--enable-automation", "--enable-blink-features=IdleDetection"],
+        [
+            "--enable-automation",
+            "--enable-blink-features=IdleDetection",
+            "--disable-extensions",
+            "--disable-component-update",
+        ],
     )
     viewport = kwargs.pop("viewport", None)
 
@@ -102,7 +124,26 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=False
         **kwargs,
     }
 
-    # 1. Attempt using dedicated Chrome binary if present (e.g. C:\automation\chrome-win64\chrome.exe)
+    # 1. Attempt using project-configured launch kwargs (e.g. Edge)
+    if get_browser_launch_kwargs:
+        try:
+            cfg_kwargs = get_browser_launch_kwargs()
+            return playwright_instance.chromium.launch_persistent_context(
+                **{**launch_args, **cfg_kwargs}
+            )
+        except Exception:
+            pass
+
+    # 2. Attempt Edge channel explicitly
+    try:
+        return playwright_instance.chromium.launch_persistent_context(
+            channel="msedge",
+            **launch_args,
+        )
+    except Exception:
+        pass
+
+    # 3. Attempt local Chrome binary if present
     chrome_bin = None
     if get_chrome_binary_path:
         try:
@@ -123,18 +164,8 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=False
         except Exception:
             pass
 
-    # 2. Attempt using project-configured launch kwargs (e.g. Edge)
-    if get_browser_launch_kwargs:
-        try:
-            cfg_kwargs = get_browser_launch_kwargs()
-            return playwright_instance.chromium.launch_persistent_context(
-                **{**launch_args, **cfg_kwargs}
-            )
-        except Exception:
-            pass
-
-    # 3. Fallback across system channels
-    for ch in ["chrome", "msedge", None]:
+    # 4. Fallback across system channels
+    for ch in ["chrome", None]:
         try:
             fb_args = dict(launch_args)
             if ch:
@@ -179,7 +210,61 @@ def wait_for_user_completion(context):
         time.sleep(1)
 
 
-def multi_login(selected_keys: list[str] | None = None):
+def launch_native_edge_login(targets: dict, profile_name: str | None = None) -> bool:
+    """
+    Launches Microsoft Edge natively with the designated profile ('job_agent').
+    Opens the user's authentic Edge browser environment, preserving all native profiles
+    (Job_agent, Influencetargetingmarketing, Mohamed), extensions, and clean UI without
+    unsupported automation flags.
+    """
+    profile = profile_name or os.getenv("EDGE_PROFILE_DIRECTORY", "job_agent")
+    edge_bin = None
+    if get_edge_binary_path:
+        try:
+            edge_bin = get_edge_binary_path()
+        except Exception:
+            pass
+
+    if not edge_bin:
+        for standard in [
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ]:
+            if os.path.exists(standard):
+                edge_bin = standard
+                break
+
+    if not edge_bin or not os.path.exists(edge_bin):
+        return False
+
+    urls = [site["url"] for site in targets.values()]
+    cmd = [edge_bin, f"--profile-directory={profile}"] + urls
+
+    print("=" * 60)
+    print(f"🌐 Launching Microsoft Edge natively with profile '{profile}'...")
+    print("=" * 60)
+    try:
+        subprocess.Popen(cmd)
+        print("✅ Edge has opened with your requested platform login tabs.")
+        print("Log in to your platforms in the browser window.")
+        print("Press ENTER in this console once you have finished logging in...")
+        print("=" * 60)
+        try:
+            input()
+        except Exception:
+            pass
+        try:
+            from core.auth_status import sync_profile_storage
+            sync_profile_storage(USER_DATA_DIR)
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        print(f"Native Edge launch failed ({e}), falling back to Playwright...")
+        return False
+
+
+def multi_login(selected_keys: list[str] | None = None, prefer_native: bool = True):
     """
     Opens target platforms in separate tabs within the persistent browser profile.
     Existing sessions and cookies are preserved. New logins are saved upon closing.
@@ -197,7 +282,14 @@ def multi_login(selected_keys: list[str] | None = None):
     for key, site in targets.items():
         print(f"  • {site['name']} -> {site['url']}")
     print("=" * 60)
-    print("Launching browser...")
+
+    # For interactive use (Settings UI and terminal), prefer launching Edge natively so the user's authentic
+    # profile ecosystem, extensions (Plucky), and multi-profile switcher are preserved without --no-sandbox flags.
+    if prefer_native and not os.getenv("PYTEST_CURRENT_TEST"):
+        if launch_native_edge_login(targets):
+            return
+
+    print("Launching browser via Playwright...")
 
     with sync_playwright() as p:
         try:
@@ -211,10 +303,13 @@ def multi_login(selected_keys: list[str] | None = None):
             print("Tip: If Chrome/Edge is already running with this profile, close it and retry.")
             return
 
+        # Ensure only a single fresh page remains and close any extra default/restored startup tabs
+        primary_page = get_clean_browser_page(context)
+
         pages = []
         for i, (key, site) in enumerate(targets.items()):
             if i == 0:
-                page = context.pages[0] if context.pages else context.new_page()
+                page = primary_page
             else:
                 page = context.new_page()
 
@@ -242,7 +337,7 @@ def multi_login(selected_keys: list[str] | None = None):
         print("✅ Browser is ready with all platforms loaded.")
         print("• If you are already logged in, your active session is active.")
         print("• Log in or solve any security/CAPTCHA challenges for needed accounts.")
-        print("• All session cookies will remain safely preserved in playwright_profile.")
+        print(f"• All session cookies will remain safely preserved in persistent profile ({os.path.basename(USER_DATA_DIR)}).")
         print("\n👉 Press [ENTER] in this terminal when finished (or close the browser window).")
         print("*" * 60 + "\n")
 
@@ -250,6 +345,12 @@ def multi_login(selected_keys: list[str] | None = None):
 
         try:
             context.close()
+        except Exception:
+            pass
+
+        try:
+            from core.auth_status import sync_profile_storage
+            sync_profile_storage(USER_DATA_DIR)
         except Exception:
             pass
 

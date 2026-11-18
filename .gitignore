@@ -32,6 +32,7 @@ downloaded_files/
 
 # Runtime data & alerts
 data/
+state/
 core/pending_alerts.json
 
 # Scratch and test caches

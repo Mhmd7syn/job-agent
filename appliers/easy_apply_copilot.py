@@ -236,13 +236,13 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
     launch_args = [
         "--disable-blink-features=AutomationControlled",
         "--disable-infobars",
-        "--no-sandbox",
         "--disable-dev-shm-usage",
         "--start-maximized",
         "--no-restore-session-state",
         "--disable-session-crashed-bubble",
         "--no-first-run",
         "--no-default-browser-check",
+        "--disable-features=msEdgeSingleSignOn,msEdgeAutoSignIn,msImplicitSignIn",
     ]
 
     resolver = ScreeningResolver(
@@ -257,7 +257,7 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
                 "user_data_dir": user_data_dir,
                 "headless": False if headed else True,
                 "args": launch_args,
-                "ignore_default_args": ["--enable-automation"],
+                "ignore_default_args": ["--enable-automation", "--disable-extensions", "--disable-component-update"],
                 "viewport": None,
                 **browser_launch_kwargs
             }
@@ -267,10 +267,15 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
             try:
                 context = p.chromium.launch_persistent_context(**launch_kwargs)
             except Exception as e:
-                # If profile is locked by another running browser, fallback to fresh directory
+                # If profile is locked by another running browser, fallback to cloned profile
                 session.log(f"Profile lock detected ({e}). Using temporary profile session...")
                 import tempfile
-                temp_profile = tempfile.mkdtemp(prefix="playwright_wa_")
+                temp_profile = tempfile.mkdtemp(prefix="playwright_ea_")
+                try:
+                    from core.auth_status import clone_profile_for_fallback
+                    clone_profile_for_fallback(user_data_dir, temp_profile)
+                except Exception:
+                    pass
                 launch_kwargs["user_data_dir"] = temp_profile
                 context = p.chromium.launch_persistent_context(**launch_kwargs)
 

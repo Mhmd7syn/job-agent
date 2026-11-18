@@ -783,20 +783,6 @@ async function loadWhatsAppStatusUI() {
 
 let loginStatusPollInterval = null;
 
-function toggleLoginDropdown() {
-    const dropdown = document.getElementById('login-sites-dropdown');
-    if (dropdown) dropdown.classList.toggle('hidden');
-}
-
-document.addEventListener('click', function(e) {
-    const dropdown = document.getElementById('login-sites-dropdown');
-    if (dropdown && !dropdown.classList.contains('hidden')) {
-        if (!e.target.closest('.dropdown-container')) {
-            dropdown.classList.add('hidden');
-        }
-    }
-});
-
 async function checkLoginStatusUI() {
     try {
         const res = await fetch('/api/auth/login-status');
@@ -829,8 +815,6 @@ async function launchLoginHelper(site = null) {
     const spinner = document.getElementById('login-btn-spinner');
     const text = document.getElementById('login-btn-text');
     const statusBadge = document.getElementById('login-status-badge');
-    const dropdown = document.getElementById('login-sites-dropdown');
-    if (dropdown) dropdown.classList.add('hidden');
 
     try {
         if (icon) icon.classList.add('hidden');

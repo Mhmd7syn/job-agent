@@ -186,7 +186,7 @@
                             </h3>
                             <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 0.75rem; padding: 1rem; margin-bottom: 1.5rem;">
                                 <p style="margin-top: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.45;">
-                                    Authenticate your job search accounts once (LinkedIn, Tanqeeb, Glassdoor, Bayt, Wuzzuf, Indeed, and WhatsApp Web). All cookies and login tokens are safely preserved in your persistent profile (<code>playwright_profile</code>) and reused automatically by scrapers, Easy Apply, and ATS copilots without repeated login prompts.
+                                    Authenticate your job search accounts once (LinkedIn, Tanqeeb, Glassdoor, Bayt, Wuzzuf, Indeed, and WhatsApp Web). All cookies and login tokens are safely preserved in your persistent profile (<code>job_agent</code>) and reused automatically by scrapers, Easy Apply, and ATS copilots without repeated login prompts.
                                 </p>
                                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem;">
                                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
@@ -195,20 +195,7 @@
                                             <i class="fa-solid fa-spinner fa-spin hidden" id="login-btn-spinner"></i>
                                             <span id="login-btn-text">Log In to All Platforms</span>
                                         </button>
-                                        <div class="dropdown-container" style="display: inline-block; position: relative;">
-                                            <button type="button" class="btn btn-secondary" onclick="toggleLoginDropdown()" style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
-                                                <span>Specific Site</span> <i class="fa-solid fa-chevron-down" style="font-size: 0.75rem;"></i>
-                                            </button>
-                                            <div id="login-sites-dropdown" class="dropdown-menu hidden" style="position: absolute; top: 100%; left: 0; margin-top: 0.35rem; background: var(--card-bg, #1e293b); border: 1px solid var(--card-border); border-radius: 0.5rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 1000; min-width: 180px; padding: 0.4rem 0;">
-                                                <a href="javascript:void(0)" onclick="launchLoginHelper('linkedin')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">💼 LinkedIn</a>
-                                                <a href="javascript:void(0)" onclick="launchLoginHelper('tanqeeb')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">🔍 Tanqeeb</a>
-                                                <a href="javascript:void(0)" onclick="launchLoginHelper('glassdoor')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">🏢 Glassdoor</a>
-                                                <a href="javascript:void(0)" onclick="launchLoginHelper('bayt')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">🌐 Bayt</a>
-                                                <a href="javascript:void(0)" onclick="launchLoginHelper('wuzzuf')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">🎯 Wuzzuf</a>
-                                                <a href="javascript:void(0)" onclick="launchLoginHelper('indeed')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">📄 Indeed</a>
-                                                <a href="javascript:void(0)" onclick="launchLoginHelper('whatsapp')" style="display: block; padding: 0.5rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.85rem;">💬 WhatsApp Web</a>
-                                            </div>
-                                        </div>
+
                                     </div>
                                     <div id="login-status-badge" style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-muted);">
                                         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10B981;"></span>
