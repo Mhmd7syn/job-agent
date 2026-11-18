@@ -11,14 +11,16 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Projec
 env_path = os.path.join(BASE_DIR, '.env')
 load_dotenv(dotenv_path=env_path)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+from core.gemini_client import get_gemini_client, generate_content_resilient
 
-if GEMINI_API_KEY:
+try:
     from google import genai
     from google.genai import types
-    client = genai.Client(api_key=GEMINI_API_KEY)
-else:
-    client = None
+except ImportError:
+    genai = None
+    types = None
+
+client = get_gemini_client()
 
 class PostExtractionSchema(BaseModel):
     is_job: bool
@@ -88,26 +90,19 @@ def extract_feed_posts_with_ai(feed_text):
     if not client:
         return {"error": "No Gemini API Key"}
         
-    for attempt in range(2):  # 1 retry — fail fast if quota exhausted
-        try:
-            response = client.models.generate_content(
-                model='gemini-flash-lite-latest',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=MultiplePostsExtractionSchema,
-                )
-            )
-            return json.loads(response.text)
-        except Exception as e:
-            if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060"]):
-                if attempt == 0:
-                    logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting 5s before retry...)")
-                    time.sleep(5)
-                    continue
-            return {"error": str(e)}
-
-    return {"error": "Exceeded retries for 429"}
+    try:
+        response, _ = generate_content_resilient(
+            client=client,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=MultiplePostsExtractionSchema,
+            ) if types else None,
+            preferred_model="gemini-flash-lite-latest",
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        return {"error": str(e)}
 
 def extract_job_page_with_ai(page_text):
     prompt = f"""
@@ -123,26 +118,19 @@ def extract_job_page_with_ai(page_text):
     if not client:
         return {"error": "No Gemini API Key"}
         
-    for attempt in range(2):  # 1 retry — fail fast if quota exhausted
-        try:
-            response = client.models.generate_content(
-                model='gemini-flash-lite-latest',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=JobPageExtractionSchema,
-                )
-            )
-            return json.loads(response.text)
-        except Exception as e:
-            if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060"]):
-                if attempt == 0:
-                    logging.warning(f"    (API issue ({str(e)[:15]}...). Waiting 5s before retry...)")
-                    time.sleep(5)
-                    continue
-            return {"error": str(e)}
-
-    return {"error": "Exceeded retries for 429"}
+    try:
+        response, _ = generate_content_resilient(
+            client=client,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=JobPageExtractionSchema,
+            ) if types else None,
+            preferred_model="gemini-flash-lite-latest",
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        return {"error": str(e)}
 
 def evaluate_run_with_ai(logs_text, csv_text, user_brief=""):
     prompt = f"""
@@ -164,26 +152,16 @@ def evaluate_run_with_ai(logs_text, csv_text, user_brief=""):
     if not client:
         return "No Gemini API Key found. Cannot evaluate."
         
-    models_to_try = ['gemini-2.5-flash', 'gemini-flash-lite-latest']
-    last_error = None
-
-    for model_name in models_to_try:
-        for attempt in range(3):
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                )
-                if response and response.text:
-                    return response.text
-            except Exception as e:
-                last_error = e
-                if any(err in str(e) for err in ["429", "503", "10051", "10053", "10054", "10060", "UNAVAILABLE"]):
-                    wait_time = 5 * (attempt + 1)
-                    logging.warning(f"    (AI evaluation issue with {model_name} ({str(e)[:25]}...). Waiting {wait_time}s before retry {attempt+1}/3...)")
-                    time.sleep(wait_time)
-                    continue
-                break
-                
-    return f"Error during AI evaluation: {last_error or 'Exceeded retries'}"
+    try:
+        response, _ = generate_content_resilient(
+            client=client,
+            contents=prompt,
+            preferred_model="gemini-flash-lite-latest",
+        )
+        if response and response.text:
+            return response.text
+    except Exception as e:
+        return f"Error during AI evaluation: {e}"
+        
+    return "Error during AI evaluation: Exceeded retries"
 

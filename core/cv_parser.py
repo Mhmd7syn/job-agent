@@ -85,19 +85,12 @@ def parse_cv_with_ai(file_path, api_key=None):
     if not raw_text:
         return {"error": "Extracted text is empty. Could not read CV contents."}
         
-    key = api_key or os.getenv("GEMINI_API_KEY")
-    if key:
-        try:
-            from core.config import decrypt_value
-            key = decrypt_value(key)
-        except Exception:
-            pass
+    from core.gemini_client import get_gemini_client, generate_content_resilient
 
-    if key and key != "Your_GEMINI_API_KEY_Here":
+    client = get_gemini_client(api_key=api_key)
+    if client:
         try:
-            from google import genai
             from google.genai import types
-            client = genai.Client(api_key=key)
             
             prompt = f"""
             You are an expert technical recruiter and AI career profiling assistant.
@@ -109,17 +102,18 @@ def parse_cv_with_ai(file_path, api_key=None):
             {raw_text[:8000]}
             """
             
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
+            response, model_used = generate_content_resilient(
+                client=client,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=CVExtractionSchema,
-                )
+                ),
+                preferred_model="gemini-flash-lite-latest",
             )
             parsed = json.loads(response.text)
             parsed["status"] = "success"
-            parsed["engine"] = "gemini"
+            parsed["engine"] = f"gemini ({model_used})"
             if "target_levels" in parsed:
                 parsed["target_levels"] = [normalize_category_name(l) for l in parsed["target_levels"] if normalize_category_name(l)]
             if "levels_to_remove" in parsed:

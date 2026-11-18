@@ -22,21 +22,16 @@ logger = logging.getLogger(__name__)
 
 # Gemini client initialization
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    try:
-        from core.config import decrypt_value
-        decrypted_key = decrypt_value(GEMINI_API_KEY)
-    except Exception:
-        decrypted_key = GEMINI_API_KEY
-    try:
-        from google import genai
-        from google.genai import types
-        client = genai.Client(api_key=decrypted_key)
-    except Exception as e:
-        logger.warning(f"Failed to initialize google-genai client: {e}")
-        client = None
-else:
-    client = None
+from core.gemini_client import get_gemini_client, generate_content_resilient
+
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+    types = None
+
+client = get_gemini_client()
 
 
 # Clean, centralized prompt templates (easy to inspect, monitor, and tweak)
@@ -174,28 +169,25 @@ def generate_email_draft(
         cv_text=cv_text[:6000] if cv_text else "Technical background in software development and data science."
     )
 
-    models_to_try = ['gemini-2.5-flash', 'gemini-flash-lite-latest']
     parsed_draft = None
     last_error = None
 
-    for model_name in models_to_try:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=EMAIL_SYSTEM_PROMPT,
-                    response_mime_type="application/json",
-                    response_schema=EmailDraftSchema,
-                    temperature=0.2
-                )
-            )
-            parsed_draft = json.loads(response.text)
-            break
-        except Exception as e:
-            last_error = str(e)
-            logger.warning(f"Gemini draft generation failed with model {model_name}: {e}")
-            time.sleep(1)
+    try:
+        response, _ = generate_content_resilient(
+            client=client,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=EMAIL_SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                response_schema=EmailDraftSchema,
+                temperature=0.2
+            ) if types else None,
+            preferred_model="gemini-flash-lite-latest",
+        )
+        parsed_draft = json.loads(response.text)
+    except Exception as e:
+        last_error = str(e)
+        logger.warning(f"Gemini draft generation failed: {e}")
 
     if not parsed_draft:
         err_msg = f"All Gemini models failed ({last_error})."

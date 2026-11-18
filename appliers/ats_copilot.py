@@ -30,21 +30,16 @@ logger = logging.getLogger(__name__)
 
 # Gemini client initialization for tailored cover letters
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    try:
-        from core.config import decrypt_value
-        decrypted_key = decrypt_value(GEMINI_API_KEY)
-    except Exception:
-        decrypted_key = GEMINI_API_KEY
-    try:
-        from google import genai
-        from google.genai import types
-        gemini_client = genai.Client(api_key=decrypted_key)
-    except Exception as e:
-        logger.warning(f"Failed to initialize google-genai in ATS copilot: {e}")
-        gemini_client = None
-else:
-    gemini_client = None
+from core.gemini_client import get_gemini_client, generate_content_resilient
+
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+    types = None
+
+gemini_client = get_gemini_client()
 
 
 # Platform signatures and metadata
@@ -214,13 +209,14 @@ Tone & Rules:
 8. Return ONLY the body text (do not include salutation or signature; they are attached automatically).
 """
         try:
-            response = gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
+            response, _ = generate_content_resilient(
+                client=gemini_client,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.3,
                     max_output_tokens=350,
-                )
+                ) if types else None,
+                preferred_model="gemini-flash-lite-latest",
             )
             body = response.text.strip()
             # Clean possible markdown fences

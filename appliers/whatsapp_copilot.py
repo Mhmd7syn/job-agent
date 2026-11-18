@@ -22,22 +22,16 @@ from core.job_utils import normalize_phone_number
 logger = logging.getLogger(__name__)
 
 # Gemini client initialization
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    try:
-        from core.config import decrypt_value
-        decrypted_key = decrypt_value(GEMINI_API_KEY)
-    except Exception:
-        decrypted_key = GEMINI_API_KEY
-    try:
-        from google import genai
-        from google.genai import types
-        client = genai.Client(api_key=decrypted_key)
-    except Exception as e:
-        logger.warning(f"Failed to initialize google-genai client for WhatsApp Co-Pilot: {e}")
-        client = None
-else:
-    client = None
+from core.gemini_client import get_gemini_client, generate_content_resilient
+
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+    types = None
+
+client = get_gemini_client()
 
 
 class WhatsAppPitchSchema(BaseModel):
@@ -238,57 +232,46 @@ def generate_whatsapp_pitch(
 \"\"\"
 """
 
-    # Retry loop with exponential backoff
-    for attempt in range(3):
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=WhatsAppPitchSchema,
-                    temperature=0.2,
-                ),
-            )
-            parsed = json.loads(response.text)
-            pitch_text = parsed.get("pitch", "").strip()
-            highlights = parsed.get("key_highlights_used", [])
+    try:
+        response, model_used = generate_content_resilient(
+            client=client,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=WhatsAppPitchSchema,
+                temperature=0.2,
+            ) if types else None,
+            preferred_model="gemini-flash-lite-latest",
+        )
+        parsed = json.loads(response.text)
+        pitch_text = parsed.get("pitch", "").strip()
+        highlights = parsed.get("key_highlights_used", [])
 
-            return {
-                "status": "success",
-                "engine": "gemini-2.5-flash",
-                "pitch": pitch_text,
-                "key_highlights_used": highlights,
-                "phone": normalized_phone,
-                "whatsapp_url": whatsapp_url or (f"https://wa.me/{normalized_phone}" if normalized_phone else ""),
-                "desktop_url": build_whatsapp_desktop_url(normalized_phone, pitch_text),
-                "wa_me_url": build_wa_me_url(normalized_phone, pitch_text),
-                "attached_cv": {
-                    "path": cv_path,
-                    "filename": os.path.basename(cv_path) if cv_path else None,
-                    "size_kb": round(os.path.getsize(cv_path) / 1024, 1) if cv_path and os.path.exists(cv_path) else 0,
-                    "exists": os.path.exists(cv_path) if cv_path else False
-                },
-                "job_id": job_id
-            }
-        except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
-                wait_time = 2 ** attempt
-                logger.warning(f"Rate limited by Gemini on WhatsApp pitch attempt {attempt + 1}. Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-            else:
-                logger.error(f"Gemini generation error on WhatsApp pitch: {e}")
-                break
-
-    # Postpone to next run if AI generation failed or timed out
-    err_msg = "Gemini AI generation failed or timed out."
-    logger.warning(f"Postponing WhatsApp application for '{job_title}' at '{company}': {err_msg}")
-    return {
-        "status": "error",
-        "reason": "ai_unavailable",
-        "message": f"AI unavailable ({err_msg}). Postponed to next run.",
-        "job_id": job_id,
-        "phone": normalized_phone
-    }
+        return {
+            "status": "success",
+            "engine": f"gemini ({model_used})",
+            "pitch": pitch_text,
+            "key_highlights_used": highlights,
+            "phone": normalized_phone,
+            "whatsapp_url": whatsapp_url or (f"https://wa.me/{normalized_phone}" if normalized_phone else ""),
+            "desktop_url": build_whatsapp_desktop_url(normalized_phone, pitch_text),
+            "wa_me_url": build_wa_me_url(normalized_phone, pitch_text),
+            "attached_cv": {
+                "path": cv_path,
+                "filename": os.path.basename(cv_path) if cv_path else None,
+                "size_kb": round(os.path.getsize(cv_path) / 1024, 1) if cv_path and os.path.exists(cv_path) else 0,
+                "exists": os.path.exists(cv_path) if cv_path else False
+            },
+            "job_id": job_id
+        }
+    except Exception as e:
+        err_msg = f"Gemini AI generation failed: {e}"
+        logger.warning(f"Postponing WhatsApp application for '{job_title}' at '{company}': {err_msg}")
+        return {
+            "status": "error",
+            "reason": "ai_unavailable",
+            "message": f"AI unavailable ({err_msg}). Postponed to next run.",
+            "job_id": job_id,
+            "phone": normalized_phone
+        }

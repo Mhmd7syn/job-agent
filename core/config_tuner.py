@@ -3,6 +3,7 @@ import logging
 import os
 import uuid
 from core.llm_parser import client
+from core.gemini_client import generate_content_resilient
 from pydantic import BaseModel, Field
 from core.career_levels import normalize_category_name, CAREER_LEVEL_CATEGORIES, expand_levels
 
@@ -294,37 +295,16 @@ def analyze_job_and_tune_config(job_dict, action):
 
     try:
         from google.genai import types
-        import time
 
-        response = None
-        models_to_try = ['gemini-2.5-flash', 'gemini-flash-lite-latest']
-        last_error = None
-
-        for model_name in models_to_try:
-            for attempt in range(3):
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            response_schema=ConfigUpdateSchema,
-                        )
-                    )
-                    break
-                except Exception as err:
-                    last_error = err
-                    if any(e_code in str(err) for e_code in ["429", "503", "10051", "10053", "10054", "10060", "getaddrinfo"]):
-                        wait_t = 5 * (attempt + 1)
-                        logging.warning(f"⚠️ Auto-tune API glitch ({err.__class__.__name__}). Retrying in {wait_t}s ({attempt+1}/3)...")
-                        time.sleep(wait_t)
-                    else:
-                        break
-            if response:
-                break
-
-        if not response:
-            raise last_error or RuntimeError("Failed to generate response after retries")
+        response, _ = generate_content_resilient(
+            client=client,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ConfigUpdateSchema,
+            ),
+            preferred_model="gemini-flash-lite-latest",
+        )
 
         updates = json.loads(response.text)
         proposals = generate_proposals(
@@ -504,37 +484,16 @@ def analyze_run_and_tune_config(logs_text, eval_text):
 
     try:
         from google.genai import types
-        import time
 
-        response = None
-        models_to_try = ['gemini-2.5-flash', 'gemini-flash-lite-latest']
-        last_error = None
-
-        for model_name in models_to_try:
-            for attempt in range(3):
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            response_schema=ConfigUpdateSchema,
-                        )
-                    )
-                    break
-                except Exception as err:
-                    last_error = err
-                    if any(e_code in str(err) for e_code in ["429", "503", "10051", "10053", "10054", "10060", "getaddrinfo"]):
-                        wait_t = 5 * (attempt + 1)
-                        logging.warning(f"⚠️ Auto-tune run log API glitch ({err.__class__.__name__}). Retrying in {wait_t}s ({attempt+1}/3)...")
-                        time.sleep(wait_t)
-                    else:
-                        break
-            if response:
-                break
-
-        if not response:
-            raise last_error or RuntimeError("Failed to generate response after retries")
+        response, _ = generate_content_resilient(
+            client=client,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ConfigUpdateSchema,
+            ),
+            preferred_model="gemini-flash-lite-latest",
+        )
 
         updates = json.loads(response.text)
         proposals = generate_proposals(

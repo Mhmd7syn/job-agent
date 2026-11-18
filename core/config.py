@@ -32,6 +32,9 @@ LINKEDIN_PASSWORD = decrypt_value(os.getenv("LINKEDIN_PASSWORD"))
 if os.getenv("GEMINI_API_KEY"):
     os.environ["GEMINI_API_KEY"] = decrypt_value(os.getenv("GEMINI_API_KEY"))
 
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+
 WHATSAPP_PHONE_NUMBER = decrypt_value(os.getenv("WHATSAPP_PHONE_NUMBER"))
 WHATSAPP_API_TOKEN = decrypt_value(os.getenv("WHATSAPP_API_TOKEN"))
 WHATSAPP_PHONE_NUMBER_ID = decrypt_value(os.getenv("WHATSAPP_PHONE_NUMBER_ID"))
