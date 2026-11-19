@@ -3,6 +3,7 @@ import sys
 import re
 import json
 import time
+from datetime import datetime
 import logging
 import threading
 import socket
@@ -204,10 +205,16 @@ def _scrape_and_persist_url(
             upd = dict(existing)
             if is_scholarship:
                 upd["job_type"] = "Scholarship"
+                upd["is_scholarship"] = True
             if is_liked:
                 upd["status"] = "liked"
             if is_applied:
                 upd["is_applied"] = 1
+                upd["apply_status"] = "applied"
+                if not upd.get("applied_at"):
+                    upd["applied_at"] = datetime.now().isoformat()
+                if not upd.get("apply_channel"):
+                    upd["apply_channel"] = "whatsapp"
             saved_job, _ = save_or_update_job(upd, force_pending=False)
             logger.info(f"WhatsApp bot updated existing job: {saved_job.get('title')}")
             return {
@@ -234,11 +241,22 @@ def _scrape_and_persist_url(
         }
 
     try:
-        job_dict = scrape_job_from_url(url=job_url, scraper_type="auto", is_scholarship=is_scholarship)
+        job_dict = dict(scrape_job_from_url(url=job_url, scraper_type="auto", is_scholarship=is_scholarship))
+        if is_scholarship:
+            job_dict["job_type"] = "Scholarship"
+            job_dict["is_scholarship"] = True
         if is_liked:
             job_dict["status"] = "liked"
         if is_applied:
             job_dict["is_applied"] = 1
+            job_dict["apply_status"] = "applied"
+            if not job_dict.get("applied_at"):
+                job_dict["applied_at"] = datetime.now().isoformat()
+            if not job_dict.get("apply_channel"):
+                job_dict["apply_channel"] = "whatsapp"
+        else:
+            job_dict["is_applied"] = 0
+            job_dict["apply_status"] = "unapplied"
 
         # 2. Check if job_id already in DB
         if job_dict.get("job_id"):
@@ -248,10 +266,16 @@ def _scrape_and_persist_url(
                     upd = dict(existing_by_id)
                     if is_scholarship:
                         upd["job_type"] = "Scholarship"
+                        upd["is_scholarship"] = True
                     if is_liked:
                         upd["status"] = "liked"
                     if is_applied:
                         upd["is_applied"] = 1
+                        upd["apply_status"] = "applied"
+                        if not upd.get("applied_at"):
+                            upd["applied_at"] = datetime.now().isoformat()
+                        if not upd.get("apply_channel"):
+                            upd["apply_channel"] = "whatsapp"
                     saved_job, _ = save_or_update_job(upd, force_pending=False)
                     return {
                         "status": "updated",
@@ -325,14 +349,30 @@ def _parse_and_persist_raw_text(
     """Parses raw job description text with LLM/regex, scores, and persists to DB."""
     logger.info(f"WhatsApp bot processing raw job text (scholarship={is_scholarship}, liked={is_liked}, applied={is_applied})")
     try:
-        clean_text = re.sub(r'[#/](?:scholarships?|fellowships?|liked?|applied)\b', '', text, flags=re.IGNORECASE).strip()
+        clean_text = re.sub(
+            r'(?:[#/]?(?:scholarships?|fellowships?|liked?|applied)\b[,;\s]*|\b(?:قدّمت|قدمت|تقديم|إعجاب|اعجاب|منحة|منح)\b[,;\s]*)',
+            '',
+            text,
+            flags=re.IGNORECASE
+        ).strip()
         parse_text = clean_text if len(clean_text) >= 15 else text
 
-        job_dict = scrape_job_from_url(url="", raw_text=parse_text, scraper_type="generic", is_scholarship=is_scholarship)
+        job_dict = dict(scrape_job_from_url(url="", raw_text=parse_text, scraper_type="generic", is_scholarship=is_scholarship))
+        if is_scholarship:
+            job_dict["job_type"] = "Scholarship"
+            job_dict["is_scholarship"] = True
         if is_liked:
             job_dict["status"] = "liked"
         if is_applied:
             job_dict["is_applied"] = 1
+            job_dict["apply_status"] = "applied"
+            if not job_dict.get("applied_at"):
+                job_dict["applied_at"] = datetime.now().isoformat()
+            if not job_dict.get("apply_channel"):
+                job_dict["apply_channel"] = "whatsapp"
+        else:
+            job_dict["is_applied"] = 0
+            job_dict["apply_status"] = "unapplied"
 
         job_id = job_dict.get("job_id")
         if job_id:
@@ -342,10 +382,16 @@ def _parse_and_persist_raw_text(
                     upd = dict(existing)
                     if is_scholarship:
                         upd["job_type"] = "Scholarship"
+                        upd["is_scholarship"] = True
                     if is_liked:
                         upd["status"] = "liked"
                     if is_applied:
                         upd["is_applied"] = 1
+                        upd["apply_status"] = "applied"
+                        if not upd.get("applied_at"):
+                            upd["applied_at"] = datetime.now().isoformat()
+                        if not upd.get("apply_channel"):
+                            upd["apply_channel"] = "whatsapp"
                     saved_job, _ = save_or_update_job(upd, force_pending=False)
                     return {
                         "status": "updated",
@@ -496,10 +542,6 @@ def process_message(
         return []
 
     results: List[Dict[str, Any]] = []
-    is_scholarship = bool(re.search(r'(?:[#/]scholarships?|[#/]fellowships?|\bمنحة\b|\bمنح\b)', text, re.IGNORECASE))
-    is_applied = bool(re.search(r'(?:[#/]applied|\bقدّمت\b|\bقدمت\b)', text, re.IGNORECASE))
-    is_liked = bool(re.search(r'(?:[#/]liked?|[#/]favorite|\bإعجاب\b|\bاعجاب\b)', text, re.IGNORECASE)) or is_applied
-    force_pending = False if is_liked else True
 
     found_urls = _extract_job_urls(text)
     # Check for hidden URLs (e.g. [text](url))
@@ -508,6 +550,14 @@ def process_message(
         cleaned_md = clean_url(md_url)
         if cleaned_md not in found_urls:
             found_urls.append(cleaned_md)
+
+    text_to_check = re.sub(URL_REGEX, '', text) if found_urls else text
+
+    is_scholarship = bool(re.search(r'[#/](?:scholarships?|fellowships?|منحة|منح)\b', text_to_check, re.IGNORECASE))
+    is_applied = bool(re.search(r'[#/](?:applied?|قدّمت|قدمت|تقديم)\b', text_to_check, re.IGNORECASE))
+    is_liked = bool(re.search(r'[#/](?:liked?|favorites?|favourites?|إعجاب|اعجاب|مفضلة|مفضله)\b', text_to_check, re.IGNORECASE)) or is_applied
+
+    force_pending = False if is_liked else True
 
     if found_urls:
         for job_url in found_urls:

@@ -123,9 +123,12 @@ class AddJobByUrlRequest(BaseModel):
     scraper_type: str = Field(default="auto")
     raw_text: str = Field(default="")
     is_scholarship: bool = Field(default=False)
+    status: str = Field(default="pending")
+    applied_date: Optional[str] = Field(default=None)
+    apply_method: Optional[str] = Field(default=None)
 
 @app.post("/api/jobs/add-by-url")
-def add_job_by_url_endpoint(req: AddJobByUrlRequest):
+def add_job_by_url_endpoint(req: AddJobByUrlRequest, background_tasks: BackgroundTasks):
     url = (req.url or "").strip()
     raw_text = (req.raw_text or "").strip()
     if not url and not raw_text:
@@ -138,7 +141,39 @@ def add_job_by_url_endpoint(req: AddJobByUrlRequest):
             raw_text=raw_text,
             is_scholarship=req.is_scholarship
         )
-        saved_job, is_new = save_or_update_job(job_dict, force_pending=True)
+
+        status_choice = (req.status or "pending").strip().lower()
+        if status_choice not in ("pending", "liked", "applied"):
+            status_choice = "pending"
+
+        if status_choice == "applied":
+            job_dict["status"] = "liked"
+            job_dict["is_applied"] = 1
+            job_dict["apply_status"] = "applied"
+            applied_at = (req.applied_date or "").strip()
+            if not applied_at:
+                applied_at = datetime.now().isoformat()
+            job_dict["applied_at"] = applied_at
+
+            apply_method = (req.apply_method or "manual").strip().lower()
+            job_dict["apply_channel"] = apply_method
+            force_pending = False
+        elif status_choice == "liked":
+            job_dict["status"] = "liked"
+            job_dict["is_applied"] = 0
+            job_dict["apply_status"] = "unapplied"
+            force_pending = False
+        else:
+            job_dict["status"] = "pending"
+            job_dict["is_applied"] = 0
+            job_dict["apply_status"] = "unapplied"
+            force_pending = True
+
+        saved_job, is_new = save_or_update_job(job_dict, force_pending=force_pending)
+
+        if status_choice in ("liked", "applied"):
+            background_tasks.add_task(analyze_job_and_tune_config, saved_job, "liked")
+
         return {
             "status": "success",
             "is_new": is_new,

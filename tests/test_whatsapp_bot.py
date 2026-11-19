@@ -185,6 +185,63 @@ class TestWhatsAppBot(unittest.TestCase):
         self.assertTrue(results[0]["is_liked"])
         self.assertTrue(results[0]["is_applied"])
 
+    @patch("core.whatsapp_bot.send_whatsapp_message")
+    @patch("core.whatsapp_bot.scrape_job_from_url")
+    @patch("core.whatsapp_bot.save_or_update_job")
+    def test_process_message_hash_and_slash_tags(self, mock_save, mock_scrape, mock_send):
+        mock_scrape.return_value = {
+            "job_id": "job_plain",
+            "title": "Data Scientist",
+            "company": "Corp",
+            "location": "Cairo",
+            "relevance_score": 90.0,
+            "job_type": "Full-time"
+        }
+        mock_save.side_effect = lambda job_dict, force_pending=False: (job_dict, True)
+
+        # 1. Explicit hash tags
+        msg1 = {
+            "from": "+201097344958",
+            "text": "https://example.com/job #applied #liked #scholarship"
+        }
+        res1 = process_message(msg1, candidate_phone="+201097344958", send_reply=False)
+        self.assertEqual(len(res1), 1)
+        self.assertTrue(res1[0]["is_scholarship"])
+        self.assertTrue(res1[0]["is_liked"])
+        self.assertTrue(res1[0]["is_applied"])
+
+        # 2. Explicit slash commands
+        msg2 = {
+            "from": "+201097344958",
+            "text": "https://example.com/job /applied /liked /scholarship"
+        }
+        res2 = process_message(msg2, candidate_phone="+201097344958", send_reply=False)
+        self.assertEqual(len(res2), 1)
+        self.assertTrue(res2[0]["is_scholarship"])
+        self.assertTrue(res2[0]["is_liked"])
+        self.assertTrue(res2[0]["is_applied"])
+
+        # 3. URL path containing 'applied' does not falsely trigger
+        msg3 = {
+            "from": "+201097344958",
+            "text": "https://example.com/careers/applied/job-123"
+        }
+        res3 = process_message(msg3, candidate_phone="+201097344958", send_reply=False)
+        self.assertEqual(len(res3), 1)
+        self.assertFalse(res3[0]["is_applied"])
+        self.assertFalse(res3[0]["is_liked"])
+
+        # 4. Plain words without # or / do not trigger
+        msg4 = {
+            "from": "+201097344958",
+            "text": "https://example.com/job applied liked scholarship"
+        }
+        res4 = process_message(msg4, candidate_phone="+201097344958", send_reply=False)
+        self.assertEqual(len(res4), 1)
+        self.assertFalse(res4[0]["is_applied"])
+        self.assertFalse(res4[0]["is_liked"])
+        self.assertFalse(res4[0]["is_scholarship"])
+
     @patch("core.whatsapp_bot.get_candidate_phone", return_value="+201097344958")
     @patch("core.whatsapp_bot.send_whatsapp_message", return_value=True)
     def test_notify_whatsapp_candidate(self, mock_send, mock_phone):

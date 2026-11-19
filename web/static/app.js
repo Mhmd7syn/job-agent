@@ -429,6 +429,8 @@ function createJobCard(job) {
     } else if (applyType === 'job_board') {
         const board = cardPayload.board_name || job.site || 'Job Board';
         channelTagHtml = `<div class="tag-channel tag-channel-board" title="Job Board Listing (${escapeHtml(board)})"><i class="fa-solid fa-briefcase"></i>${escapeHtml(board)}</div>`;
+    } else if (applyType === 'external_portal') {
+        channelTagHtml = `<div class="tag-channel tag-channel-platform" title="External Portal Application"><i class="fa-solid fa-arrow-up-right-from-square"></i>Portal</div>`;
     } else {
         const isEmployerSite = cardPayload && cardPayload.source === 'employer_site';
         const label = isEmployerSite ? 'Employer Site' : 'External';
@@ -2485,6 +2487,16 @@ function showAddJobModal() {
         if (urlInput) {
             urlInput.focus();
         }
+        // Reset status selector and conditional fields
+        const statusSelect = document.getElementById('add-job-status-select');
+        if (statusSelect) statusSelect.value = 'pending';
+        const appliedFields = document.getElementById('add-job-applied-fields');
+        if (appliedFields) appliedFields.classList.add('hidden');
+        const appliedDateInput = document.getElementById('add-job-applied-date');
+        if (appliedDateInput) appliedDateInput.value = '';
+        const applyMethodSelect = document.getElementById('add-job-apply-method');
+        if (applyMethodSelect) applyMethodSelect.value = 'manual';
+
         // Clear status
         const statusDiv = document.getElementById('add-job-status');
         if (statusDiv) {
@@ -2499,6 +2511,28 @@ function hideAddJobModal() {
     if (modal) modal.classList.add('hidden');
     const scholCheck = document.getElementById('add-job-is-scholarship');
     if (scholCheck) scholCheck.checked = false;
+    const statusSelect = document.getElementById('add-job-status-select');
+    if (statusSelect) statusSelect.value = 'pending';
+    const appliedFields = document.getElementById('add-job-applied-fields');
+    if (appliedFields) appliedFields.classList.add('hidden');
+    const appliedDateInput = document.getElementById('add-job-applied-date');
+    if (appliedDateInput) appliedDateInput.value = '';
+    const applyMethodSelect = document.getElementById('add-job-apply-method');
+    if (applyMethodSelect) applyMethodSelect.value = 'manual';
+}
+
+function onAddJobStatusChange(val) {
+    const appliedFields = document.getElementById('add-job-applied-fields');
+    if (!appliedFields) return;
+    if (val === 'applied') {
+        appliedFields.classList.remove('hidden');
+        const dateInput = document.getElementById('add-job-applied-date');
+        if (dateInput && !dateInput.value) {
+            dateInput.value = new Date().toISOString().split('T')[0];
+        }
+    } else {
+        appliedFields.classList.add('hidden');
+    }
 }
 
 function onAddJobUrlInput(val) {
@@ -2555,6 +2589,9 @@ async function submitAddJob() {
     const scraperType = scraperTypeSelect ? scraperTypeSelect.value : 'auto';
     const rawText = (rawTextInput ? rawTextInput.value : '').trim();
     const isScholarship = document.getElementById('add-job-is-scholarship')?.checked || false;
+    const initialStatus = document.getElementById('add-job-status-select')?.value || 'pending';
+    const appliedDate = document.getElementById('add-job-applied-date')?.value || '';
+    const applyMethod = document.getElementById('add-job-apply-method')?.value || 'manual';
 
     if (!url && !rawText) {
         if (statusDiv) {
@@ -2594,7 +2631,10 @@ async function submitAddJob() {
                 url: url,
                 scraper_type: scraperType,
                 raw_text: rawText,
-                is_scholarship: isScholarship
+                is_scholarship: isScholarship,
+                status: initialStatus,
+                applied_date: appliedDate,
+                apply_method: applyMethod
             })
         });
 
@@ -2610,6 +2650,14 @@ async function submitAddJob() {
             if (scraperTypeSelect) scraperTypeSelect.value = 'auto';
             const scholCheck = document.getElementById('add-job-is-scholarship');
             if (scholCheck) scholCheck.checked = false;
+            const statusSelect = document.getElementById('add-job-status-select');
+            if (statusSelect) statusSelect.value = 'pending';
+            const appliedFields = document.getElementById('add-job-applied-fields');
+            if (appliedFields) appliedFields.classList.add('hidden');
+            const appliedDateInput = document.getElementById('add-job-applied-date');
+            if (appliedDateInput) appliedDateInput.value = '';
+            const applyMethodSelect = document.getElementById('add-job-apply-method');
+            if (applyMethodSelect) applyMethodSelect.value = 'manual';
 
             // Insert or update in local state
             const existingIdx = allJobs.findIndex(j => j.job_id === savedJob.job_id || (j.job_url && j.job_url === savedJob.job_url));
@@ -2622,6 +2670,12 @@ async function submitAddJob() {
             // Hide empty state if visible
             const emptyState = document.getElementById('empty-state');
             if (emptyState) emptyState.classList.add('hidden');
+
+            // If job is applied, adjust filter so the card is visible
+            const appliedFilterEl = document.getElementById('applied-filter');
+            if (savedJob.is_applied === 1 && appliedFilterEl && appliedFilterEl.value === 'not_applied') {
+                appliedFilterEl.value = 'all';
+            }
 
             // Re-render grid
             applyFiltersAndSort();
@@ -3864,14 +3918,14 @@ async function openEasyApplyCopilotModal(jobId) {
     }
     const logsBox = document.getElementById('easy-apply-logs-box');
     if (logsBox) {
-        logsBox.innerHTML = '<div style="color: var(--text-muted);">Click "Start Assisted Pre-fill" to launch headed Chrome session.</div>';
+        logsBox.innerHTML = '<div style="color: var(--text-muted);">Click "Start Assisted Pre-fill" to launch Microsoft Edge session.</div>';
     }
 
     const startBtn = document.getElementById('easy-apply-start-btn');
     const appliedBtn = document.getElementById('easy-apply-applied-btn');
     if (startBtn) {
         startBtn.disabled = false;
-        startBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Start Assisted Pre-fill (Opens Headed Chrome)';
+        startBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Start Assisted Pre-fill (Opens Headed Edge)';
     }
     if (appliedBtn) {
         appliedBtn.style.display = job.is_applied === 1 ? 'none' : 'inline-flex';
@@ -3957,7 +4011,7 @@ async function startEasyApplySession() {
     const startBtn = document.getElementById('easy-apply-start-btn');
     if (startBtn) {
         startBtn.disabled = true;
-        startBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Launching Chrome...';
+        startBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Launching Edge...';
     }
 
     try {
@@ -3969,21 +4023,21 @@ async function startEasyApplySession() {
         const data = await res.json();
 
         if (res.ok && data.status === 'success') {
-            showToast('✓ Chrome launched! Pre-filling application...', 'info', 'fa-bolt');
+            showToast('✓ Edge launched! Pre-filling application...', 'info', 'fa-bolt');
             startEasyApplyPolling(currentEasyApplyJobId);
         } else {
             showToast(data.detail || 'Failed to start Easy Apply session.', 'danger', 'fa-circle-xmark');
             if (startBtn) {
                 startBtn.disabled = false;
-                startBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Start Assisted Pre-fill (Opens Headed Chrome)';
+                startBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Start Assisted Pre-fill (Opens Headed Edge)';
             }
         }
     } catch (err) {
         console.error('Error starting Easy Apply session:', err);
-        showToast('Error launching Chrome session.', 'danger', 'fa-circle-xmark');
+        showToast('Error launching Edge session.', 'danger', 'fa-circle-xmark');
         if (startBtn) {
             startBtn.disabled = false;
-            startBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Start Assisted Pre-fill (Opens Headed Chrome)';
+            startBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Start Assisted Pre-fill (Opens Headed Edge)';
         }
     }
 }
@@ -4053,7 +4107,7 @@ function startEasyApplyPolling(jobId) {
                     startBtn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Re-run Pre-fill';
                 }
 
-                showToast('⏸ Easy Apply form ready! Review in Chrome and click Submit.', 'success', 'fa-circle-check');
+                showToast('⏸ Easy Apply form ready! Review in Edge and click Submit.', 'success', 'fa-circle-check');
             } else if (session.status === 'error') {
                 clearInterval(easyApplyPollTimer);
                 easyApplyPollTimer = null;
@@ -4145,7 +4199,7 @@ async function openAtsCopilotModal(jobId) {
     if (logsBox) logsBox.innerHTML = '<div style="color: var(--text-muted);">Preparing application details...</div>';
     if (startBtn) {
         startBtn.disabled = false;
-        startBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Start Assisted Pre-fill (Opens Headed Chrome)';
+        startBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Start Assisted Pre-fill (Opens Headed Edge)';
     }
 
     modal.classList.remove('hidden');
@@ -4358,12 +4412,12 @@ async function startAtsSession() {
 
     if (startBtn) {
         startBtn.disabled = true;
-        startBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Initializing Chrome Session...';
+        startBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Initializing Edge Session...';
     }
     if (banner) banner.style.display = 'none';
     if (stepTag) stepTag.textContent = 'Launching';
     if (logsBox) {
-        logsBox.innerHTML = '<div style="color: #60a5fa;">[Init] Starting headed Chrome browser session...</div>';
+        logsBox.innerHTML = '<div style="color: #60a5fa;">[Init] Starting headed Edge browser session...</div>';
     }
 
     try {
@@ -4377,7 +4431,7 @@ async function startAtsSession() {
         });
 
         if (res.ok) {
-            showToast('🚀 Assisted Chrome session launched!', 'info', 'fa-globe');
+            showToast('🚀 Assisted Edge session launched!', 'info', 'fa-globe');
             startAtsPolling(currentAtsJobId);
         } else {
             const err = await res.json();
@@ -4626,6 +4680,14 @@ function renderHubHistory(applications) {
             badgeClass = 'tag-channel-form';
             channelIcon = 'fa-solid fa-file-waveform';
             channelName = 'Form';
+        } else if (channel === 'external_portal' || channel === 'portal') {
+            badgeClass = 'tag-channel-platform';
+            channelIcon = 'fa-solid fa-arrow-up-right-from-square';
+            channelName = 'Portal';
+        } else if (channel === 'manual') {
+            badgeClass = 'tag-channel-manual';
+            channelIcon = 'fa-solid fa-user-pen';
+            channelName = 'Manual';
         }
 
         return `

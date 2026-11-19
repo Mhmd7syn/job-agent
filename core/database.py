@@ -222,11 +222,18 @@ def save_or_update_job(job_dict, force_pending=True):
         is_easy_apply = job_dict.get('is_easy_apply') if job_dict.get('is_easy_apply') is not None else existing_dict.get('is_easy_apply', 0)
         is_easy_apply_val = 1 if is_easy_apply else 0
 
+        applied_at = job_dict.get('applied_at') or existing_dict.get('applied_at')
+        apply_channel = job_dict.get('apply_channel') or existing_dict.get('apply_channel')
+        apply_status = job_dict.get('apply_status') or existing_dict.get('apply_status', 'unapplied')
+        if is_applied == 1 and apply_status == 'unapplied':
+            apply_status = 'applied'
+
         cursor.execute("""
             UPDATE jobs
             SET title = ?, company = ?, location = ?, job_url = ?, job_type = ?, 
                 date_posted = ?, site = ?, relevance_score = ?, description = ?, status = ?, timestamp = ?, is_applied = ?,
-                apply_type = ?, apply_payload = ?, apply_url = ?, is_easy_apply = ?, workplace_setup = ?
+                apply_type = ?, apply_payload = ?, apply_url = ?, is_easy_apply = ?, workplace_setup = ?,
+                applied_at = ?, apply_channel = ?, apply_status = ?
             WHERE job_id = ?
         """, (
             job_dict.get('title') or existing_dict.get('title', ''),
@@ -246,6 +253,9 @@ def save_or_update_job(job_dict, force_pending=True):
             apply_url,
             is_easy_apply_val,
             job_dict.get('workplace_setup') or existing_dict.get('workplace_setup', 'On-site'),
+            applied_at,
+            apply_channel,
+            apply_status,
             target_id
         ))
         conn.commit()
@@ -269,10 +279,14 @@ def save_or_update_job(job_dict, force_pending=True):
             raw_payload = job_dict.get('apply_payload', {})
             apply_payload = json.dumps(raw_payload, ensure_ascii=False) if isinstance(raw_payload, dict) else str(raw_payload)
 
+        applied_at = job_dict.get('applied_at')
+        apply_channel = job_dict.get('apply_channel')
+        apply_status = job_dict.get('apply_status', 'applied' if is_applied == 1 else 'unapplied')
+
         cursor.execute("""
             INSERT INTO jobs 
-            (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp, is_applied, apply_type, apply_payload, apply_url, is_easy_apply, workplace_setup)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp, is_applied, apply_type, apply_payload, apply_url, is_easy_apply, workplace_setup, applied_at, apply_channel, apply_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             job_id,
             job_dict.get('title', ''),
@@ -291,7 +305,10 @@ def save_or_update_job(job_dict, force_pending=True):
             apply_payload,
             apply_url,
             is_easy_apply_val,
-            job_dict.get('workplace_setup', 'On-site')
+            job_dict.get('workplace_setup', 'On-site'),
+            applied_at,
+            apply_channel,
+            apply_status
         ))
         conn.commit()
         cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
