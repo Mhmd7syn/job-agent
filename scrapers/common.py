@@ -210,3 +210,107 @@ def fetch_details_concurrently(
     workers = min(len(items), max_workers)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         return list(executor.map(fetch_fn, items))
+
+
+SCRAPED_PLATFORMS = {
+    'linkedin': ['linkedin.com', 'lnkd.in'],
+    'wuzzuf': ['wuzzuf.net'],
+    'bayt': ['bayt.com'],
+    'glassdoor': ['glassdoor.com'],
+    'indeed': ['indeed.com'],
+}
+
+
+def get_scraped_site_from_url(url: Optional[str]) -> Optional[str]:
+    """Returns the scraped platform name if url belongs to one of our target platforms, else None."""
+    if not url:
+        return None
+    url_lower = str(url).lower()
+    for site, domains in SCRAPED_PLATFORMS.items():
+        if any(d in url_lower for d in domains):
+            return site
+    return None
+
+
+def reinject_scraped_job(
+    job: Dict[str, Any],
+    is_job_seen_fn: Optional[Callable[[str], bool]] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Unified cross-platform apply link resolution.
+    If job['apply_url'] points to one of our target platforms (and differs from the source site):
+      1. If apply_url was already seen in the database, discards this job (returns None)
+         and marks the referrer job_url in DB with score 0 to prevent re-querying.
+      2. If not seen yet, directly scrapes the target job via scrape_job_from_url(apply_url),
+         marks the referrer job_url in DB with score 0, and returns the newly scraped job.
+      3. If direct scraping fails, falls back gracefully to the original job.
+    If apply_url does not point to another scraped platform, returns job unchanged.
+    """
+    if not isinstance(job, dict):
+        return job
+
+    apply_url = str(job.get('apply_url') or '').strip()
+    if not apply_url:
+        return job
+
+    target_site = get_scraped_site_from_url(apply_url)
+    if not target_site:
+        return job
+
+    job_url = str(job.get('job_url') or '').strip()
+    source_site = str(job.get('site') or '').strip().lower()
+
+    # Do not re-scrape if apply_url is identical to job_url or stays within the same platform
+    if apply_url == job_url or target_site == source_site:
+        return job
+
+    if is_job_seen_fn is None:
+        from core.database import is_job_seen as is_job_seen_fn
+
+    # 1. Deduplication check against SQLite database
+    try:
+        from core.database import save_job
+        if is_job_seen_fn(apply_url):
+            logger.info(f"Skipping {source_site or 'job'} '{job.get('title')}' - apply link already seen via {target_site}: {apply_url}")
+            if job_url:
+                try:
+                    save_job({
+                        'job_url': job_url,
+                        'apply_url': apply_url,
+                        'title': job.get('title', ''),
+                        'company': job.get('company', ''),
+                        'site': source_site or 'web',
+                        'relevance_score': 0
+                    })
+                except Exception:
+                    pass
+            return None
+    except Exception as e:
+        logger.debug(f"is_job_seen check failed for {apply_url}: {e}")
+
+    # 2. Re-inject and scrape directly from the target platform
+    try:
+        from scrapers.link_scraper import scrape_job_from_url
+        scraped_job = scrape_job_from_url(apply_url)
+        if scraped_job and scraped_job.get('title'):
+            if not scraped_job.get('apply_url'):
+                scraped_job['apply_url'] = apply_url
+            if job_url:
+                try:
+                    from core.database import save_job
+                    save_job({
+                        'job_url': job_url,
+                        'apply_url': apply_url,
+                        'title': job.get('title', ''),
+                        'company': job.get('company', ''),
+                        'site': source_site or 'web',
+                        'relevance_score': 0
+                    })
+                except Exception:
+                    pass
+            logger.info(f"    ({source_site or 'Job'} '{job.get('title')}' reinjected via direct {scraped_job.get('site')}: {apply_url})")
+            return scraped_job
+    except Exception as e:
+        logger.debug(f"Direct link scrape failed for {apply_url}: {e}")
+
+    return job

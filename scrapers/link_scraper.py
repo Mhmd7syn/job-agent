@@ -721,6 +721,13 @@ def scrape_job_from_url(url: str, scraper_type: str = "auto", raw_text: str = ""
     if has_scholarship_tag:
         raw_job["is_scholarship"] = True
 
+    # Re-inject if apply_url points to another supported scraped platform
+    if raw_job.get("apply_url"):
+        from scrapers.common import reinject_scraped_job
+        resolved_job = reinject_scraped_job(raw_job)
+        if resolved_job is not None:
+            raw_job = resolved_job
+
     job_dict = normalize_job_dict(raw_job)
     score_job_dict(job_dict, config=load_latest_config())
     job_dict["relevance_score"] = float(job_dict["relevance_score"])

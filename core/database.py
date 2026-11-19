@@ -145,6 +145,10 @@ def save_job(job_dict):
     
     date_posted = str(job_dict.get('date_posted', ''))
     job_url = str(job_dict.get('job_url', ''))
+    site_val = str(job_dict.get('site', '')).strip()
+    if not site_val and job_url:
+        from core.job_utils import normalize_site
+        site_val = normalize_site("", job_url)
 
     # If we want to update the relevance score and date for an existing job that is still pending
     cursor.execute("""
@@ -154,6 +158,12 @@ def save_job(job_dict):
                 WHEN ? != '' AND (? > date_posted OR date_posted IS NULL OR date_posted = '') THEN ? 
                 ELSE date_posted 
             END,
+            site = CASE 
+                WHEN ? != '' AND (? > date_posted OR date_posted IS NULL OR date_posted = '') THEN COALESCE(NULLIF(?, ''), site)
+                WHEN ? != '' AND ? != job_url THEN COALESCE(NULLIF(?, ''), site)
+                WHEN site = '' OR site IS NULL THEN COALESCE(NULLIF(?, ''), site)
+                ELSE site 
+            END,
             job_url = COALESCE(NULLIF(?, ''), job_url),
             apply_url = COALESCE(NULLIF(?, ''), apply_url),
             is_easy_apply = COALESCE(?, is_easy_apply),
@@ -162,6 +172,9 @@ def save_job(job_dict):
     """, (
         job_dict.get('relevance_score', 0), apply_type, apply_payload,
         date_posted, date_posted, date_posted,
+        date_posted, date_posted, site_val,
+        job_url, job_url, site_val,
+        site_val,
         job_url, apply_url, is_easy_apply, job_dict.get('workplace_setup', ''),
         job_dict.get('job_id', '')
     ))

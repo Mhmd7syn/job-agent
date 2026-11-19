@@ -406,6 +406,8 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
 
                 # Fast fetch full description via job detail endpoint
                 description = ""
+                apply_url = None
+                is_ea = None
                 m_id = re.search(r'(\d{8,12})', clean_url)
                 if m_id:
                     try:
@@ -416,6 +418,22 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
                             dtext = dsoup.find('div', class_='show-more-less-html__markup')
                             if dtext:
                                 description = dtext.get_text(separator='\n', strip=True)
+
+                            apply_a = dsoup.find("a", class_=lambda c: c and "apply" in c) or dsoup.find("a", href=lambda h: h and ("/safety/go/" in h or "externalApply" in h))
+                            if apply_a and apply_a.get("href"):
+                                raw_href = apply_a["href"]
+                                if "/safety/go/" in raw_href or "url=" in raw_href:
+                                    parsed = urllib.parse.urlparse(raw_href)
+                                    params = urllib.parse.parse_qs(parsed.query)
+                                    apply_url = params.get("url", [raw_href])[0]
+                                else:
+                                    apply_url = raw_href
+                                is_ea = False
+                            apply_btn_soup = dsoup.find("button", class_=lambda c: c and "apply" in c)
+                            if apply_btn_soup:
+                                btn_text = apply_btn_soup.get_text(separator=" ", strip=True).lower()
+                                if "easy apply" in btn_text:
+                                    is_ea = True
                     except Exception:
                         pass
 
@@ -424,6 +442,8 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
                     'company': company,
                     'location': loc_val,
                     'job_url': clean_url,
+                    'apply_url': apply_url,
+                    'is_easy_apply': is_ea,
                     'description': description,
                     'site': 'linkedin',
                     'is_remote': 'remote' in str(loc_val).lower() or 'remote' in location.lower(),
@@ -562,6 +582,34 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                         loc_val = json_ld.get('location', loc_val)
                         desc = json_ld.get('description', desc)
 
+                apply_info = page.evaluate("""() => {
+                    let applyHref = null;
+                    let isEasy = null;
+                    const applyAnchor = document.querySelector('a.jobs-apply-button, a[href*="/safety/go/"], a[aria-label*="Apply to"], a.apply-button');
+                    if (applyAnchor && applyAnchor.href) {
+                        applyHref = applyAnchor.href;
+                        isEasy = false;
+                    }
+                    const applyBtn = document.querySelector('button.jobs-apply-button, button[class*="apply"]');
+                    if (applyBtn) {
+                        const text = (applyBtn.innerText || '').trim().toLowerCase();
+                        const dataUrl = applyBtn.getAttribute('data-apply-url');
+                        applyHref = applyHref || dataUrl;
+                        isEasy = text.includes('easy apply');
+                    }
+                    return { applyHref, isEasy };
+                }""")
+                apply_url = None
+                raw_href = (apply_info or {}).get("applyHref")
+                if raw_href:
+                    if "/safety/go/" in raw_href or "url=" in raw_href:
+                        parsed = urllib.parse.urlparse(raw_href)
+                        params = urllib.parse.parse_qs(parsed.query)
+                        apply_url = params.get("url", [raw_href])[0]
+                    else:
+                        apply_url = raw_href
+                is_ea = (apply_info or {}).get("isEasy")
+
                 if title and title not in ("Unknown", "Not specified"):
                     is_rem = (setup_val == 'Remote') or ('remote' in str(loc_val).lower() or 'remote' in location.lower())
                     jobs.append({
@@ -569,6 +617,8 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                         'company': company or 'Unknown',
                         'location': loc_val or location,
                         'job_url': job_url,
+                        'apply_url': apply_url,
+                        'is_easy_apply': is_ea,
                         'description': desc,
                         'site': 'linkedin',
                         'is_remote': is_rem,

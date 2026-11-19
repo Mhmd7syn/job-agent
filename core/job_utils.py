@@ -369,7 +369,15 @@ def process_scraped_batch(df_list: list, config: dict = None) -> Optional[pd.Dat
 
     config = config or load_latest_config()
     records = batch_df.to_dict('records')
-    normalized_records = [normalize_job_dict(r) for r in records]
+
+    from scrapers.common import reinject_scraped_job
+    resolved_records = []
+    for r in records:
+        resolved = reinject_scraped_job(r)
+        if resolved is not None:
+            resolved_records.append(resolved)
+
+    normalized_records = [normalize_job_dict(r) for r in resolved_records]
 
     saved_count = 0
     for r in normalized_records:

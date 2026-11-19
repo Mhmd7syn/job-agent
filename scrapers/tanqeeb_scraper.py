@@ -14,27 +14,15 @@ import concurrent.futures
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
 from core.job_utils import normalize_job_dict, make_job_id
-from scrapers.common import extract_json_ld_job, fetch_details_concurrently
+from scrapers.common import (
+    extract_json_ld_job,
+    fetch_details_concurrently,
+    SCRAPED_PLATFORMS,
+    get_scraped_site_from_url,
+    reinject_scraped_job,
+)
 
 _IMPERSONATE_PROFILES = ["chrome120", "chrome110"]
-
-SCRAPED_PLATFORMS = {
-    'linkedin': ['linkedin.com', 'lnkd.in'],
-    'wuzzuf': ['wuzzuf.net'],
-    'bayt': ['bayt.com'],
-    'glassdoor': ['glassdoor.com'],
-    'indeed': ['indeed.com'],
-}
-
-def get_scraped_site_from_url(url: str):
-    """Returns the scraped platform name if url belongs to one of our target platforms, else None."""
-    if not url:
-        return None
-    url_lower = url.lower()
-    for site, domains in SCRAPED_PLATFORMS.items():
-        if any(d in url_lower for d in domains):
-            return site
-    return None
 
 def fetch_with_retries(url, retries=3, timeout=15):
     for attempt in range(retries):
@@ -289,31 +277,15 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
             job_url = job.get('job_url', '')
             details = fetch_tanqeeb_job_details(job_url) if job_url and job_url != base_url else {}
             apply_url = (details.get('apply_url') or '').strip()
+            if apply_url:
+                job['apply_url'] = apply_url
 
             if apply_url and get_scraped_site_from_url(apply_url):
-                # If this apply_url has already been scraped or seen in DB, skip duplicate
-                if is_job_seen(apply_url):
-                    logging.debug(f"Skipping Tanqeeb job already seen via apply link: {apply_url}")
-                    try:
-                        from core.database import save_job
-                        save_job({'job_url': job_url, 'apply_url': apply_url, 'title': job.get('title', ''), 'company': job.get('company', ''), 'site': 'tanqeeb', 'relevance_score': 0})
-                    except Exception:
-                        pass
+                resolved = reinject_scraped_job(job, is_job_seen_fn=is_job_seen)
+                if resolved is None:
                     return None
-                try:
-                    from scrapers.link_scraper import scrape_job_from_url
-                    scraped_job = scrape_job_from_url(apply_url)
-                    if scraped_job and scraped_job.get('title'):
-                        scraped_job['apply_url'] = apply_url
-                        try:
-                            from core.database import save_job
-                            save_job({'job_url': job_url, 'apply_url': apply_url, 'title': job.get('title', ''), 'company': job.get('company', ''), 'site': 'tanqeeb', 'relevance_score': scraped_job.get('relevance_score', 0)})
-                        except Exception:
-                            pass
-                        logging.info(f"    (Tanqeeb job '{job.get('title')}' scraped directly via {scraped_job.get('site')}: {apply_url})")
-                        return scraped_job
-                except Exception as e:
-                    logging.debug(f"Direct link scrape failed for {apply_url}: {e}")
+                if resolved.get('site') != 'tanqeeb':
+                    return resolved
 
             # Standard Tanqeeb fallback
             full_desc = fetch_tanqeeb_full_description(job_url) if job_url and job_url != base_url else ""
@@ -321,8 +293,6 @@ def scrape_tanqeeb(search_term, location, results_wanted=15, hours_old=None):
                 job['description'] = full_desc
             if details.get('company') and (job.get('company') in ('Unknown', '', None) or job.get('company', '').lower() in ['linkedin', 'naukri gulf', 'wuzzuf', 'bayt', 'forasna', 'tanqeeb']):
                 job['company'] = details['company']
-            if apply_url:
-                job['apply_url'] = apply_url
 
         except Exception as e:
             logging.debug(f"Tanqeeb desc/details fetch failed for {job.get('job_url')}: {e}")
