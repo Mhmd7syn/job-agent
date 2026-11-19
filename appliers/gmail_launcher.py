@@ -127,7 +127,9 @@ def prepare_gmail_launch(
 
     if open_browser:
         try:
-            webbrowser.open(url)
+            from core.config import open_edge_browser
+            if not open_edge_browser(url):
+                webbrowser.open(url)
         except Exception as e:
             logger.warning(f"Failed to open browser: {e}")
 

@@ -1,4 +1,5 @@
 :root {
+    color-scheme: dark;
     --bg-color: #0f172a;
     --card-bg: rgba(30, 41, 59, 0.7);
     --card-border: rgba(255, 255, 255, 0.1);
@@ -593,13 +594,23 @@ header {
     padding-right: 2rem;
 }
 
-.filters select:focus, .filters select:hover {
+.filters select:focus, .filters select:hover, select:focus, .input-field:focus {
     border-color: var(--primary);
 }
 
-.filters select option {
-    background: var(--bg-color);
-    color: var(--text-main);
+select, .input-field {
+    color-scheme: dark;
+}
+
+select option, .input-field option {
+    background: #0f172a !important;
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+}
+
+select option:checked, .input-field option:checked {
+    background-color: #1e293b !important;
+    color: #ffffff !important;
 }
 
 /* Warning Banner */

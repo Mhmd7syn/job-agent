@@ -464,7 +464,7 @@
                                 </div>
                                 <div>
                                     <label>Sender Email Address</label>
-                                    <input type="email" id="apply-smtp-email" placeholder="mohamedh2910@gmail.com" class="input-field" style="width: 100%;">
+                                    <input type="email" id="apply-smtp-email" placeholder="your-email@example.com" class="input-field" style="width: 100%;">
                                 </div>
                             </div>
 
@@ -698,14 +698,14 @@
                     <label style="display: block; margin-bottom: 0.4rem; font-size: 0.9rem; color: var(--text-main); font-weight: 500;">
                         Link Scraper Engine
                     </label>
-                    <select id="add-job-scraper-type" class="input-field" style="width: 100%; padding: 0.65rem 0.9rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.5rem; color: var(--text-main); font-size: 0.9rem; font-weight: 500;">
-                        <option value="auto" selected>✨ Auto Detect (Recommended)</option>
-                        <option value="linkedin_job">🔗 LinkedIn Job Posting</option>
-                        <option value="linkedin_post">📝 LinkedIn Post / Feed Update</option>
-                        <option value="wuzzuf">🌐 Wuzzuf Job</option>
-                        <option value="tanqeeb">🌐 Tanqeeb Job</option>
-                        <option value="bayt">🌐 Bayt Job</option>
-                        <option value="generic">🌍 Universal / Other Career Website (ATS)</option>
+                    <select id="add-job-scraper-type" class="input-field" style="width: 100%; padding: 0.65rem 0.9rem; background: var(--input-bg, #0f172a); border: 1px solid var(--card-border); border-radius: 0.5rem; color: var(--text-main); font-size: 0.9rem; font-weight: 500; color-scheme: dark;">
+                        <option value="auto" style="background: #0f172a; color: #f8fafc;" selected>✨ Auto Detect (Recommended)</option>
+                        <option value="linkedin_job" style="background: #0f172a; color: #f8fafc;">🔗 LinkedIn Job Posting</option>
+                        <option value="linkedin_post" style="background: #0f172a; color: #f8fafc;">📝 LinkedIn Post / Feed Update</option>
+                        <option value="wuzzuf" style="background: #0f172a; color: #f8fafc;">🌐 Wuzzuf Job</option>
+                        <option value="tanqeeb" style="background: #0f172a; color: #f8fafc;">🌐 Tanqeeb Job</option>
+                        <option value="bayt" style="background: #0f172a; color: #f8fafc;">🌐 Bayt Job</option>
+                        <option value="generic" style="background: #0f172a; color: #f8fafc;">🌍 Universal / Other Career Website (ATS)</option>
                     </select>
                 </div>
 
@@ -730,10 +730,10 @@
                     <label style="display: block; margin-bottom: 0.4rem; font-size: 0.9rem; color: var(--text-main); font-weight: 500;">
                         Initial Status
                     </label>
-                    <select id="add-job-status-select" class="input-field" onchange="onAddJobStatusChange(this.value)" style="width: 100%; padding: 0.65rem 0.9rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.5rem; color: var(--text-main); font-size: 0.9rem; font-weight: 500;">
-                        <option value="pending" selected>Pending</option>
-                        <option value="liked">Liked</option>
-                        <option value="applied">Applied</option>
+                    <select id="add-job-status-select" class="input-field" onchange="onAddJobStatusChange(this.value)" style="width: 100%; padding: 0.65rem 0.9rem; background: var(--input-bg, #0f172a); border: 1px solid var(--card-border); border-radius: 0.5rem; color: var(--text-main); font-size: 0.9rem; font-weight: 500; color-scheme: dark;">
+                        <option value="pending" style="background: #0f172a; color: #f8fafc;" selected>Pending</option>
+                        <option value="liked" style="background: #0f172a; color: #f8fafc;">Liked</option>
+                        <option value="applied" style="background: #0f172a; color: #f8fafc;">Applied</option>
                     </select>
                 </div>
 
@@ -746,16 +746,16 @@
                             <label style="display: block; margin-bottom: 0.35rem; font-size: 0.82rem; color: var(--text-main); font-weight: 500;">
                                 Applied Date (Optional)
                             </label>
-                            <input type="date" id="add-job-applied-date" class="input-field" style="width: 100%; padding: 0.55rem 0.75rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-size: 0.85rem;">
+                            <input type="date" id="add-job-applied-date" class="input-field" style="width: 100%; padding: 0.55rem 0.75rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-size: 0.85rem; color-scheme: dark;">
                         </div>
                         <div>
                             <label style="display: block; margin-bottom: 0.35rem; font-size: 0.82rem; color: var(--text-main); font-weight: 500;">
                                 Method (Optional)
                             </label>
-                            <select id="add-job-apply-method" class="input-field" style="width: 100%; padding: 0.55rem 0.75rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-size: 0.85rem; font-weight: 500;">
-                                <option value="manual" selected>Manual</option>
-                                <option value="email">Email</option>
-                                <option value="external_portal">External Portal</option>
+                            <select id="add-job-apply-method" class="input-field" style="width: 100%; padding: 0.55rem 0.75rem; background: var(--input-bg, #0f172a); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-size: 0.85rem; font-weight: 500; color-scheme: dark;">
+                                <option value="manual" style="background: #0f172a; color: #f8fafc;" selected>Manual</option>
+                                <option value="email" style="background: #0f172a; color: #f8fafc;">Email</option>
+                                <option value="external_portal" style="background: #0f172a; color: #f8fafc;">External Portal</option>
                             </select>
                         </div>
                     </div>
@@ -1024,7 +1024,7 @@
             <div class="modal-body" style="padding: 1.5rem;">
                 <!-- Status Banner during/after assisted session -->
                 <div id="easy-apply-status-banner" style="display: none; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 0.5rem; padding: 0.65rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #fde68a; align-items: center; justify-content: space-between;">
-                    <div><i class="fa-solid fa-circle-pause"></i> <span id="easy-apply-banner-text">Chrome window active! All fields pre-filled & CV attached. Review in Chrome, click <strong>Submit</strong>, then click <strong>Mark as Applied</strong> below.</span></div>
+                    <div><i class="fa-solid fa-circle-pause"></i> <span id="easy-apply-banner-text">Edge window active! All fields pre-filled & CV attached. Review in Edge, click <strong>Submit</strong>, then click <strong>Mark as Applied</strong> below.</span></div>
                     <button type="button" class="btn btn-sm" onclick="markCurrentEasyApplyJobApplied()" style="background: #f59e0b; color: black; font-weight: 700; border: none; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer;">Mark Applied Now</button>
                 </div>
 
@@ -1083,7 +1083,7 @@
                         <span id="easy-apply-step-tag" style="font-size: 0.75rem; color: #f59e0b; font-family: monospace;">Ready</span>
                     </div>
                     <div id="easy-apply-logs-box" style="background: #090d16; padding: 0.75rem 1rem; font-family: monospace; font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; max-height: 140px; overflow-y: auto;">
-                        <div style="color: var(--text-muted);">Click "Start Assisted Pre-fill" to launch headed Chrome session.</div>
+                        <div style="color: var(--text-muted);">Click "Start Assisted Pre-fill" to launch headed Edge session.</div>
                     </div>
                 </div>
             </div>
@@ -1094,9 +1094,9 @@
                 <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
                     <button type="button" class="btn btn-secondary" onclick="hideEasyApplyCopilotModal()"><i class="fa-solid fa-xmark"></i> Cancel</button>
                     <button type="button" id="easy-apply-start-btn" class="btn btn-primary" onclick="startEasyApplySession()" style="background: #f59e0b; border-color: #f59e0b; color: #000; font-weight: 700;">
-                        <i class="fa-solid fa-bolt"></i> Start Assisted Pre-fill (Opens Headed Chrome)
+                        <i class="fa-solid fa-bolt"></i> Start Assisted Pre-fill (Opens Headed Edge)
                     </button>
-                    <button type="button" id="easy-apply-applied-btn" class="btn btn-secondary" onclick="markCurrentEasyApplyJobApplied()" style="border-color: rgba(245, 158, 11, 0.4); color: #fde68a; font-weight: 600;" title="Click after submitting in Chrome to mark applied in database">
+                    <button type="button" id="easy-apply-applied-btn" class="btn btn-secondary" onclick="markCurrentEasyApplyJobApplied()" style="border-color: rgba(245, 158, 11, 0.4); color: #fde68a; font-weight: 600;" title="Click after submitting in Edge to mark applied in database">
                         <i class="fa-solid fa-check"></i> Mark as Applied
                     </button>
                 </div>
@@ -1114,7 +1114,7 @@
             <div class="modal-body" style="padding: 1.5rem; max-height: calc(85vh - 130px); overflow-y: auto;">
                 <!-- Status Banner during/after assisted session -->
                 <div id="ats-status-banner" style="display: none; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 0.5rem; padding: 0.65rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #c7d2fe; align-items: center; justify-content: space-between;">
-                    <div><i class="fa-solid fa-circle-pause"></i> <span id="ats-banner-text">Chrome window active! All fields pre-filled & CV attached. Review in Chrome, click <strong>Submit</strong>, then click <strong>Mark as Applied</strong> below.</span></div>
+                    <div><i class="fa-solid fa-circle-pause"></i> <span id="ats-banner-text">Edge window active! All fields pre-filled & CV attached. Review in Edge, click <strong>Submit</strong>, then click <strong>Mark as Applied</strong> below.</span></div>
                     <button type="button" class="btn btn-sm" onclick="markCurrentAtsJobApplied()" style="background: #6366f1; color: white; font-weight: 700; border: none; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer;">Mark Applied Now</button>
                 </div>
 
@@ -1228,7 +1228,7 @@
                         <span id="ats-step-tag" style="font-size: 0.75rem; color: #818cf8; font-family: monospace;">Ready</span>
                     </div>
                     <div id="ats-logs-box" style="background: #090d16; padding: 0.75rem 1rem; font-family: monospace; font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; max-height: 130px; overflow-y: auto;">
-                        <div style="color: var(--text-muted);">Click "Start Assisted Pre-fill" to launch headed Chrome session.</div>
+                        <div style="color: var(--text-muted);">Click "Start Assisted Pre-fill" to launch headed Edge session.</div>
                     </div>
                 </div>
             </div>
@@ -1239,9 +1239,9 @@
                 <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
                     <button type="button" class="btn btn-secondary" onclick="hideAtsCopilotModal()"><i class="fa-solid fa-xmark"></i> Cancel</button>
                     <button type="button" id="ats-start-btn" class="btn btn-primary" onclick="startAtsSession()" style="background: #6366f1; border-color: #6366f1; color: #fff; font-weight: 700;">
-                        <i class="fa-solid fa-network-wired"></i> Start Assisted Pre-fill (Opens Headed Chrome)
+                        <i class="fa-solid fa-network-wired"></i> Start Assisted Pre-fill (Opens Headed Edge)
                     </button>
-                    <button type="button" id="ats-applied-btn" class="btn btn-secondary" onclick="markCurrentAtsJobApplied()" style="border-color: rgba(99, 102, 241, 0.4); color: #c7d2fe; font-weight: 600;" title="Click after submitting in Chrome/portal to mark applied in database">
+                    <button type="button" id="ats-applied-btn" class="btn btn-secondary" onclick="markCurrentAtsJobApplied()" style="border-color: rgba(99, 102, 241, 0.4); color: #c7d2fe; font-weight: 600;" title="Click after submitting in Edge/portal to mark applied in database">
                         <i class="fa-solid fa-check"></i> Mark as Applied
                     </button>
                 </div>

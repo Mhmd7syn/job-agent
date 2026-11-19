@@ -31,7 +31,6 @@ from core.quota_manager import (
 )
 from core.whatsapp_bot import notify_whatsapp_candidate
 from core.config import (
-    get_chrome_binary_path,
     get_edge_binary_path,
     get_browser_user_data_dir,
     get_browser_launch_kwargs,
@@ -312,6 +311,11 @@ def _send_whatsapp_message_via_playwright(
 
     user_data_dir = get_browser_user_data_dir()
     browser_launch_kwargs = get_browser_launch_kwargs()
+    try:
+        from core.auth_status import sync_profile_storage
+        sync_profile_storage(user_data_dir)
+    except Exception:
+        pass
     # Browser launch args resolved via get_browser_launch_kwargs()
 
     encoded_text = urllib.parse.quote(message)

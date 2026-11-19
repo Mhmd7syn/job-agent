@@ -80,6 +80,41 @@ def get_edge_binary_path() -> str | None:
 EDGE_BINARY_PATH = get_edge_binary_path()
 
 
+def open_edge_browser(urls: str | list[str] | None = None, profile_name: str | None = None) -> bool:
+    """
+    Launches Microsoft Edge natively with the designated profile ('job_agent').
+    Opens the user's authentic Edge browser environment, preserving native profiles, extensions,
+    saved logins, and active sessions without creating duplicate profiles or file lock issues.
+    """
+    import subprocess
+    profile = profile_name or os.getenv("EDGE_PROFILE_DIRECTORY", "job_agent")
+    edge_bin = get_edge_binary_path()
+    if not edge_bin:
+        for standard in [
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ]:
+            if os.path.exists(standard):
+                edge_bin = standard
+                break
+
+    if not edge_bin or not os.path.exists(edge_bin):
+        return False
+
+    cmd = [edge_bin, f"--profile-directory={profile}"]
+    if urls:
+        if isinstance(urls, str):
+            cmd.append(urls)
+        elif isinstance(urls, (list, tuple)):
+            cmd.extend([str(u) for u in urls if u])
+
+    try:
+        subprocess.Popen(cmd)
+        return True
+    except Exception:
+        return False
+
+
 def get_edge_user_data_root() -> str:
     """Resolves path to the Microsoft Edge User Data directory across env vars and standard Windows paths."""
     env_dir = os.getenv("EDGE_USER_DATA_DIR")

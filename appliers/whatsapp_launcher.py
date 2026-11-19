@@ -143,9 +143,12 @@ def launch_whatsapp_web(
         cv_copied = copy_file_to_clipboard(cv_path)
 
     try:
-        import webbrowser
-        webbrowser.open(wa_me_url)
-        launched = True
+        from core.config import open_edge_browser
+        launched = open_edge_browser(wa_me_url)
+        if not launched:
+            import webbrowser
+            webbrowser.open(wa_me_url)
+            launched = True
     except Exception as e:
         logger.error(f"Failed to open WhatsApp web URL: {e}")
         launched = False

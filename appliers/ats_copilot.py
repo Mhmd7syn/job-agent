@@ -18,7 +18,6 @@ from core.database import DB_PATH, get_job_by_id, record_job_applied
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
 from core.cv_parser import extract_text_from_file
 from core.config import (
-    get_chrome_binary_path,
     get_edge_binary_path,
     get_browser_user_data_dir,
     get_browser_launch_kwargs,
@@ -438,7 +437,7 @@ def launch_ats_session(job_id: str, headed: bool = True) -> Dict[str, Any]:
 def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
     """
     Core assisted browser loop for ATS & Web Forms:
-    1. Launches headed Chrome with profile.
+    1. Launches headed Microsoft Edge with persistent profile.
     2. Navigates to ATS portal / application form.
     3. Detects platform and applies specialized field mappings:
        - Greenhouse, Lever, Workable, Recruitee, Workday, Google Forms, Universal
@@ -452,8 +451,48 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
     session.current_step = "Launching Edge browser..."
     session.log(f"Starting assisted session for {session.platform_name} with Microsoft Edge...")
 
+    if headed:
+        from core.config import open_edge_browser
+        session.status = "navigating"
+        session.current_step = f"Opening {session.platform_name} application in Microsoft Edge..."
+        session.log("🌐 Launching Microsoft Edge natively with authentic 'job_agent' profile...")
+
+        ok = open_edge_browser(session.portal_url)
+        if not ok:
+            session.status = "error"
+            session.error_message = "Could not launch Microsoft Edge executable."
+            session.log("❌ Failed to launch Microsoft Edge.")
+            return
+
+        if session.cv_path and os.path.exists(session.cv_path):
+            try:
+                from appliers.gmail_launcher import copy_file_to_clipboard
+                if copy_file_to_clipboard(session.cv_path):
+                    session.log(f"📄 Matched role CV ({session.cv_filename}) copied to clipboard (Ctrl+V to attach).")
+            except Exception:
+                pass
+
+        session.log(f"✓ Opened {session.platform_name} application in authentic 'job_agent' profile.")
+        session.log("==================================================")
+        session.log("⏸ CO-PILOT READY: Review application in Edge and submit!")
+        session.log("👉 All your active accounts, cookies, and tokens are loaded.")
+        session.log("==================================================")
+        session.status = "paused_for_review"
+        session.current_step = "Opened in authentic Edge profile! Ready for review & submit."
+
+        for _ in range(90):
+            if session.status in ("completed", "closed", "error"):
+                break
+            time.sleep(10)
+        return
+
     user_data_dir = get_browser_user_data_dir()
     browser_launch_kwargs = get_browser_launch_kwargs()
+    try:
+        from core.auth_status import sync_profile_storage
+        sync_profile_storage(user_data_dir)
+    except Exception:
+        pass
 
     launch_args = [
         "--disable-blink-features=AutomationControlled",
@@ -721,6 +760,12 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
                 if session.status == "completed":
                     break
                 time.sleep(10)
+
+            try:
+                from core.auth_status import sync_profile_storage
+                sync_profile_storage(user_data_dir)
+            except Exception:
+                pass
 
     except Exception as e:
         session.status = "error"

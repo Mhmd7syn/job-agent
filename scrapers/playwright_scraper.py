@@ -26,8 +26,8 @@ if sys.stdout.encoding.lower() != 'utf-8':
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root (parent of scrapers/)
 env_path = os.path.join(BASE_DIR, '.env')
-USER_DATA_DIR = get_browser_user_data_dir()
 load_dotenv(dotenv_path=env_path)
+USER_DATA_DIR = get_browser_user_data_dir()
 
 
 def launch_persistent_browser(playwright_instance, user_data_dir, headless=True, **kwargs):
@@ -80,7 +80,24 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=True,
         **kwargs
     }
 
-    return playwright_instance.chromium.launch_persistent_context(**launch_args)
+    try:
+        from core.auth_status import sync_profile_storage
+        sync_profile_storage(user_data_dir)
+    except Exception:
+        pass
+
+    try:
+        return playwright_instance.chromium.launch_persistent_context(**launch_args)
+    except Exception as e:
+        import tempfile
+        from core.auth_status import clone_profile_for_fallback
+        temp_profile = tempfile.mkdtemp(prefix="playwright_scrape_")
+        try:
+            clone_profile_for_fallback(user_data_dir, temp_profile)
+        except Exception:
+            pass
+        launch_args["user_data_dir"] = temp_profile
+        return playwright_instance.chromium.launch_persistent_context(**launch_args)
 def auto_login_if_needed(page):
     global LOGIN_FAILED
     if LOGIN_FAILED:

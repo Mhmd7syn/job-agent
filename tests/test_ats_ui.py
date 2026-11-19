@@ -28,9 +28,12 @@ def test_ats_modal_ui():
             browser = p.chromium.launch(headless=True)
         except Exception:
             try:
-                browser = p.chromium.launch(channel="chrome", headless=True)
-            except Exception as e:
-                pytest.skip(f"Playwright browser unavailable: {e}")
+                browser = p.chromium.launch(channel="msedge", headless=True)
+            except Exception:
+                try:
+                    browser = p.chromium.launch(channel="chrome", headless=True)
+                except Exception as e:
+                    pytest.skip(f"Playwright browser unavailable: {e}")
         page = browser.new_page()
 
         console_errors = []

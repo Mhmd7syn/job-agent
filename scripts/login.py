@@ -18,6 +18,7 @@ try:
         get_chrome_binary_path,
         get_edge_binary_path,
         get_clean_browser_page,
+        open_edge_browser,
     )
     USER_DATA_DIR = get_browser_user_data_dir()
 except Exception:
@@ -58,7 +59,7 @@ SUPPORTED_SITES = {
     },
     "bayt": {
         "name": "Bayt",
-        "url": "https://www.bayt.com/en/my-workspace/",
+        "url": "https://www.bayt.com/en/login/",
     },
     "wuzzuf": {
         "name": "Wuzzuf",
@@ -114,6 +115,12 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=False
         ],
     )
     viewport = kwargs.pop("viewport", None)
+
+    try:
+        from core.auth_status import sync_profile_storage
+        sync_profile_storage(user_data_dir)
+    except Exception:
+        pass
 
     launch_args = {
         "user_data_dir": user_data_dir,
@@ -175,7 +182,7 @@ def launch_persistent_browser(playwright_instance, user_data_dir, headless=False
             continue
 
     raise RuntimeError(
-        "Could not launch browser. Ensure Chrome or Edge is installed and not currently locked by another process."
+        "Could not launch browser. Ensure Microsoft Edge is installed and not currently locked by another process."
     )
 
 
@@ -213,38 +220,18 @@ def wait_for_user_completion(context):
 def launch_native_edge_login(targets: dict, profile_name: str | None = None) -> bool:
     """
     Launches Microsoft Edge natively with the designated profile ('job_agent').
-    Opens the user's authentic Edge browser environment, preserving all native profiles
-    (Job_agent, Influencetargetingmarketing, Mohamed), extensions, and clean UI without
-    unsupported automation flags.
+    Opens the user's authentic Edge browser environment, preserving native profiles,
+    extensions, and clean UI without unsupported automation flags.
     """
     profile = profile_name or os.getenv("EDGE_PROFILE_DIRECTORY", "job_agent")
-    edge_bin = None
-    if get_edge_binary_path:
-        try:
-            edge_bin = get_edge_binary_path()
-        except Exception:
-            pass
-
-    if not edge_bin:
-        for standard in [
-            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-        ]:
-            if os.path.exists(standard):
-                edge_bin = standard
-                break
-
-    if not edge_bin or not os.path.exists(edge_bin):
-        return False
-
     urls = [site["url"] for site in targets.values()]
-    cmd = [edge_bin, f"--profile-directory={profile}"] + urls
 
     print("=" * 60)
     print(f"🌐 Launching Microsoft Edge natively with profile '{profile}'...")
     print("=" * 60)
     try:
-        subprocess.Popen(cmd)
+        if not open_edge_browser(urls, profile_name=profile):
+            return False
         print("✅ Edge has opened with your requested platform login tabs.")
         print("Log in to your platforms in the browser window.")
         print("Press ENTER in this console once you have finished logging in...")
@@ -300,7 +287,7 @@ def multi_login(selected_keys: list[str] | None = None, prefer_native: bool = Tr
             )
         except Exception as e:
             print(f"\n❌ Error launching browser: {e}")
-            print("Tip: If Chrome/Edge is already running with this profile, close it and retry.")
+            print("Tip: If Edge is already running with this profile, close it and retry.")
             return
 
         # Ensure only a single fresh page remains and close any extra default/restored startup tabs

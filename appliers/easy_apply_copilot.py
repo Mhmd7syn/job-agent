@@ -15,7 +15,6 @@ except ImportError:
 from core.database import get_job_by_id
 from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
 from core.config import (
-    get_chrome_binary_path,
     get_edge_binary_path,
     get_browser_user_data_dir,
     get_browser_launch_kwargs,
@@ -230,8 +229,49 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
     session.current_step = "Launching Edge browser..."
     session.log("Starting assisted Microsoft Edge session...")
 
+    if headed:
+        from core.config import open_edge_browser
+        session.status = "navigating"
+        session.current_step = "Opening job listing in Microsoft Edge..."
+        session.log("🌐 Launching Microsoft Edge natively with authentic 'job_agent' profile...")
+
+        ok = open_edge_browser(session.job_url)
+        if not ok:
+            session.status = "error"
+            session.error_message = "Could not launch Microsoft Edge executable."
+            session.log("❌ Failed to launch Microsoft Edge.")
+            return
+
+        if session.cv_path and os.path.exists(session.cv_path):
+            try:
+                from appliers.gmail_launcher import copy_file_to_clipboard
+                if copy_file_to_clipboard(session.cv_path):
+                    session.log(f"📄 Matched role CV ({session.cv_filename}) copied to clipboard (Ctrl+V to attach).")
+            except Exception:
+                pass
+
+        session.log(f"✓ Opened {session.site.capitalize()} job listing in authentic 'job_agent' profile.")
+        session.log("==================================================")
+        session.log("⏸ CO-PILOT READY: Review job in Edge and click Apply!")
+        session.log("👉 All your active accounts, cookies, and tokens are loaded.")
+        session.log("==================================================")
+        session.status = "paused_for_review"
+        session.current_step = "Opened in authentic Edge profile! Ready for review & submit."
+
+        # Keep session alive while user reviews and applies
+        for _ in range(90):
+            if session.status in ("completed", "closed", "error"):
+                break
+            time.sleep(10)
+        return
+
     user_data_dir = get_browser_user_data_dir()
     browser_launch_kwargs = get_browser_launch_kwargs()
+    try:
+        from core.auth_status import sync_profile_storage
+        sync_profile_storage(user_data_dir)
+    except Exception:
+        pass
 
     launch_args = [
         "--disable-blink-features=AutomationControlled",
@@ -482,7 +522,7 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
                     session.current_step = "Paused at final Review step! Ready for your click."
                     session.log("==================================================")
                     session.log("⏸ CO-PILOT PAUSE: Form pre-filled & CV attached!")
-                    session.log("👉 Please review in the open Chrome browser and click Submit.")
+                    session.log("👉 Please review in the open Edge browser and click Submit.")
                     session.log("==================================================")
                     break
 
@@ -499,6 +539,12 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
                 if session.status in ("completed", "closed", "error"):
                     break
                 time.sleep(10)
+
+            try:
+                from core.auth_status import sync_profile_storage
+                sync_profile_storage(user_data_dir)
+            except Exception:
+                pass
 
     except Exception as e:
         session.status = "error"
