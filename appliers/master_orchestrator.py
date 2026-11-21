@@ -321,14 +321,24 @@ def send_whatsapp_hitl_question(job_id: str, question: str) -> bool:
 
 def resolve_whatsapp_hitl_answer(job_id: str, question: str, answer: str) -> bool:
     """
-    Stores candidate's answer permanently in candidate_profile.json under custom_qa_pairs
-    and clears pending_questions in the database.
+    Stores candidate's answer permanently in candidate_profile.json under custom_qa_pairs,
+    saves it to the job's question_answers, and clears pending_questions in the database.
     """
     profile = load_profile()
     if "custom_qa_pairs" not in profile:
         profile["custom_qa_pairs"] = {}
     profile["custom_qa_pairs"][question.strip()] = answer.strip()
     save_profile(profile)
+
+    # Save to job record in DB
+    try:
+        from core.database import save_job_generated_content
+        save_job_generated_content(
+            job_id=job_id,
+            question_answers={question.strip(): answer.strip()}
+        )
+    except Exception as e:
+        logger.warning(f"Could not save HITL answer to job record: {e}")
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()

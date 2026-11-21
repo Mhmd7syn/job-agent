@@ -300,6 +300,124 @@ def run_whatsapp_autopilot_batch(
     }
 
 
+def _attach_cv_in_whatsapp_web(page, cv_path: str, click_send: bool = True) -> bool:
+    """
+    Attaches and optionally dispatches a CV document in WhatsApp Web:
+    1. Stages CV PDF on clipboard (CF_HDROP) for paste fallback.
+    2. Looks for the document file input (accept='*' or non-image) or clicks Attach (+) menu.
+    3. Clicks Document menu item to open document file picker.
+    4. Falls back to clipboard paste (Ctrl+V) if DOM input was not triggerable.
+    5. Waits for the WhatsApp Web Document Preview modal to render.
+    6. If click_send=True (Autopilot), clicks the Document Preview Send button.
+       If click_send=False (Copilot review), leaves preview open for user review.
+    """
+    if not cv_path or not os.path.exists(cv_path):
+        return False
+
+    # Stage on clipboard so Ctrl+V is ready
+    try:
+        from appliers.gmail_launcher import copy_file_to_clipboard
+        copy_file_to_clipboard(cv_path)
+    except Exception:
+        pass
+
+    attached = False
+    try:
+        # Multi-strategy 1: Check existing document file input (exclude media inputs with accept="image/*")
+        doc_inputs = page.query_selector_all("input[type='file']:not([accept*='image']):not([accept*='video'])")
+        for din in doc_inputs:
+            try:
+                din.set_input_files(cv_path)
+                attached = True
+                time.sleep(1.5)
+                break
+            except Exception:
+                continue
+
+        # Multi-strategy 2: Click the attach (+) button to reveal the Document menu item
+        if not attached:
+            attach_btn = page.query_selector(
+                "button[title='Attach'], button[aria-label='Attach'], span[data-icon='plus'], "
+                "span[data-icon='attach-menu-plus'], div[title='Attach'], div[aria-label='Attach'], "
+                "div[aria-label='Attach menu']"
+            )
+            if attach_btn:
+                try:
+                    attach_btn.click()
+                    time.sleep(1.0)
+                except Exception:
+                    pass
+
+                # Look for the Document option
+                doc_btn = page.query_selector(
+                    "span[data-icon='attach-document'], span[data-icon='document'], "
+                    "button[aria-label*='Document'], div[aria-label*='Document'], "
+                    "li:has(span[data-icon='attach-document'])"
+                )
+                if doc_btn:
+                    try:
+                        with page.expect_file_chooser(timeout=4000) as fc_info:
+                            doc_btn.click()
+                        file_chooser = fc_info.value
+                        file_chooser.set_files(cv_path)
+                        attached = True
+                        time.sleep(1.5)
+                    except Exception:
+                        # Re-check file inputs after clicking attach
+                        doc_inputs = page.query_selector_all("input[type='file']:not([accept*='image'])")
+                        for din in doc_inputs:
+                            try:
+                                din.set_input_files(cv_path)
+                                attached = True
+                                time.sleep(1.5)
+                                break
+                            except Exception:
+                                continue
+
+        # Multi-strategy 3: Clipboard paste fallback into chat box
+        if not attached:
+            try:
+                from appliers.gmail_launcher import copy_file_to_clipboard
+                if copy_file_to_clipboard(cv_path):
+                    chat_box = page.query_selector("div[contenteditable='true']")
+                    if chat_box:
+                        chat_box.click()
+                        time.sleep(0.5)
+                        page.keyboard.press("Control+v")
+                        time.sleep(2.0)
+                        attached = True
+            except Exception as e:
+                logger.debug(f"Clipboard paste fallback error: {e}")
+
+        # Check for Document Preview modal
+        preview_send_btn = None
+        try:
+            preview_send_btn = page.wait_for_selector(
+                "div[aria-label='Send'], button[aria-label='Send'], span[data-icon='send'], "
+                "span[data-icon='wds-ic-send-filled'], div[data-icon='send']",
+                timeout=10000
+            )
+        except Exception:
+            pass
+
+        if preview_send_btn:
+            if click_send:
+                preview_send_btn.click()
+                time.sleep(3.0)
+                logger.info(f"Successfully attached and sent CV: {os.path.basename(cv_path)}")
+                return True
+            else:
+                logger.info(f"Document uploaded to preview modal; awaiting user confirmation: {os.path.basename(cv_path)}")
+                return True
+        elif attached:
+            logger.info(f"CV attached in WhatsApp Web: {os.path.basename(cv_path)}")
+            return True
+    except Exception as e:
+        logger.warning(f"Error attaching CV in WhatsApp Web: {e}")
+
+    return attached
+
+
 def _send_whatsapp_message_via_playwright(
     phone: str,
     message: str,
@@ -316,7 +434,6 @@ def _send_whatsapp_message_via_playwright(
         sync_profile_storage(user_data_dir)
     except Exception:
         pass
-    # Browser launch args resolved via get_browser_launch_kwargs()
 
     encoded_text = urllib.parse.quote(message)
     target_url = f"https://web.whatsapp.com/send?phone={phone}&text={encoded_text}"
@@ -358,25 +475,18 @@ def _send_whatsapp_message_via_playwright(
                 timeout=20000
             )
 
-            # Attach CV PDF if provided
-            if cv_path and os.path.exists(cv_path):
-                file_inputs = page.query_selector_all("input[type='file']")
-                for fin in file_inputs:
-                    try:
-                        fin.set_input_files(cv_path)
-                        time.sleep(2.0)
-                        break
-                    except Exception:
-                        continue
-
+            message_sent = False
             if send_btn:
                 send_btn.click()
-                time.sleep(3.0)
-                context.close()
-                return True
+                time.sleep(2.5)
+                message_sent = True
+
+            # Attach CV PDF if provided and message was dispatched
+            if cv_path and os.path.exists(cv_path):
+                _attach_cv_in_whatsapp_web(page, cv_path)
 
             context.close()
-            return False
+            return message_sent
         except Exception as e:
             logger.error(f"Playwright WhatsApp execution error: {e}")
             context.close()

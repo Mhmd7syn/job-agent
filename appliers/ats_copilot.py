@@ -330,13 +330,21 @@ def prepare_ats_application(job_id: str) -> Dict[str, Any]:
         except Exception:
             pass
 
-    cover_letter = generate_ats_cover_letter(
-        job_title=job_title,
-        company=company,
-        location=location,
-        job_description=desc,
-        cv_text=cv_text
-    )
+    cover_letter = payload.get("generated_cover_letter")
+    if not cover_letter:
+        cover_letter = generate_ats_cover_letter(
+            job_title=job_title,
+            company=company,
+            location=location,
+            job_description=desc,
+            cv_text=cv_text
+        )
+        if job_id and cover_letter:
+            try:
+                from core.database import save_job_generated_content
+                save_job_generated_content(job_id=job_id, generated_cover_letter=cover_letter)
+            except Exception as e:
+                logger.warning(f"Could not save cover letter for {job_id}: {e}")
 
     sponsorship_needed = contextual.get("requires_visa_sponsorship", False)
     sponsorship_statement = (
@@ -382,6 +390,7 @@ def prepare_ats_application(job_id: str) -> Dict[str, Any]:
             "expected_salary_egp": screening.get("expected_salary_egp", 35000),
             "expected_salary_usd": screening.get("expected_salary_usd", 1500)
         },
+        "question_answers": payload.get("question_answers") or {},
         "cover_letter": cover_letter
     }
 
@@ -509,7 +518,8 @@ def _run_assisted_ats_thread(session: AtsSession, headed: bool = True):
     resolver = ScreeningResolver(
         job_title=session.title,
         job_location=session.location,
-        company=session.company
+        company=session.company,
+        job_id=session.job_id
     )
 
     try:

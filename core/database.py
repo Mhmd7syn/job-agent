@@ -221,15 +221,30 @@ def save_or_update_job(job_dict, force_pending=True):
         
         # Determine classification
         merged_dict = {**existing_dict, **job_dict}
+        existing_raw_payload = existing_dict.get('apply_payload', '{}')
+        existing_payload = {}
+        if existing_raw_payload:
+            try:
+                existing_payload = json.loads(existing_raw_payload) if isinstance(existing_raw_payload, str) else existing_raw_payload
+            except Exception:
+                existing_payload = {}
+
         if not job_dict.get('apply_type'):
             from core.apply_classifier import classify_and_extract
             classified = classify_and_extract(merged_dict)
             apply_type = classified.get("apply_type", existing_dict.get('apply_type', 'manual'))
-            apply_payload = json.dumps(classified.get("apply_payload", {}), ensure_ascii=False)
+            new_payload = classified.get("apply_payload", {})
+            merged_payload = {**existing_payload, **new_payload}
+            apply_payload = json.dumps(merged_payload, ensure_ascii=False)
         else:
             apply_type = job_dict['apply_type']
-            raw_payload = job_dict.get('apply_payload', existing_dict.get('apply_payload', '{}'))
-            apply_payload = json.dumps(raw_payload, ensure_ascii=False) if isinstance(raw_payload, dict) else str(raw_payload)
+            raw_payload = job_dict.get('apply_payload')
+            if raw_payload is not None:
+                new_payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
+                merged_payload = {**existing_payload, **new_payload}
+            else:
+                merged_payload = existing_payload
+            apply_payload = json.dumps(merged_payload, ensure_ascii=False)
 
         apply_url = job_dict.get('apply_url') or existing_dict.get('apply_url', '')
         is_easy_apply = job_dict.get('is_easy_apply') if job_dict.get('is_easy_apply') is not None else existing_dict.get('is_easy_apply', 0)
@@ -448,6 +463,78 @@ def record_job_applied(job_id: str, channel: str = "", extra_payload: Optional[D
         return {"status": "success", "job_id": job_id, "applied_at": now_str}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+def save_job_generated_content(
+    job_id: str,
+    generated_email: Optional[Dict[str, Any]] = None,
+    generated_whatsapp: Optional[Dict[str, Any]] = None,
+    question_answers: Optional[Dict[str, Any]] = None,
+    generated_cover_letter: Optional[str] = None
+) -> bool:
+    """
+    Saves generated assets (email draft, WhatsApp message, question answers, cover letter)
+    to the job's apply_payload in SQLite so they do not need to be regenerated.
+    """
+    if not job_id or not os.path.exists(DB_PATH):
+        return False
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=15)
+        cursor = conn.cursor()
+        cursor.execute("SELECT apply_payload FROM jobs WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+
+        payload = {}
+        if row[0]:
+            try:
+                payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            except Exception:
+                payload = {}
+
+        if generated_email is not None:
+            payload["generated_email"] = {
+                **(payload.get("generated_email") or {}),
+                **generated_email
+            }
+        if generated_whatsapp is not None:
+            payload["generated_whatsapp"] = {
+                **(payload.get("generated_whatsapp") or {}),
+                **generated_whatsapp
+            }
+        if question_answers is not None:
+            existing_qa = payload.get("question_answers") or {}
+            existing_qa.update(question_answers)
+            payload["question_answers"] = existing_qa
+        if generated_cover_letter is not None:
+            payload["generated_cover_letter"] = generated_cover_letter
+
+        cursor.execute("UPDATE jobs SET apply_payload = ? WHERE job_id = ?", (json.dumps(payload, ensure_ascii=False), job_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Error saving generated content for job {job_id}: {e}")
+        return False
+
+def get_job_generated_content(job_id: str) -> Dict[str, Any]:
+    """Returns saved generated email, whatsapp pitch, question answers, cover letter for a job."""
+    job = get_job_by_id(job_id)
+    if not job:
+        return {}
+    payload = job.get("apply_payload") or {}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = {}
+    return {
+        "generated_email": payload.get("generated_email"),
+        "generated_whatsapp": payload.get("generated_whatsapp"),
+        "question_answers": payload.get("question_answers", {}),
+        "generated_cover_letter": payload.get("generated_cover_letter")
+    }
 
 def is_job_seen(job_url: str) -> bool:
     """Fast pre-AI deduplication check. Returns True if this URL already exists in the DB (as job_url or apply_url).

@@ -131,7 +131,8 @@ def prepare_easy_apply(job_id: str) -> Dict[str, Any]:
             "notice_period_days": screening.get("notice_period_days", 30),
             "expected_salary_egp": screening.get("expected_salary_egp", 35000),
             "expected_salary_usd": screening.get("expected_salary_usd", 1500)
-        }
+        },
+        "question_answers": payload.get("question_answers") or {}
     }
 
 
@@ -288,7 +289,8 @@ def _run_assisted_session_thread(session: EasyApplySession, headed: bool = True)
     resolver = ScreeningResolver(
         job_title=session.title,
         job_location=session.location,
-        company=session.company
+        company=session.company,
+        job_id=session.job_id
     )
 
     try:

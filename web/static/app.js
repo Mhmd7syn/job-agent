@@ -54,6 +54,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('site-filter').addEventListener('change', applyFiltersAndSort);
     document.getElementById('sort-filter').addEventListener('change', applyFiltersAndSort);
 
+    // Auto-save edited drafts/pitches on blur
+    document.getElementById('email-copilot-subject')?.addEventListener('blur', saveEditedEmailDraft);
+    document.getElementById('email-copilot-body')?.addEventListener('blur', saveEditedEmailDraft);
+    document.getElementById('whatsapp-copilot-pitch')?.addEventListener('blur', saveEditedWhatsAppPitch);
+    document.getElementById('ats-cover-letter-text')?.addEventListener('blur', saveEditedAtsCoverLetter);
+
     // Global keyboard shortcuts for pywebview desktop window (F5 or Ctrl+R / Cmd+R, Esc)
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -3227,11 +3233,11 @@ let currentEmailCvPath = null;
 let currentEmailRawBody = null;
 let currentEmailPersonalSig = null;
 
-async function openEmailCopilotModal(jobId) {
+async function openEmailCopilotModal(jobId, forceRegenerate = false) {
     currentEmailJobId = jobId;
     const job = allJobs.find(j => String(j.job_id) === String(jobId));
     if (!job) {
-        showToast('Job not found.', 'warning', 'fa-circle-exclamation');
+        showToast('Job not found.', 'warning', 'fa-circle-xmark');
         return;
     }
 
@@ -3266,19 +3272,40 @@ async function openEmailCopilotModal(jobId) {
     if (subEl) subEl.value = payload.subject_hint || `Application for ${job.title}${candSuffix}`;
     
     const bodyEl = document.getElementById('email-copilot-body');
-    if (bodyEl) {
-        bodyEl.value = '⏳ Drafting tailored cold email with Gemini AI...\n\nAnalyzing job requirements and extracting relevant highlights from your configured role CV...';
-        bodyEl.disabled = true;
-    }
-
+    const badgeEl = document.getElementById('email-copilot-engine-badge');
     const smtpBtn = document.getElementById('email-copilot-smtp-btn');
     const appliedBtn = document.getElementById('email-copilot-applied-btn');
 
-    if (smtpBtn) {
-        smtpBtn.style.display = 'inline-flex';
-        smtpBtn.disabled = true;
-        smtpBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating AI Draft...';
+    const savedEmail = payload.generated_email;
+    const hasSavedEmail = !forceRegenerate && savedEmail && savedEmail.body;
+
+    if (hasSavedEmail) {
+        if (recipEl && savedEmail.recipient_email) recipEl.value = savedEmail.recipient_email;
+        if (subEl && savedEmail.subject) subEl.value = savedEmail.subject;
+        if (bodyEl) {
+            bodyEl.value = savedEmail.body;
+            bodyEl.disabled = false;
+        }
+        if (badgeEl) {
+            badgeEl.innerHTML = '<i class="fa-solid fa-bookmark" style="color: #60a5fa;"></i> Saved Draft (Ready)';
+        }
+        if (smtpBtn) {
+            smtpBtn.style.display = 'inline-flex';
+            smtpBtn.disabled = false;
+            smtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send Direct (SMTP)';
+        }
+    } else {
+        if (bodyEl) {
+            bodyEl.value = '⏳ Drafting tailored cold email with Gemini AI...\n\nAnalyzing job requirements and extracting relevant highlights from your configured role CV...';
+            bodyEl.disabled = true;
+        }
+        if (smtpBtn) {
+            smtpBtn.style.display = 'inline-flex';
+            smtpBtn.disabled = true;
+            smtpBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating AI Draft...';
+        }
     }
+
     if (appliedBtn) {
         appliedBtn.style.display = 'none';
     }
@@ -3289,7 +3316,7 @@ async function openEmailCopilotModal(jobId) {
         const res = await fetch('/api/email/generate-draft', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ job_id: jobId })
+            body: JSON.stringify({ job_id: jobId, force_regenerate: forceRegenerate })
         });
         const data = await res.json();
 
@@ -3316,22 +3343,39 @@ async function openEmailCopilotModal(jobId) {
                 cvMetaEl.textContent = `${sizeText ? sizeText + ' • ' : ''}${pathText}`;
             }
 
-            const badgeEl = document.getElementById('email-copilot-engine-badge');
             if (badgeEl) {
-                badgeEl.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini AI Tailored';
+                if (data.is_saved) {
+                    badgeEl.innerHTML = '<i class="fa-solid fa-bookmark" style="color: #60a5fa;"></i> Saved Draft (Ready)';
+                } else {
+                    badgeEl.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini AI Tailored (Saved)';
+                }
             }
 
             if (smtpBtn) {
                 smtpBtn.disabled = false;
                 smtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send Direct (SMTP)';
             }
+
+            // Sync with in-memory job model
+            if (typeof job.apply_payload === 'string') {
+                try { job.apply_payload = JSON.parse(job.apply_payload); } catch (e) { job.apply_payload = {}; }
+            } else if (!job.apply_payload) {
+                job.apply_payload = {};
+            }
+            job.apply_payload.generated_email = {
+                subject: data.subject || subEl?.value,
+                body: data.body || bodyEl?.value,
+                raw_ai_body: data.raw_ai_body,
+                recipient_email: data.recipient_email || recipEl?.value,
+                personal_signature: data.personal_signature,
+                generated_at: data.generated_at
+            };
         } else {
             const errorMsg = data.detail || data.message || 'AI service is unavailable. Application draft discarded.';
             if (bodyEl) {
                 bodyEl.value = `⚠️ Application Discarded:\n\n${errorMsg}\n\nYou have been notified via WhatsApp.`;
                 bodyEl.disabled = true;
             }
-            const badgeEl = document.getElementById('email-copilot-engine-badge');
             if (badgeEl) {
                 badgeEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b;"></i> Discarded (AI Unavailable)';
             }
@@ -3346,7 +3390,6 @@ async function openEmailCopilotModal(jobId) {
             bodyEl.value = '⚠️ Application Discarded: Error communicating with AI service. You have been notified via WhatsApp.';
             bodyEl.disabled = true;
         }
-        const badgeEl = document.getElementById('email-copilot-engine-badge');
         if (badgeEl) {
             badgeEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #ef4444;"></i> Generation Error';
         }
@@ -3364,8 +3407,21 @@ function hideEmailCopilotModal() {
 
 function regenerateEmailDraft() {
     if (currentEmailJobId) {
-        openEmailCopilotModal(currentEmailJobId);
+        openEmailCopilotModal(currentEmailJobId, true);
     }
+}
+
+function saveEditedEmailDraft() {
+    if (!currentEmailJobId) return;
+    const sub = document.getElementById('email-copilot-subject')?.value || '';
+    const body = document.getElementById('email-copilot-body')?.value || '';
+    const recip = document.getElementById('email-copilot-recipient')?.value || '';
+    if (!body || body.startsWith('⏳')) return;
+    fetch('/api/email/save-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: currentEmailJobId, subject: sub, body: body, recipient: recip })
+    }).catch(e => console.error('Error auto-saving email draft:', e));
 }
 
 async function copyCvToClipboard() {
@@ -3533,7 +3589,7 @@ let currentWhatsAppPhone = null;
 let currentWhatsAppCvPath = null;
 let currentWhatsAppTargetUrl = null;
 
-async function openWhatsAppCopilotModal(jobId) {
+async function openWhatsAppCopilotModal(jobId, forceRegenerate = false) {
     currentWhatsAppJobId = jobId;
     const job = allJobs.find(j => String(j.job_id) === String(jobId));
     if (!job) {
@@ -3574,18 +3630,44 @@ async function openWhatsAppCopilotModal(jobId) {
     if (targetUrlEl) targetUrlEl.value = targetUrl || 'No direct URL';
 
     const pitchEl = document.getElementById('whatsapp-copilot-pitch');
-    if (pitchEl) {
-        pitchEl.value = '⏳ Drafting tailored WhatsApp outreach pitch with Gemini AI...\n\nAnalyzing job requirements and extracting relevant highlights from your configured role CV...';
-        pitchEl.disabled = true;
-    }
-
-    const desktopBtn = document.getElementById('whatsapp-copilot-desktop-btn');
+    const badgeEl = document.getElementById('whatsapp-copilot-engine-badge');
+    const edgeBtn = document.getElementById('whatsapp-copilot-edge-btn') || document.getElementById('whatsapp-copilot-desktop-btn');
     const appliedBtn = document.getElementById('whatsapp-copilot-applied-btn');
 
-    if (desktopBtn) {
-        desktopBtn.disabled = true;
-        desktopBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating AI Pitch...';
+    const savedWhatsapp = payload.generated_whatsapp;
+    const hasSavedWhatsapp = !forceRegenerate && savedWhatsapp && savedWhatsapp.pitch;
+
+    if (hasSavedWhatsapp) {
+        if (pitchEl) {
+            pitchEl.value = savedWhatsapp.pitch;
+            pitchEl.disabled = false;
+        }
+        if (phoneEl && savedWhatsapp.phone) {
+            currentWhatsAppPhone = savedWhatsapp.phone;
+            phoneEl.value = savedWhatsapp.phone.startsWith('+') ? savedWhatsapp.phone : `+${savedWhatsapp.phone}`;
+        }
+        if (targetUrlEl && savedWhatsapp.whatsapp_url) {
+            currentWhatsAppTargetUrl = savedWhatsapp.whatsapp_url;
+            targetUrlEl.value = savedWhatsapp.whatsapp_url;
+        }
+        if (badgeEl) {
+            badgeEl.innerHTML = '<i class="fa-solid fa-bookmark" style="color: #34d399;"></i> Saved Message (Ready)';
+        }
+        if (edgeBtn) {
+            edgeBtn.disabled = false;
+            edgeBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in Edge (WhatsApp Web)';
+        }
+    } else {
+        if (pitchEl) {
+            pitchEl.value = '⏳ Drafting tailored WhatsApp outreach pitch with Gemini AI...\n\nAnalyzing job requirements and extracting relevant highlights from your configured role CV...';
+            pitchEl.disabled = true;
+        }
+        if (edgeBtn) {
+            edgeBtn.disabled = true;
+            edgeBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating AI Pitch...';
+        }
     }
+
     if (appliedBtn) {
         appliedBtn.style.display = job.is_applied === 1 ? 'none' : 'inline-flex';
         appliedBtn.className = 'btn btn-secondary';
@@ -3600,7 +3682,7 @@ async function openWhatsAppCopilotModal(jobId) {
         const res = await fetch('/api/whatsapp/generate-pitch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ job_id: jobId })
+            body: JSON.stringify({ job_id: jobId, force_regenerate: forceRegenerate })
         });
         const data = await res.json();
 
@@ -3634,27 +3716,43 @@ async function openWhatsAppCopilotModal(jobId) {
                 cvMetaEl.textContent = `${sizeText ? sizeText + ' • ' : ''}${pathText}`;
             }
 
-            const badgeEl = document.getElementById('whatsapp-copilot-engine-badge');
             if (badgeEl) {
-                if (data.engine && data.engine.includes('gemini')) {
-                    badgeEl.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini AI Tailored';
+                if (data.is_saved) {
+                    badgeEl.innerHTML = '<i class="fa-solid fa-bookmark" style="color: #34d399;"></i> Saved Message (Ready)';
+                } else if (data.engine && data.engine.includes('gemini')) {
+                    badgeEl.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Gemini AI Tailored (Saved)';
                 } else {
-                    badgeEl.innerHTML = '<i class="fa-solid fa-file-lines"></i> Template Pitch';
+                    badgeEl.innerHTML = '<i class="fa-solid fa-file-lines"></i> Template Pitch (Saved)';
                 }
             }
 
-            if (desktopBtn) {
-                desktopBtn.disabled = false;
-                desktopBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in WhatsApp Desktop (Auto-Attached)';
+            if (edgeBtn) {
+                edgeBtn.disabled = false;
+                edgeBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in Edge (WhatsApp Web)';
             }
+
+            // Sync with in-memory job model
+            if (typeof job.apply_payload === 'string') {
+                try { job.apply_payload = JSON.parse(job.apply_payload); } catch (e) { job.apply_payload = {}; }
+            } else if (!job.apply_payload) {
+                job.apply_payload = {};
+            }
+            job.apply_payload.generated_whatsapp = {
+                pitch: data.pitch || pitchEl?.value,
+                key_highlights_used: data.key_highlights_used,
+                phone: data.phone || currentWhatsAppPhone,
+                whatsapp_url: data.whatsapp_url || currentWhatsAppTargetUrl,
+                engine: data.engine,
+                generated_at: data.generated_at
+            };
         } else {
             if (pitchEl) {
                 pitchEl.value = 'Failed to generate pitch. Please write your message here.';
                 pitchEl.disabled = false;
             }
-            if (desktopBtn) {
-                desktopBtn.disabled = false;
-                desktopBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in WhatsApp Desktop';
+            if (edgeBtn) {
+                edgeBtn.disabled = false;
+                edgeBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in Edge (WhatsApp Web)';
             }
         }
     } catch (err) {
@@ -3663,9 +3761,9 @@ async function openWhatsAppCopilotModal(jobId) {
             pitchEl.value = 'Error connecting to server to generate pitch. Please enter your message manually.';
             pitchEl.disabled = false;
         }
-        if (desktopBtn) {
-            desktopBtn.disabled = false;
-            desktopBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in WhatsApp Desktop';
+        if (edgeBtn) {
+            edgeBtn.disabled = false;
+            edgeBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in Edge (WhatsApp Web)';
         }
     }
 }
@@ -3677,8 +3775,20 @@ function hideWhatsAppCopilotModal() {
 
 function regenerateWhatsAppPitch() {
     if (currentWhatsAppJobId) {
-        openWhatsAppCopilotModal(currentWhatsAppJobId);
+        openWhatsAppCopilotModal(currentWhatsAppJobId, true);
     }
+}
+
+function saveEditedWhatsAppPitch() {
+    if (!currentWhatsAppJobId) return;
+    const pitch = document.getElementById('whatsapp-copilot-pitch')?.value || '';
+    const phone = document.getElementById('whatsapp-copilot-phone')?.value || '';
+    if (!pitch || pitch.startsWith('⏳')) return;
+    fetch('/api/whatsapp/save-pitch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: currentWhatsAppJobId, pitch: pitch, phone: phone })
+    }).catch(e => console.error('Error auto-saving whatsapp pitch:', e));
 }
 
 function copyWhatsAppPhone() {
@@ -3703,20 +3813,6 @@ function openDirectWhatsAppUrl() {
     } else {
         showToast('No valid URL to open.', 'warning', 'fa-circle-exclamation');
     }
-}
-
-function copyWhatsAppPitchText() {
-    const pitch = document.getElementById('whatsapp-copilot-pitch')?.value || '';
-    if (!pitch.trim()) {
-        showToast('No pitch text to copy.', 'warning', 'fa-circle-exclamation');
-        return;
-    }
-    navigator.clipboard.writeText(pitch).then(() => {
-        showToast('Copied message to clipboard!', 'success', 'fa-copy');
-    }).catch(err => {
-        console.error('Clipboard copy failed:', err);
-        showToast('Failed to copy text.', 'error', 'fa-circle-exclamation');
-    });
 }
 
 async function copyWhatsAppCVFile() {
@@ -3759,39 +3855,45 @@ async function revealWhatsAppCVFolder() {
     }
 }
 
-async function openWhatsAppInDesktop() {
+let currentWhatsAppAppliedVia = 'whatsapp_edge';
+
+async function openWhatsAppInEdge() {
     const phoneInput = document.getElementById('whatsapp-copilot-phone')?.value.trim() || '';
     const cleanPhone = phoneInput.replace(/\D/g, '') || currentWhatsAppPhone || '';
     const pitch = document.getElementById('whatsapp-copilot-pitch')?.value || '';
 
-    const desktopBtn = document.getElementById('whatsapp-copilot-desktop-btn');
-    if (desktopBtn) {
-        desktopBtn.disabled = true;
-        desktopBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Launching WhatsApp Desktop...';
+    currentWhatsAppAppliedVia = 'whatsapp_edge';
+
+    const edgeBtn = document.getElementById('whatsapp-copilot-edge-btn');
+    if (edgeBtn) {
+        edgeBtn.disabled = true;
+        edgeBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Opening Edge...';
     }
 
     try {
-        const res = await fetch('/api/whatsapp/open-in-desktop', {
+        const res = await fetch('/api/whatsapp/open-in-edge', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 phone: cleanPhone,
                 pitch: pitch,
-                cv_path: currentWhatsAppCvPath,
-                auto_attach: true
+                cv_path: currentWhatsAppCvPath
             })
         });
         const data = await res.json();
 
         if (res.ok && data.status === 'success') {
-            // Show guidance banner inside modal
+            const bannerText = document.getElementById('whatsapp-copilot-status-banner-text');
+            if (bannerText) {
+                bannerText.innerHTML = 'Edge opened with WhatsApp Web (profile: <strong>job_agent</strong>)! Message pre-filled & CV copied to clipboard.<br>👉 <strong>Press Ctrl+V</strong> inside the chat to attach your resume, review, and click <strong>Send</strong>!';
+            }
+
             const statusBanner = document.getElementById('whatsapp-copilot-status-banner');
             if (statusBanner) {
                 statusBanner.style.display = 'flex';
                 statusBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
-            // Highlight the Mark as Applied button
             const appliedBtn = document.getElementById('whatsapp-copilot-applied-btn');
             if (appliedBtn) {
                 appliedBtn.style.display = 'inline-flex';
@@ -3802,17 +3904,17 @@ async function openWhatsAppInDesktop() {
                 appliedBtn.innerHTML = '<i class="fa-solid fa-check"></i> Mark as Applied';
             }
 
-            showToast('✓ WhatsApp Desktop opened with CV attached! Review, click Send in WhatsApp, then click "Mark as Applied".', 'success', 'fa-brands fa-whatsapp');
+            showToast('✓ WhatsApp Web opened in Edge! Press Ctrl+V in the chat to attach CV, then click Send.', 'success', 'fa-brands fa-whatsapp');
         } else {
-            showToast(data.detail || 'Failed to open WhatsApp Desktop.', 'danger', 'fa-circle-xmark');
+            showToast(data.detail || 'Failed to open WhatsApp Web in Edge.', 'danger', 'fa-circle-xmark');
         }
     } catch (err) {
-        console.error('Error launching WhatsApp Desktop:', err);
-        showToast('Error launching WhatsApp Desktop.', 'danger', 'fa-circle-xmark');
+        console.error('Error launching WhatsApp in Edge:', err);
+        showToast('Error launching WhatsApp in Edge.', 'danger', 'fa-circle-xmark');
     } finally {
-        if (desktopBtn) {
-            desktopBtn.disabled = false;
-            desktopBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in WhatsApp Desktop (Auto-Attached)';
+        if (edgeBtn) {
+            edgeBtn.disabled = false;
+            edgeBtn.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Open in Edge (WhatsApp Web)';
         }
     }
 }
@@ -3838,7 +3940,7 @@ async function markCurrentWhatsAppJobApplied() {
                 job_id: currentWhatsAppJobId,
                 phone: cleanPhone,
                 pitch: pitch,
-                applied_via: 'whatsapp_desktop'
+                applied_via: currentWhatsAppAppliedVia || 'whatsapp_edge'
             })
         });
 
@@ -3935,6 +4037,11 @@ async function openEasyApplyCopilotModal(jobId) {
         appliedBtn.innerHTML = '<i class="fa-solid fa-check"></i> Mark as Applied';
     }
 
+    const easyApplyQaBox = document.getElementById('easy-apply-saved-qa-box');
+    const easyApplyQaList = document.getElementById('easy-apply-saved-qa-list');
+    if (easyApplyQaBox) easyApplyQaBox.style.display = 'none';
+    if (easyApplyQaList) easyApplyQaList.innerHTML = '';
+
     modal.classList.remove('hidden');
 
     try {
@@ -3981,6 +4088,23 @@ async function openEasyApplyCopilotModal(jobId) {
 
             const salaryEl = document.getElementById('easy-apply-preview-salary');
             if (salaryEl) salaryEl.textContent = `${(screening.expected_salary_egp || 35000).toLocaleString()} EGP / $${screening.expected_salary_usd || 1500}`;
+
+            // Populate Saved Question Answers
+            if (easyApplyQaBox && easyApplyQaList) {
+                const qaEntries = Object.entries(data.question_answers || {});
+                if (qaEntries.length > 0) {
+                    easyApplyQaList.innerHTML = qaEntries.map(([q, a]) => `
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 0.4rem 0.6rem;">
+                            <div style="color: var(--text-muted); font-size: 0.75rem;">${escapeHtml(q)}</div>
+                            <div style="color: #a5b4fc; font-weight: 600; font-size: 0.82rem; margin-top: 0.15rem;">${escapeHtml(String(a))}</div>
+                        </div>
+                    `).join('');
+                    easyApplyQaBox.style.display = 'block';
+                } else {
+                    easyApplyQaBox.style.display = 'none';
+                    easyApplyQaList.innerHTML = '';
+                }
+            }
         }
     } catch (err) {
         console.error('Error preparing Easy Apply details:', err);
@@ -4193,10 +4317,14 @@ async function openAtsCopilotModal(jobId) {
     const banner = document.getElementById('ats-status-banner');
     const startBtn = document.getElementById('ats-start-btn');
     const clTextEl = document.getElementById('ats-cover-letter-text');
+    const atsQaBox = document.getElementById('ats-saved-qa-box');
+    const atsQaList = document.getElementById('ats-saved-qa-list');
 
     if (banner) banner.style.display = 'none';
     if (stepTag) stepTag.textContent = 'Ready';
     if (logsBox) logsBox.innerHTML = '<div style="color: var(--text-muted);">Preparing application details...</div>';
+    if (atsQaBox) atsQaBox.style.display = 'none';
+    if (atsQaList) atsQaList.innerHTML = '';
     if (startBtn) {
         startBtn.disabled = false;
         startBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Start Assisted Pre-fill (Opens Headed Edge)';
@@ -4259,6 +4387,23 @@ async function openAtsCopilotModal(jobId) {
         // Cover letter populate
         if (clTextEl && data.cover_letter) {
             clTextEl.value = data.cover_letter;
+        }
+
+        // Saved Question Answers populate
+        if (atsQaBox && atsQaList) {
+            const qaEntries = Object.entries(data.question_answers || {});
+            if (qaEntries.length > 0) {
+                atsQaList.innerHTML = qaEntries.map(([q, a]) => `
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 0.4rem 0.6rem;">
+                        <div style="color: var(--text-muted); font-size: 0.75rem;">${escapeHtml(q)}</div>
+                        <div style="color: #a5b4fc; font-weight: 600; font-size: 0.82rem; margin-top: 0.15rem;">${escapeHtml(String(a))}</div>
+                    </div>
+                `).join('');
+                atsQaBox.style.display = 'block';
+            } else {
+                atsQaBox.style.display = 'none';
+                atsQaList.innerHTML = '';
+            }
         }
 
         if (logsBox) {
@@ -4353,6 +4498,17 @@ async function regenerateAtsCoverLetter() {
     } catch (e) {
         console.error('Cover letter regeneration failed:', e);
     }
+}
+
+function saveEditedAtsCoverLetter() {
+    if (!currentAtsJobId) return;
+    const cl = document.getElementById('ats-cover-letter-text')?.value || '';
+    if (!cl || cl.startsWith('Regenerating')) return;
+    fetch('/api/ats/save-cover-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: currentAtsJobId, cover_letter: cl })
+    }).catch(e => console.error('Error auto-saving ATS cover letter:', e));
 }
 
 async function copyAtsCvFile() {

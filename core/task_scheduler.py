@@ -32,7 +32,10 @@ def sync_autopilot_windows_task(settings: Optional[Dict[str, Any]] = None) -> Di
 
     if not enabled:
         cmd = ["schtasks", "/delete", "/tn", TASK_NAME, "/f"]
-        subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        except Exception as e:
+            logger.debug(f"schtasks delete note: {e}")
         return {
             "status": "success",
             "task_enabled": False,
@@ -61,7 +64,15 @@ def sync_autopilot_windows_task(settings: Optional[Dict[str, Any]] = None) -> Di
             "/f"
         ]
 
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+    except Exception as e:
+        logger.error(f"Failed to register Windows Task '{TASK_NAME}': {e}")
+        return {
+            "status": "error",
+            "task_enabled": False,
+            "message": f"schtasks failed: {str(e)}"
+        }
     if res.returncode == 0:
         return {
             "status": "success",
@@ -85,7 +96,15 @@ def get_autopilot_windows_task_status() -> Dict[str, Any]:
         return {"exists": False, "status": "unsupported_platform"}
 
     cmd = ["schtasks", "/query", "/tn", TASK_NAME, "/fo", "LIST"]
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+    except Exception as e:
+        logger.error(f"Failed to register Windows Task '{TASK_NAME}': {e}")
+        return {
+            "status": "error",
+            "task_enabled": False,
+            "message": f"schtasks failed: {str(e)}"
+        }
     if res.returncode != 0:
         return {"exists": False, "status": "not_scheduled"}
 
@@ -101,7 +120,15 @@ def get_scraper_windows_task_status() -> Dict[str, Any]:
         return {"exists": False, "status": "unsupported_platform"}
 
     cmd = ["schtasks", "/query", "/tn", SCRAPER_TASK_NAME, "/fo", "LIST"]
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+    except Exception as e:
+        logger.error(f"Failed to register Windows Task '{TASK_NAME}': {e}")
+        return {
+            "status": "error",
+            "task_enabled": False,
+            "message": f"schtasks failed: {str(e)}"
+        }
     if res.returncode != 0:
         return {"exists": False, "status": "not_scheduled"}
 

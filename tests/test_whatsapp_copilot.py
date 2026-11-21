@@ -15,13 +15,13 @@ from core.database import DB_PATH
 from core.applicant_profile import get_resume_for_role
 from appliers.whatsapp_copilot import (
     normalize_phone_number,
-    build_whatsapp_desktop_url,
     build_wa_me_url,
     build_whatsapp_web_url,
+    format_whatsapp_pitch,
     generate_fallback_pitch,
     generate_whatsapp_pitch
 )
-from appliers.whatsapp_launcher import launch_whatsapp_desktop, launch_whatsapp_web
+from appliers.whatsapp_launcher import launch_whatsapp_web
 
 
 @pytest.fixture
@@ -42,17 +42,14 @@ def test_phone_normalization():
 
 
 def test_url_builders():
-    """Verify protocol URL formats for WhatsApp Desktop, wa.me, and WhatsApp Web."""
-    desktop_url = build_whatsapp_desktop_url("201000000000", "Hello Candidate")
-    assert desktop_url.startswith("whatsapp://send?phone=201000000000&text=")
-    assert "Hello%20Candidate" in desktop_url
-
+    """Verify protocol URL formats for wa.me and WhatsApp Web."""
     wa_me_url = build_wa_me_url("201000000000", "Hello Candidate")
     assert wa_me_url.startswith("https://wa.me/201000000000?text=")
     assert "Hello%20Candidate" in wa_me_url
 
     web_url = build_whatsapp_web_url("201000000000", "Hello Candidate")
     assert web_url.startswith("https://web.whatsapp.com/send?phone=201000000000&text=")
+    assert "Hello%20Candidate" in web_url
 
 
 def test_fallback_pitch_generation():
@@ -158,7 +155,7 @@ def test_decoupled_apply_workflow(client):
         "job_id": test_job_id,
         "phone": "201000000000",
         "pitch": "Test pitch message",
-        "applied_via": "whatsapp_desktop"
+        "applied_via": "whatsapp_edge"
     })
     assert mark_resp.status_code == 200
     assert mark_resp.json()["status"] == "success"
@@ -180,3 +177,110 @@ def test_decoupled_apply_workflow(client):
     cursor.execute("UPDATE jobs SET is_applied = ?, apply_status = ? WHERE job_id = ?", (initial_applied, "applied" if initial_applied else "unapplied", test_job_id))
     conn.commit()
     conn.close()
+
+
+def test_format_whatsapp_pitch_multi_paragraph():
+    """Verify that format_whatsapp_pitch enforces multi-paragraph structure with double line breaks."""
+    # 1. Single collapsed line from LLM
+    single_line = (
+        "Hello Eraasoft Hiring Team, I'm reaching out regarding the CS8 Instructor role. "
+        "I have 4 years of teaching experience. I developed full-stack curriculum. "
+        "Looking forward to hearing from you. Best regards, Mohamed Hussein +201000000000"
+    )
+    formatted = format_whatsapp_pitch(single_line, candidate_name="Mohamed Hussein", cv_filename="Teaching_CV.pdf")
+    paragraphs = formatted.split("\n\n")
+    assert len(paragraphs) >= 4, f"Should format into at least 4 distinct paragraphs, got {len(paragraphs)}: {formatted}"
+    assert paragraphs[0].startswith("Hello Eraasoft Hiring Team,")
+    assert "CS8 Instructor" in paragraphs[1]
+    assert "Teaching_CV.pdf" in formatted or "resume" in formatted.lower()
+    assert "Mohamed Hussein" in paragraphs[-1]
+
+    # 2. Check bullet preservation
+    multi_line = (
+        "Hello Hiring Team,\n\n"
+        "I'm reaching out regarding the Python Developer role.\n\n"
+        "- Built ETL pipelines\n- Optimized database queries\n\n"
+        "I have attached my resume (PDF) for your review.\n\n"
+        "Best regards,\nCandidate Name"
+    )
+    formatted_multi = format_whatsapp_pitch(multi_line, candidate_name="Candidate Name")
+    assert "• Built ETL pipelines" in formatted_multi
+    assert "• Optimized database queries" in formatted_multi
+    assert len(formatted_multi.split("\n\n")) >= 4
+
+
+def test_whatsapp_web_url_encodes_paragraphs():
+    """Verify build_whatsapp_web_url encodes multi-paragraph newlines into %0A%0A."""
+    text = "Hello Team,\n\nI'm reaching out.\n\nBest regards,\nMe"
+    url = build_whatsapp_web_url("201000000000", text)
+    assert "https://web.whatsapp.com/send?phone=201000000000&text=" in url
+    assert "%0A%0A" in url, "Multi-paragraph newlines should be encoded as %0A%0A in URL query"
+
+
+def test_api_open_in_edge_endpoint(client):
+    """Test /api/whatsapp/open-in-edge endpoint returns success and correct launch payload."""
+    from unittest.mock import patch
+    with patch("appliers.whatsapp_launcher.open_edge_browser", return_value=True):
+        resp = client.post("/api/whatsapp/open-in-edge", json={
+            "phone": "201000000000",
+            "pitch": "Hello Team,\n\nTest message\n\nBest regards,\nCandidate",
+            "cv_path": None
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["launched_via"] == "edge_job_agent"
+        assert "web_url" in data
+        assert "201000000000" in data["phone"]
+
+
+def test_launch_whatsapp_web_with_cv():
+    """Verify launch_whatsapp_web copies CV to clipboard and opens Edge in job_agent profile."""
+    from unittest.mock import patch
+    cv_path = get_resume_for_role("Data Analyst")
+    if not cv_path or not os.path.exists(cv_path):
+        pytest.skip("Configured CV file not found.")
+
+    with patch("appliers.whatsapp_launcher.open_edge_browser", return_value=True):
+        res = launch_whatsapp_web(
+            phone="201000000000",
+            pitch="Test Pitch",
+            cv_path=cv_path
+        )
+        assert res["status"] == "success"
+        assert res["cv_copied_to_clipboard"] is True
+        assert res["launched_via"] == "edge_job_agent"
+        assert res["cv_filename"] == os.path.basename(cv_path)
+
+
+def test_attach_cv_in_whatsapp_web_mock():
+    """Verify _attach_cv_in_whatsapp_web handles document file input and preview send."""
+    from unittest.mock import MagicMock
+    from appliers.whatsapp_worker import _attach_cv_in_whatsapp_web
+
+    mock_page = MagicMock()
+    mock_doc_input = MagicMock()
+    # Return document input when query_selector_all is called
+    mock_page.query_selector_all.return_value = [mock_doc_input]
+    mock_send_btn = MagicMock()
+    mock_page.wait_for_selector.return_value = mock_send_btn
+
+    cv_path = get_resume_for_role("Data Analyst")
+    if not cv_path or not os.path.exists(cv_path):
+        pytest.skip("Configured CV file not found.")
+
+    # Test Autopilot send (click_send=True)
+    success = _attach_cv_in_whatsapp_web(mock_page, cv_path, click_send=True)
+    assert success is True
+    assert mock_doc_input.set_input_files.called
+    assert mock_send_btn.click.called
+
+    # Test Copilot review mode (click_send=False)
+    mock_doc_input.reset_mock()
+    mock_send_btn.reset_mock()
+    review_success = _attach_cv_in_whatsapp_web(mock_page, cv_path, click_send=False)
+    assert review_success is True
+    assert mock_doc_input.set_input_files.called
+    assert not mock_send_btn.click.called, "Should leave preview modal open in review mode"
+
+

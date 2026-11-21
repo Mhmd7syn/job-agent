@@ -69,9 +69,10 @@ def test_whatsapp_copilot_modal_ui():
         assert page.query_selector("#whatsapp-copilot-target-url") is not None
         assert page.query_selector("#whatsapp-copilot-pitch") is not None
         assert page.query_selector("#whatsapp-copilot-cv-filename") is not None
-        assert page.query_selector("#whatsapp-copilot-desktop-btn") is not None
+        assert page.query_selector("#whatsapp-copilot-edge-btn") is not None
         assert page.query_selector("#whatsapp-copilot-applied-btn") is not None
         assert page.query_selector("#whatsapp-copilot-status-banner") is not None
+        assert page.query_selector("#whatsapp-copilot-note") is not None
 
         # Verify phone input is populated
         phone_val = page.input_value("#whatsapp-copilot-phone")

@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import logging
 from typing import Dict, Any, Optional
 
@@ -33,16 +34,18 @@ class ScreeningResolver:
     """
     Intelligently maps job application form fields, screening questions,
     and radio/select options to the candidate's profile, CV, and preferences.
+    Saves and reuses resolved/generated questions on the job so they are never regenerated.
     """
 
-    def __init__(self, job_title: str = "", job_location: str = "", company: str = ""):
+    def __init__(self, job_title: str = "", job_location: str = "", company: str = "", job_id: str = ""):
+        self.job_id = job_id
         self.job_title = job_title
         self.job_location = job_location
         self.company = company
         self.profile = load_profile()
         self.personal_info = self.profile.get("personal_info", {})
         self.smart_screening = self.profile.get("smart_screening", {})
-        self.custom_qa = self.profile.get("custom_qa_pairs", {})
+        self.custom_qa = dict(self.profile.get("custom_qa_pairs", {}))
         self.contextual = resolve_contextual_screening(self.job_location)
 
         # Matched role CV
@@ -54,6 +57,44 @@ class ScreeningResolver:
             except Exception as e:
                 logger.warning(f"Could not extract CV text for screening resolver: {e}")
 
+        # Load job-specific saved Q&A pairs from database
+        self.job_qa = {}
+        if self.job_id:
+            try:
+                from core.database import get_job_by_id
+                job = get_job_by_id(self.job_id)
+                if job:
+                    payload = job.get("apply_payload") or {}
+                    if isinstance(payload, str):
+                        try:
+                            payload = json.loads(payload)
+                        except Exception:
+                            payload = {}
+                    self.job_qa = dict(payload.get("question_answers") or {})
+                    if not self.job_title:
+                        self.job_title = job.get("title", "")
+                    if not self.job_location:
+                        self.job_location = job.get("location", "")
+                    if not self.company:
+                        self.company = job.get("company", "")
+            except Exception as e:
+                logger.warning(f"Could not load job QA for {self.job_id}: {e}")
+
+    def _save_job_answer(self, question: str, answer: Any) -> None:
+        """Saves a resolved/generated question answer to this job in DB."""
+        if not self.job_id or not question or answer is None:
+            return
+        clean_q = question.strip()
+        self.job_qa[clean_q] = answer
+        try:
+            from core.database import save_job_generated_content
+            save_job_generated_content(
+                job_id=self.job_id,
+                question_answers={clean_q: answer}
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save question answer for job {self.job_id}: {e}")
+
     def resolve_field_value(self, label: str, field_type: str = "text", options: Optional[list] = None) -> Any:
         """
         Resolves the appropriate answer for an input field based on its label/name/placeholder.
@@ -64,9 +105,15 @@ class ScreeningResolver:
         """
         clean_lbl = label.lower().strip()
 
-        # 1. Exact or Fuzzy Custom QA Match
+        # 0. Job-Specific Saved QA (already generated/saved for this job - no need to regenerate!)
+        for q_key, answer in self.job_qa.items():
+            if q_key.lower() == clean_lbl or q_key.lower() in clean_lbl or clean_lbl in q_key.lower():
+                return self._format_answer(answer, field_type, options)
+
+        # 1. Exact or Fuzzy Custom QA Match from global profile
         for q_key, answer in self.custom_qa.items():
             if q_key.lower() in clean_lbl or clean_lbl in q_key.lower():
+                self._save_job_answer(label, answer)
                 return self._format_answer(answer, field_type, options)
 
         # 2. Contact Information
@@ -208,6 +255,13 @@ class ScreeningResolver:
 
     def _resolve_with_ai(self, question: str) -> Optional[str]:
         """Uses Gemini API to formulate a factual, concise 1-2 sentence response grounded in CV."""
+        clean_q = question.strip()
+        if clean_q in self.job_qa:
+            return str(self.job_qa[clean_q])
+        for k, v in self.job_qa.items():
+            if k.lower() == clean_q.lower() or k.lower() in clean_q.lower():
+                return str(v)
+
         if not gemini_client or not self.cv_text:
             return None
 
@@ -242,6 +296,8 @@ Answer:"""
                 preferred_model="gemini-flash-lite-latest",
             )
             ans = resp.text.strip().strip('"\'')
+            if ans:
+                self._save_job_answer(question, ans)
             return ans
         except Exception as e:
             logger.warning(f"Error answering screening question with AI: {e}")

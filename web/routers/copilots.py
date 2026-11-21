@@ -11,7 +11,7 @@ from appliers.email_generator import generate_email_draft
 from appliers.gmail_launcher import prepare_gmail_launch, copy_file_to_clipboard, reveal_in_explorer
 from appliers.email_worker import send_smtp_email
 from appliers.whatsapp_copilot import generate_whatsapp_pitch
-from appliers.whatsapp_launcher import launch_whatsapp_desktop
+from appliers.whatsapp_launcher import launch_whatsapp_web
 from appliers.easy_apply_copilot import prepare_easy_apply, launch_easy_apply_session, get_session
 from appliers.ats_copilot import (
     prepare_ats_application,
@@ -31,6 +31,13 @@ logger = logging.getLogger(__name__)
 
 class EmailDraftRequest(BaseModel):
     job_id: str
+    force_regenerate: Optional[bool] = False
+
+class SaveEmailDraftRequest(BaseModel):
+    job_id: str
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    recipient: Optional[str] = None
 
 class OpenInGmailRequest(BaseModel):
     job_id: Optional[str] = None
@@ -66,10 +73,27 @@ class MarkAppliedRequest(BaseModel):
 
 @router.post("/api/email/generate-draft")
 def generate_email_draft_endpoint(req: EmailDraftRequest):
-    draft = generate_email_draft(job_id=req.job_id)
+    draft = generate_email_draft(job_id=req.job_id, force_regenerate=bool(req.force_regenerate))
     if draft.get("status") == "error":
         raise HTTPException(status_code=404, detail=draft.get("message", "Job not found"))
     return draft
+
+
+@router.post("/api/email/save-draft")
+def save_email_draft_endpoint(req: SaveEmailDraftRequest):
+    from core.database import save_job_generated_content
+    success = save_job_generated_content(
+        job_id=req.job_id,
+        generated_email={
+            "subject": req.subject,
+            "body": req.body,
+            "recipient_email": req.recipient,
+            "updated_at": datetime.now().isoformat()
+        }
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found or could not save draft")
+    return {"status": "success", "job_id": req.job_id}
 
 
 @router.post("/api/email/test-smtp")
@@ -255,37 +279,57 @@ def mark_email_applied_endpoint(req: MarkAppliedRequest):
 
 class WhatsAppPitchRequest(BaseModel):
     job_id: str
+    force_regenerate: Optional[bool] = False
 
-class OpenInWhatsAppDesktopRequest(BaseModel):
+class SaveWhatsAppPitchRequest(BaseModel):
+    job_id: str
+    pitch: str
+    phone: Optional[str] = None
+
+class OpenInWhatsAppEdgeRequest(BaseModel):
     phone: str = Field(default="")
     pitch: str = Field(default="")
     cv_path: Optional[str] = None
-    auto_attach: Optional[bool] = True
 
 class MarkWhatsAppAppliedRequest(BaseModel):
     job_id: str
     phone: Optional[str] = None
     pitch: Optional[str] = None
-    applied_via: Optional[str] = "whatsapp_desktop"
+    applied_via: Optional[str] = "whatsapp_edge"
 
 
 @router.post("/api/whatsapp/generate-pitch")
 def generate_whatsapp_pitch_endpoint(req: WhatsAppPitchRequest):
-    pitch_data = generate_whatsapp_pitch(job_id=req.job_id)
+    pitch_data = generate_whatsapp_pitch(job_id=req.job_id, force_regenerate=bool(req.force_regenerate))
     if pitch_data.get("status") == "error":
         raise HTTPException(status_code=404, detail=pitch_data.get("message", "Job not found"))
     return pitch_data
 
-@router.post("/api/whatsapp/open-in-desktop")
-def open_in_whatsapp_desktop_endpoint(req: OpenInWhatsAppDesktopRequest):
-    res = launch_whatsapp_desktop(
+@router.post("/api/whatsapp/save-pitch")
+def save_whatsapp_pitch_endpoint(req: SaveWhatsAppPitchRequest):
+    from core.database import save_job_generated_content
+    success = save_job_generated_content(
+        job_id=req.job_id,
+        generated_whatsapp={
+            "pitch": req.pitch,
+            "phone": req.phone,
+            "updated_at": datetime.now().isoformat()
+        }
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found or could not save pitch")
+    return {"status": "success", "job_id": req.job_id}
+
+@router.post("/api/whatsapp/open-in-edge")
+@router.post("/api/whatsapp/open-in-web")
+def open_in_whatsapp_edge_endpoint(req: OpenInWhatsAppEdgeRequest):
+    res = launch_whatsapp_web(
         phone=req.phone,
         pitch=req.pitch,
-        cv_path=req.cv_path,
-        auto_attach=req.auto_attach if req.auto_attach is not None else True
+        cv_path=req.cv_path
     )
     if res.get("status") == "error":
-        raise HTTPException(status_code=500, detail=res.get("message", "Failed to launch WhatsApp Desktop"))
+        raise HTTPException(status_code=500, detail=res.get("message", "Failed to launch WhatsApp in Edge"))
     return res
 
 @router.post("/api/whatsapp/copy-cv")
@@ -313,7 +357,7 @@ def mark_whatsapp_applied_endpoint(req: MarkWhatsAppAppliedRequest):
         extra_payload={
             "phone": req.phone,
             "pitch": req.pitch,
-            "applied_via": req.applied_via or "whatsapp_desktop",
+            "applied_via": req.applied_via or "whatsapp_edge",
             "timestamp": now_str
         }
     )
@@ -437,7 +481,22 @@ def ats_cover_letter_endpoint(req: AtsCoverLetterRequest):
         job_description=job.get("description", ""),
         cv_text=cv_text
     )
+    if req.job_id and cl:
+        from core.database import save_job_generated_content
+        save_job_generated_content(job_id=req.job_id, generated_cover_letter=cl)
     return {"status": "success", "job_id": req.job_id, "cover_letter": cl}
+
+class SaveCoverLetterRequest(BaseModel):
+    job_id: str
+    cover_letter: str
+
+@router.post("/api/ats/save-cover-letter")
+def save_ats_cover_letter_endpoint(req: SaveCoverLetterRequest):
+    from core.database import save_job_generated_content
+    success = save_job_generated_content(job_id=req.job_id, generated_cover_letter=req.cover_letter)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found or could not save cover letter")
+    return {"status": "success", "job_id": req.job_id, "cover_letter": req.cover_letter}
 
 @router.post("/api/ats/mark-applied")
 def mark_ats_applied_endpoint(req: MarkAtsAppliedRequest):
@@ -445,3 +504,27 @@ def mark_ats_applied_endpoint(req: MarkAtsAppliedRequest):
     if res.get("status") == "error":
         raise HTTPException(status_code=500, detail=res.get("message", "Failed to mark ATS job as applied"))
     return res
+
+
+# ============================================
+# Job-Level Question Answers & Content
+# ============================================
+
+class SaveQuestionAnswersRequest(BaseModel):
+    answers: Dict[str, Any]
+
+@router.post("/api/jobs/{job_id}/question-answers")
+def save_job_question_answers_endpoint(job_id: str, req: SaveQuestionAnswersRequest):
+    from core.database import save_job_generated_content
+    success = save_job_generated_content(job_id=job_id, question_answers=req.answers)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found or could not save question answers")
+    return {"status": "success", "job_id": job_id, "question_answers": req.answers}
+
+@router.get("/api/jobs/{job_id}/generated-content")
+def get_job_generated_content_endpoint(job_id: str):
+    from core.database import get_job_generated_content
+    data = get_job_generated_content(job_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"status": "success", "job_id": job_id, **data}

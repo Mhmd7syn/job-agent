@@ -935,7 +935,7 @@
             <div class="modal-body" style="padding: 1.5rem;">
                 <!-- Status Banner after launching WhatsApp client -->
                 <div id="whatsapp-copilot-status-banner" style="display: none; background: rgba(37, 211, 102, 0.15); border: 1px solid rgba(37, 211, 102, 0.4); border-radius: 0.5rem; padding: 0.65rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #a7f3d0; align-items: center; justify-content: space-between;">
-                    <div><i class="fa-brands fa-whatsapp" style="color: #25D366;"></i> <span>WhatsApp Desktop launched with CV attached! Review, click <strong>Send</strong> in WhatsApp, then click <strong>Mark as Applied</strong> below.</span></div>
+                    <div><i class="fa-brands fa-whatsapp" style="color: #25D366;"></i> <span id="whatsapp-copilot-status-banner-text">WhatsApp launched with CV attached! Review, click <strong>Send</strong> in WhatsApp, then click <strong>Mark as Applied</strong> below.</span></div>
                     <button type="button" class="btn btn-sm" onclick="markCurrentWhatsAppJobApplied()" style="background: #25D366; color: black; font-weight: 700; border: none; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer;">Mark Applied Now</button>
                 </div>
 
@@ -975,7 +975,7 @@
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
                                 <span id="whatsapp-copilot-cv-filename" style="font-size: 0.9rem; font-weight: 600; color: var(--text-main);">Resume.pdf</span>
                                 <span style="font-size: 0.72rem; background: rgba(37, 211, 102, 0.2); color: #6ee7b7; border: 1px solid rgba(37, 211, 102, 0.4); padding: 0.1rem 0.45rem; border-radius: 999px;">
-                                    <i class="fa-solid fa-paperclip"></i> Auto-attached in Desktop
+                                    <i class="fa-solid fa-clipboard"></i> Copied to Clipboard
                                 </span>
                             </div>
                             <div id="whatsapp-copilot-cv-meta" style="font-size: 0.78rem; color: var(--text-muted);">Resolved from configured role resume</div>
@@ -984,6 +984,14 @@
                     <div style="display: flex; gap: 0.4rem;">
                         <button type="button" class="btn btn-secondary btn-sm" onclick="copyWhatsAppCVFile()" title="Copy PDF file to Windows clipboard (Ctrl+V into chat)"><i class="fa-solid fa-copy"></i> Copy CV File</button>
                         <button type="button" class="btn btn-secondary btn-sm" onclick="revealWhatsAppCVFolder()" title="Reveal PDF in Windows Explorer"><i class="fa-solid fa-folder-open"></i> Show in Folder</button>
+                    </div>
+                </div>
+
+                <!-- Guidance Note for WhatsApp Application -->
+                <div id="whatsapp-copilot-note" style="background: rgba(37, 211, 102, 0.08); border-left: 3px solid #25D366; border-radius: 4px; padding: 0.55rem 0.85rem; margin-bottom: 1rem; font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.6rem;">
+                    <i class="fa-solid fa-circle-info" style="color: #25D366; font-size: 0.95rem; flex-shrink: 0;"></i>
+                    <div>
+                        <strong style="color: var(--text-main);">Note:</strong> When Edge opens, your tailored CV is automatically copied to your clipboard. Click inside the chat and press <kbd style="background: rgba(255,255,255,0.1); border: 1px solid var(--card-border); border-radius: 3px; padding: 1px 5px; color: #a7f3d0; font-family: inherit; font-size: 0.8rem;">Ctrl+V</kbd> to attach your resume before clicking Send.
                     </div>
                 </div>
 
@@ -999,12 +1007,11 @@
             <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); flex-wrap: wrap; gap: 0.75rem;">
                 <div style="display: flex; gap: 0.5rem;">
                     <button type="button" class="btn btn-secondary" onclick="regenerateWhatsAppPitch()"><i class="fa-solid fa-arrows-rotate"></i> Regenerate AI Pitch</button>
-                    <button type="button" class="btn btn-secondary" onclick="copyWhatsAppPitchText()"><i class="fa-solid fa-copy"></i> Copy Message</button>
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
                     <button type="button" class="btn btn-secondary" onclick="hideWhatsAppCopilotModal()"><i class="fa-solid fa-xmark"></i> Cancel</button>
-                    <button type="button" id="whatsapp-copilot-desktop-btn" class="btn btn-primary" onclick="openWhatsAppInDesktop()" style="background: #25D366; border-color: #25D366; color: #000; font-weight: 700;">
-                        <i class="fa-brands fa-whatsapp"></i> Open in WhatsApp Desktop (Auto-Attached)
+                    <button type="button" id="whatsapp-copilot-edge-btn" class="btn btn-primary" onclick="openWhatsAppInEdge()" style="background: #25D366; border-color: #25D366; color: #000; font-weight: 700;" title="Open WhatsApp Web in Microsoft Edge with persistent job_agent profile and auto-attached CV">
+                        <i class="fa-brands fa-whatsapp"></i> Open in Edge (WhatsApp Web)
                     </button>
                     <button type="button" id="whatsapp-copilot-applied-btn" class="btn btn-secondary" onclick="markCurrentWhatsAppJobApplied()" style="border-color: rgba(37, 211, 102, 0.4); color: #34d399; font-weight: 600;" title="Click after sending in WhatsApp to mark applied in database">
                         <i class="fa-solid fa-check"></i> Mark as Applied
@@ -1074,6 +1081,14 @@
                         <div><span style="color: var(--text-muted);">Driving License:</span> <strong id="easy-apply-preview-driving" style="color: var(--text-main);">No</strong></div>
                         <div><span style="color: var(--text-muted);">Expected Pay:</span> <strong id="easy-apply-preview-salary" style="color: #fde68a;">35k EGP / $1.5k</strong></div>
                     </div>
+                </div>
+
+                <!-- Saved Job Question Answers (if present) -->
+                <div id="easy-apply-saved-qa-box" style="display: none; background: rgba(0,0,0,0.25); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                    <div style="font-size: 0.82rem; font-weight: 600; color: #818cf8; margin-bottom: 0.4rem;">
+                        <i class="fa-solid fa-clipboard-question"></i> Saved Job Question Answers
+                    </div>
+                    <div id="easy-apply-saved-qa-list" style="display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.8rem;"></div>
                 </div>
 
                 <!-- Live Step Progression & Activity Box -->
@@ -1219,6 +1234,14 @@
                         </div>
                     </div>
                     <textarea id="ats-cover-letter-text" rows="5" style="width: 100%; background: #0b1120; border: 1px solid var(--card-border); border-radius: 0.35rem; color: var(--text-main); font-size: 0.83rem; line-height: 1.45; padding: 0.6rem; resize: vertical; font-family: inherit;"></textarea>
+                </div>
+
+                <!-- Saved Job Question Answers (if present) -->
+                <div id="ats-saved-qa-box" style="display: none; background: rgba(0,0,0,0.25); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                    <div style="font-size: 0.82rem; font-weight: 600; color: #818cf8; margin-bottom: 0.4rem;">
+                        <i class="fa-solid fa-clipboard-question"></i> Saved Job Question Answers
+                    </div>
+                    <div id="ats-saved-qa-list" style="display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.8rem;"></div>
                 </div>
 
                 <!-- Live Step Progression & Activity Box -->

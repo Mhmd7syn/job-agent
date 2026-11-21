@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import time
+from datetime import datetime
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
@@ -83,11 +84,13 @@ from core.whatsapp_bot import notify_whatsapp_candidate
 
 def generate_email_draft(
     job_id: Optional[str] = None,
-    job_data: Optional[Dict[str, Any]] = None
+    job_data: Optional[Dict[str, Any]] = None,
+    force_regenerate: bool = False
 ) -> Dict[str, Any]:
     """
     Generates a personalized, tailored email application draft for an active job opening.
     Uses Gemini API with candidate CV context and personal signature.
+    If a draft was already generated and saved for this job, returns it without regenerating unless force_regenerate is True.
     """
     if not job_data and job_id:
         job_data = get_job_by_id(job_id)
@@ -95,6 +98,7 @@ def generate_email_draft(
     if not job_data:
         return {"status": "error", "message": f"Job not found for ID: {job_id}"}
 
+    target_job_id = job_id or job_data.get("job_id")
     job_title = job_data.get("title", "Position")
     company = job_data.get("company", "Company")
     location = job_data.get("location", "")
@@ -110,6 +114,31 @@ def generate_email_draft(
     recipient_email = apply_payload.get("recipient_email", "")
     subject_hint = apply_payload.get("subject_hint", "")
 
+    # Locate role-specific resume PDF
+    cv_path = get_resume_for_role(job_title)
+
+    # Check if a draft was already generated and saved to this job
+    saved_email = apply_payload.get("generated_email")
+    if not force_regenerate and saved_email and isinstance(saved_email, dict) and saved_email.get("body"):
+        logger.info(f"Using saved email draft for job {target_job_id}")
+        return {
+            "status": "success",
+            "job_id": target_job_id,
+            "recipient_email": saved_email.get("recipient_email") or recipient_email,
+            "subject": saved_email.get("subject") or subject_hint or f"Application: {job_title}",
+            "body": saved_email.get("body"),
+            "raw_ai_body": saved_email.get("raw_ai_body") or saved_email.get("body", ""),
+            "personal_signature": saved_email.get("personal_signature") or "",
+            "is_saved": True,
+            "generated_at": saved_email.get("generated_at"),
+            "attached_cv": {
+                "path": cv_path,
+                "filename": os.path.basename(cv_path) if cv_path else None,
+                "size_kb": round(os.path.getsize(cv_path) / 1024, 1) if cv_path and os.path.exists(cv_path) else 0,
+                "exists": os.path.exists(cv_path) if cv_path else False
+            }
+        }
+
     # Load candidate profile
     profile = load_profile()
     personal_info = profile.get("personal_info", {})
@@ -119,8 +148,6 @@ def generate_email_draft(
     signature_text = get_signature_text(profile)
     signature_html = get_signature_html(profile)
 
-    # Locate role-specific resume PDF
-    cv_path = get_resume_for_role(job_title)
     cv_text = ""
     if cv_path and os.path.exists(cv_path):
         try:
@@ -205,15 +232,33 @@ def generate_email_draft(
 
     raw_body = parsed_draft.get('body', '').strip()
     full_body = f"{raw_body}\n\n{signature}" if signature else raw_body
+    now_iso = datetime.now().isoformat()
+
+    # Automatically save generated draft to the job so it won't need regeneration
+    if target_job_id:
+        from core.database import save_job_generated_content
+        save_job_generated_content(
+            job_id=target_job_id,
+            generated_email={
+                "subject": subject,
+                "body": full_body,
+                "raw_ai_body": raw_body,
+                "recipient_email": recipient_email,
+                "personal_signature": signature_html or signature,
+                "generated_at": now_iso
+            }
+        )
 
     return {
         "status": "success",
-        "job_id": job_id,
+        "job_id": target_job_id,
         "recipient_email": recipient_email,
         "subject": subject,
         "body": full_body,
         "raw_ai_body": raw_body,
         "personal_signature": signature_html or signature,
+        "is_saved": False,
+        "generated_at": now_iso,
         "attached_cv": {
             "path": cv_path,
             "filename": os.path.basename(cv_path) if cv_path else None,
