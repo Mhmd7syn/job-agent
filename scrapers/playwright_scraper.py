@@ -12,6 +12,7 @@ import pandas as pd
 from core.llm_parser import extract_feed_posts_with_ai, extract_json_ld
 from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
 from core.job_utils import make_job_id
+from scrapers.common import resolve_canonical_apply_url, extract_embedded_apply_url
 from core.config import (
     get_chrome_binary_path,
     get_edge_binary_path,
@@ -423,18 +424,19 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
                             apply_a = dsoup.find("a", class_=lambda c: c and "apply" in c) or dsoup.find("a", href=lambda h: h and ("/safety/go/" in h or "externalApply" in h))
                             if apply_a and apply_a.get("href"):
                                 raw_href = apply_a["href"]
-                                if "/safety/go/" in raw_href or "url=" in raw_href:
-                                    parsed = urllib.parse.urlparse(raw_href)
-                                    params = urllib.parse.parse_qs(parsed.query)
-                                    apply_url = params.get("url", [raw_href])[0]
-                                else:
-                                    apply_url = raw_href
+                                apply_url = resolve_canonical_apply_url(raw_href)
                                 is_ea = False
                             apply_btn_soup = dsoup.find("button", class_=lambda c: c and "apply" in c)
                             if apply_btn_soup:
                                 btn_text = apply_btn_soup.get_text(separator=" ", strip=True).lower()
                                 if "easy apply" in btn_text:
                                     is_ea = True
+
+                            if not apply_url and not is_ea:
+                                apply_url = extract_embedded_apply_url(
+                                    html_content=dr.text if hasattr(dr, 'text') else "",
+                                    text_content=description
+                                )
                     except Exception:
                         pass
 
@@ -606,13 +608,11 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                 apply_url = None
                 raw_href = (apply_info or {}).get("applyHref")
                 if raw_href:
-                    if "/safety/go/" in raw_href or "url=" in raw_href:
-                        parsed = urllib.parse.urlparse(raw_href)
-                        params = urllib.parse.parse_qs(parsed.query)
-                        apply_url = params.get("url", [raw_href])[0]
-                    else:
-                        apply_url = raw_href
+                    apply_url = resolve_canonical_apply_url(raw_href)
                 is_ea = (apply_info or {}).get("isEasy")
+
+                if not apply_url and not is_ea:
+                    apply_url = extract_embedded_apply_url(html_content=desc_html, text_content=desc)
 
                 if title and title not in ("Unknown", "Not specified"):
                     is_rem = (setup_val == 'Remote') or ('remote' in str(loc_val).lower() or 'remote' in location.lower())
@@ -714,12 +714,15 @@ def get_posts_as_dataframe(term, loc, page=None):
     if ai_data and not ai_data.get("error"):
         for job in ai_data.get("jobs", []):
             if job.get("is_job"):
+                p_desc = job.get('description', '')
+                p_apply = extract_embedded_apply_url(text_content=p_desc)
                 valid_jobs.append({
                     'title': job.get('title', 'Unknown'),
                     'company': job.get('company', 'Unknown'),
                     'location': job.get('location', loc),
                     'job_url': job.get('job_url') or f"https://www.linkedin.com/search/results/content/?keywords={keyword}",
-                    'description': job.get('description', ''),
+                    'apply_url': p_apply or None,
+                    'description': p_desc,
                     'is_remote': 'remote' in str(job.get('location', '')).lower(),
                     'date_posted': job.get('date_posted') or date.today(),
                     'job_type': job.get('job_type') or 'Not specified',

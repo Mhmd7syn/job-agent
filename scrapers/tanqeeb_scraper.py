@@ -20,6 +20,8 @@ from scrapers.common import (
     SCRAPED_PLATFORMS,
     get_scraped_site_from_url,
     reinject_scraped_job,
+    resolve_canonical_apply_url,
+    extract_embedded_apply_url,
 )
 
 _IMPERSONATE_PROFILES = ["chrome120", "chrome110"]
@@ -47,21 +49,25 @@ def _parse_tanqeeb_soup(soup):
     company = json_ld.get('company', '')
     desc = json_ld.get('description', '')
     apply_url = json_ld.get('apply_url', '')
-    if 'tanqeeb.com' in apply_url:
-        apply_url = ''
-
-    if desc and len(desc) > 30:
-        return {'description': desc, 'company': company, 'apply_url': apply_url, 'site_name': ''}
 
     # 2. Modern DOM
-    desc_div = (
-        soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['vacancy-desc', 'job-description', 'card-body', 'details-content'])) or
-        soup.find('section', class_=lambda c: c and 'description' in str(c))
-    )
-    if desc_div:
-        text = desc_div.get_text(separator='\n', strip=True)
-        if len(text) > 80:
-            return {'description': text, 'company': company, 'apply_url': apply_url, 'site_name': ''}
+    if not desc or len(desc) <= 30:
+        desc_div = (
+            soup.find('div', class_=lambda c: c and any(k in str(c) for k in ['vacancy-desc', 'job-description', 'card-body', 'details-content'])) or
+            soup.find('section', class_=lambda c: c and 'description' in str(c))
+        )
+        if desc_div:
+            text = desc_div.get_text(separator='\n', strip=True)
+            if len(text) > 80:
+                desc = text
+
+    if apply_url:
+        apply_url = resolve_canonical_apply_url(apply_url)
+
+    if not apply_url or 'tanqeeb.com' in apply_url:
+        embedded = extract_embedded_apply_url(html_content=str(soup), text_content=desc)
+        if embedded:
+            apply_url = embedded
 
     return {'description': desc, 'company': company, 'apply_url': apply_url, 'site_name': ''}
 
@@ -88,6 +94,12 @@ def fetch_tanqeeb_job_details(job_url):
                     desc = BeautifulSoup(raw_desc, 'html.parser').get_text(separator='\n', strip=True) if raw_desc else ''
                     comp = data.get('company_name') or (data.get('company') or {}).get('name') or ''
                     apply_url = (data.get('apply_url') or '').strip()
+                    if apply_url:
+                        apply_url = resolve_canonical_apply_url(apply_url)
+                    if not apply_url or 'tanqeeb.com' in apply_url:
+                        embedded = extract_embedded_apply_url(text_content=desc)
+                        if embedded:
+                            apply_url = embedded
                     site_name = (data.get('site_name') or '').strip()
                     res = {
                         'description': desc,

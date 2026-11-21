@@ -14,6 +14,13 @@ if BASE_DIR not in sys.path:
 
 from core.llm_parser import extract_json_ld, extract_job_page_with_ai, extract_feed_posts_with_ai
 from core.scorer import load_latest_config
+from scrapers.common import (
+    resolve_canonical_apply_url,
+    extract_embedded_apply_url,
+    is_valid_specific_apply_url,
+    extract_json_ld_job,
+    html_to_text,
+)
 
 # Setup logger
 logger = logging.getLogger("link_scraper")
@@ -113,18 +120,16 @@ def _scrape_linkedin_job(url: str) -> dict:
                 apply_a = soup.find("a", class_=lambda c: c and "apply" in c) or soup.find("a", href=lambda h: h and ("/safety/go/" in h or "externalApply" in h))
                 if apply_a and apply_a.get("href"):
                     raw_href = apply_a["href"]
-                    if "/safety/go/" in raw_href or "url=" in raw_href:
-                        parsed = urllib.parse.urlparse(raw_href)
-                        params = urllib.parse.parse_qs(parsed.query)
-                        apply_url = params.get("url", [raw_href])[0]
-                    else:
-                        apply_url = raw_href
+                    apply_url = resolve_canonical_apply_url(raw_href)
                     is_ea = False
                 apply_btn_soup = soup.find("button", class_=lambda c: c and "apply" in c)
                 if apply_btn_soup:
                     btn_text = apply_btn_soup.get_text(separator=" ", strip=True).lower()
                     if "easy apply" in btn_text:
                         is_ea = True
+
+                if not apply_url and not is_ea:
+                    apply_url = extract_embedded_apply_url(html_content=r.text, text_content=desc)
 
                 fixed_job_type = _fix_job_type(emp_type, title, desc)
 
@@ -257,15 +262,17 @@ def _scrape_linkedin_job(url: str) -> dict:
                 apply_url = None
                 raw_pw_href = pw_extracted.get("applyHref")
                 if raw_pw_href:
-                    if "/safety/go/" in raw_pw_href or "url=" in raw_pw_href:
-                        parsed = urllib.parse.urlparse(raw_pw_href)
-                        params = urllib.parse.parse_qs(parsed.query)
-                        apply_url = params.get("url", [raw_pw_href])[0]
-                    else:
-                        apply_url = raw_pw_href
+                    apply_url = resolve_canonical_apply_url(raw_pw_href)
 
                 pw_setup = pw_extracted.get("setup")
                 pw_is_easy = pw_extracted.get("isEasy")
+
+                if not apply_url and not pw_is_easy:
+                    pw_desc = html_to_text(pw_extracted.get("description") or "")
+                    apply_url = extract_embedded_apply_url(
+                        html_content=pw_extracted.get("description") or "",
+                        text_content=pw_desc
+                    )
 
                 if guest_res:
                     if pw_setup:
@@ -346,6 +353,9 @@ def _scrape_linkedin_post(url: str, raw_text: str = "") -> dict:
     if not post_text:
         raise ValueError("Could not extract post content from LinkedIn. Please ensure the link is accessible or paste the post text.")
 
+    # Extract any embedded apply link (e.g. ATS, Google Forms, unshortened lnkd.in/bit.ly)
+    apply_url = extract_embedded_apply_url(text_content=post_text)
+
     # Process post text with Gemini AI
     ai_data = extract_feed_posts_with_ai(f"Post URL: {url}\n\n{post_text[:12000]}")
     if ai_data and not ai_data.get("error"):
@@ -367,7 +377,8 @@ def _scrape_linkedin_post(url: str, raw_text: str = "") -> dict:
                 "description": desc,
                 "date_posted": _parse_relative_date(date_posted),
                 "site": "linkedin_posts",
-                "job_url": url
+                "job_url": url,
+                "apply_url": apply_url or None
             }
 
     # Fallback to general job page AI extraction
@@ -381,7 +392,8 @@ def _scrape_linkedin_post(url: str, raw_text: str = "") -> dict:
             "description": ai_page.get("description") or post_text,
             "date_posted": _parse_relative_date(ai_page.get("date_posted")),
             "site": "linkedin_posts",
-            "job_url": url
+            "job_url": url,
+            "apply_url": apply_url or None
         }
 
     return {
@@ -392,7 +404,8 @@ def _scrape_linkedin_post(url: str, raw_text: str = "") -> dict:
         "description": post_text[:2000],
         "date_posted": datetime.date.today().isoformat(),
         "site": "linkedin_posts",
-        "job_url": url
+        "job_url": url,
+        "apply_url": apply_url or None
     }
 
 
@@ -405,21 +418,33 @@ def _scrape_wuzzuf(url: str) -> dict:
         raise ValueError(f"Wuzzuf returned status code {r.status_code}")
 
     soup = BeautifulSoup(r.text, "html.parser")
+    json_ld = extract_json_ld_job(r.text)
+    apply_url = json_ld.get("apply_url")
+    is_ea = json_ld.get("is_easy_apply")
+    if apply_url:
+        apply_url = resolve_canonical_apply_url(apply_url)
+
     title_elem = soup.find("h1")
-    title = title_elem.text.strip() if title_elem else ""
+    title = title_elem.text.strip() if title_elem else (json_ld.get("title") or "")
 
     # Company
     comp_elem = soup.find("a", href=lambda h: h and ("/jobs/careers/" in h or "/company/" in h)) or soup.find("a", class_=lambda c: c and "css-1557q9l" in c)
-    company = comp_elem.text.strip() if comp_elem else ""
+    company = comp_elem.text.strip() if comp_elem else (json_ld.get("company") or "")
 
     # Location
     loc_elem = soup.find("span", class_=lambda c: c and "css-97682w" in c) or soup.find("strong", class_=lambda c: c and "location" in str(c).lower())
-    loc_val = loc_elem.text.strip() if loc_elem else "Egypt"
+    loc_val = loc_elem.text.strip() if loc_elem else (json_ld.get("location") or "Egypt")
 
     # Description and body text
     for s in soup(["script", "style", "nav", "header", "footer"]):
         s.decompose()
     clean_text = soup.get_text(separator="\n", strip=True)
+
+    # Detect embedded ATS or external apply links in description or DOM
+    embedded_apply = extract_embedded_apply_url(html_content=r.text, text_content=clean_text)
+    if embedded_apply:
+        apply_url = embedded_apply
+        is_ea = False
 
     # If title or company missing, let AI extract from page
     if not title or not company:
@@ -437,7 +462,9 @@ def _scrape_wuzzuf(url: str) -> dict:
                 "description": desc,
                 "date_posted": _parse_relative_date(ai_res.get("date_posted")),
                 "site": "wuzzuf",
-                "job_url": url
+                "job_url": url,
+                "apply_url": apply_url or None,
+                "is_easy_apply": is_ea
             }
 
     return {
@@ -448,7 +475,9 @@ def _scrape_wuzzuf(url: str) -> dict:
         "description": clean_text[:4000],
         "date_posted": datetime.date.today().isoformat(),
         "site": "wuzzuf",
-        "job_url": url
+        "job_url": url,
+        "apply_url": apply_url or None,
+        "is_easy_apply": is_ea
     }
 
 
@@ -458,6 +487,9 @@ def _scrape_tanqeeb(url: str) -> dict:
 
     details = fetch_tanqeeb_job_details(url)
     apply_url = (details.get("apply_url") or "").strip()
+    if apply_url:
+        apply_url = resolve_canonical_apply_url(apply_url)
+
     if apply_url and get_scraped_site_from_url(apply_url):
         logger.info(f"Tanqeeb job points to {apply_url}. Scraping direct link...")
         try:
@@ -504,6 +536,14 @@ def _scrape_tanqeeb(url: str) -> dict:
             s.decompose()
         page_text = soup.get_text(separator="\n", strip=True)
 
+    if not apply_url or 'tanqeeb.com' in apply_url:
+        embedded_apply = extract_embedded_apply_url(
+            html_content=r.text if r.status_code == 200 else "",
+            text_content=desc or page_text
+        )
+        if embedded_apply:
+            apply_url = embedded_apply
+
     if not title or len(desc) < 40:
         ai_res = extract_job_page_with_ai((desc or page_text)[:8000]) if (desc or page_text) else {}
         if ai_res and not ai_res.get("error"):
@@ -540,19 +580,38 @@ def _scrape_bayt(url: str) -> dict:
     if r.status_code != 200:
         raise ValueError(f"Bayt returned status code {r.status_code}")
 
-    json_ld = extract_json_ld(r.text)
-    if json_ld and json_ld.get("title"):
-        json_ld["site"] = "bayt"
-        json_ld["job_url"] = url
-        return json_ld
+    json_ld = extract_json_ld_job(r.text)
+    apply_url = json_ld.get("apply_url")
+    is_ea = json_ld.get("is_easy_apply")
+    if apply_url:
+        apply_url = resolve_canonical_apply_url(apply_url)
 
     soup = BeautifulSoup(r.text, "html.parser")
     title_elem = soup.find("h1")
-    title = title_elem.text.strip() if title_elem else ""
+    title = title_elem.text.strip() if title_elem else (json_ld.get("title") or "")
 
     for s in soup(["script", "style", "nav", "header", "footer"]):
         s.decompose()
     clean_text = soup.get_text(separator="\n", strip=True)
+
+    embedded_apply = extract_embedded_apply_url(html_content=r.text, text_content=clean_text)
+    if embedded_apply:
+        apply_url = embedded_apply
+        is_ea = False
+
+    if json_ld and json_ld.get("title") and json_ld.get("description"):
+        return {
+            "title": json_ld["title"],
+            "company": json_ld.get("company") or "Unknown",
+            "location": json_ld.get("location") or "Middle East",
+            "job_type": _fix_job_type(json_ld.get("job_type", "Full-time")),
+            "description": json_ld["description"],
+            "date_posted": _parse_relative_date(json_ld.get("date_posted")),
+            "site": "bayt",
+            "job_url": url,
+            "apply_url": apply_url or None,
+            "is_easy_apply": is_ea
+        }
 
     ai_res = extract_job_page_with_ai(clean_text[:8000])
     if ai_res and not ai_res.get("error"):
@@ -564,18 +623,22 @@ def _scrape_bayt(url: str) -> dict:
             "description": ai_res.get("description", clean_text),
             "date_posted": _parse_relative_date(ai_res.get("date_posted")),
             "site": "bayt",
-            "job_url": url
+            "job_url": url,
+            "apply_url": apply_url or None,
+            "is_easy_apply": is_ea
         }
 
     return {
         "title": title or "Bayt Job",
-        "company": "Unknown",
-        "location": "Middle East",
-        "job_type": "Full-time",
+        "company": json_ld.get("company") or "Unknown",
+        "location": json_ld.get("location") or "Middle East",
+        "job_type": _fix_job_type("Full-time", title, clean_text),
         "description": clean_text[:4000],
         "date_posted": datetime.date.today().isoformat(),
         "site": "bayt",
-        "job_url": url
+        "job_url": url,
+        "apply_url": apply_url or None,
+        "is_easy_apply": is_ea
     }
 
 
@@ -606,14 +669,26 @@ def _scrape_generic(url: str, raw_text: str = "") -> dict:
     except Exception as e:
         logger.debug(f"curl_cffi fetch failed for {url}: {e}")
 
+    rendered_html = ""
     # 1. Check Schema.org JSON-LD
     if html_content:
-        json_ld = extract_json_ld(html_content)
+        json_ld = extract_json_ld_job(html_content)
         if json_ld and json_ld.get("title") and len(json_ld.get("description", "")) > 30:
             domain = urllib.parse.urlparse(url).netloc.replace("www.", "").split(".")[0]
-            json_ld["site"] = domain or "web"
-            json_ld["job_url"] = url
-            return json_ld
+            apply_u = resolve_canonical_apply_url(json_ld.get("apply_url") or "")
+            embedded_u = extract_embedded_apply_url(html_content=html_content, text_content=json_ld.get("description", ""))
+            return {
+                "title": json_ld["title"],
+                "company": json_ld.get("company") or "Unknown",
+                "location": json_ld.get("location") or "Not specified",
+                "job_type": _fix_job_type(json_ld.get("job_type", "Not specified")),
+                "description": json_ld["description"],
+                "date_posted": _parse_relative_date(json_ld.get("date_posted")),
+                "site": domain or "web",
+                "job_url": url,
+                "apply_url": apply_u or embedded_u or None,
+                "is_easy_apply": json_ld.get("is_easy_apply")
+            }
 
     # 2. Extract HTML text content
     clean_text = ""
@@ -634,12 +709,23 @@ def _scrape_generic(url: str, raw_text: str = "") -> dict:
                 page.goto(url, wait_until="domcontentloaded", timeout=15000)
                 page.wait_for_timeout(1500)
                 rendered_html = page.content()
-                json_ld = extract_json_ld(rendered_html)
-                if json_ld and json_ld.get("title"):
+                json_ld = extract_json_ld_job(rendered_html)
+                if json_ld and json_ld.get("title") and len(json_ld.get("description", "")) > 30:
                     domain = urllib.parse.urlparse(url).netloc.replace("www.", "").split(".")[0]
-                    json_ld["site"] = domain or "web"
-                    json_ld["job_url"] = url
-                    return json_ld
+                    apply_u = resolve_canonical_apply_url(json_ld.get("apply_url") or "")
+                    embedded_u = extract_embedded_apply_url(html_content=rendered_html, text_content=json_ld.get("description", ""))
+                    return {
+                        "title": json_ld["title"],
+                        "company": json_ld.get("company") or "Unknown",
+                        "location": json_ld.get("location") or "Not specified",
+                        "job_type": _fix_job_type(json_ld.get("job_type", "Not specified")),
+                        "description": json_ld["description"],
+                        "date_posted": _parse_relative_date(json_ld.get("date_posted")),
+                        "site": domain or "web",
+                        "job_url": url,
+                        "apply_url": apply_u or embedded_u or None,
+                        "is_easy_apply": json_ld.get("is_easy_apply")
+                    }
                 clean_text = page.evaluate("() => document.body.innerText")
                 context.close()
         except Exception as e:
@@ -648,7 +734,13 @@ def _scrape_generic(url: str, raw_text: str = "") -> dict:
     if not clean_text or len(clean_text) < 40:
         raise ValueError(f"Could not load or extract text from {url}. Please verify the link or paste the text.")
 
-    # 4. AI extraction via Gemini Flash Lite
+    # 4. Extract embedded apply link from HTML or plain text
+    embedded_apply = extract_embedded_apply_url(
+        html_content=html_content or rendered_html,
+        text_content=clean_text
+    )
+
+    # 5. AI extraction via Gemini Flash Lite
     ai_data = extract_job_page_with_ai(clean_text[:12000])
     if ai_data and not ai_data.get("error"):
         domain = urllib.parse.urlparse(url).netloc.replace("www.", "").split(".")[0]
@@ -660,7 +752,8 @@ def _scrape_generic(url: str, raw_text: str = "") -> dict:
             "description": ai_data.get("description") or clean_text[:4000],
             "date_posted": _parse_relative_date(ai_data.get("date_posted")),
             "site": domain or "web",
-            "job_url": url
+            "job_url": url,
+            "apply_url": embedded_apply or None
         }
 
     raise ValueError("AI failed to extract structured job details from page content.")
@@ -724,8 +817,20 @@ def scrape_job_from_url(url: str, scraper_type: str = "auto", raw_text: str = ""
     if has_scholarship_tag:
         raw_job["is_scholarship"] = True
 
+    # Deduplication check: if apply_url was extracted and is a valid specific destination URL
+    # already saved in the database, return cached record to prevent duplicate scraping/insertion
+    apply_url = (raw_job.get("apply_url") or "").strip()
+    if apply_url and is_valid_specific_apply_url(apply_url, job_url=url):
+        from core.database import is_job_seen, get_job_by_url
+        if is_job_seen(apply_url):
+            cached = get_job_by_url(apply_url)
+            if cached and cached.get("title") and cached.get("title") not in ["Unknown", "Not specified", ""]:
+                logger.info(f"⏭️ Apply URL already in database, returning cached job: {apply_url}")
+                return cached
+
     # Re-inject if apply_url points to another supported scraped platform
     if raw_job.get("apply_url"):
+        raw_job["apply_url"] = resolve_canonical_apply_url(raw_job["apply_url"])
         from scrapers.common import reinject_scraped_job
         resolved_job = reinject_scraped_job(raw_job)
         if resolved_job is not None:

@@ -11,7 +11,12 @@ from bs4 import BeautifulSoup
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen
 from core.job_utils import normalize_job_dict
-from scrapers.common import extract_json_ld_job, fetch_page_content
+from scrapers.common import (
+    extract_json_ld_job,
+    fetch_page_content,
+    resolve_canonical_apply_url,
+    extract_embedded_apply_url,
+)
 
 
 def clean_glassdoor_company(company: str) -> str:
@@ -92,6 +97,14 @@ def fetch_glassdoor_job_details(driver, job_url: str) -> dict:
                 0 if any(k in u.lower() for k in ['apply', 'search-jobs', 'jobdetail', 'req']) else 1
             ))
             details['apply_url'] = prioritized[0]
+
+        if not details.get('apply_url'):
+            embedded = extract_embedded_apply_url(html_content=page_source, text_content=details.get('description', ''))
+            if embedded:
+                details['apply_url'] = embedded
+
+        if details.get('apply_url'):
+            details['apply_url'] = resolve_canonical_apply_url(details['apply_url'])
 
         # 4. Check apply button for "Apply on employer site" vs "Easy Apply"
         apply_btn = soup.find(attrs={'data-test': re.compile(r'applybutton', re.IGNORECASE)}) or soup.find('button', class_=lambda c: c and 'apply' in str(c).lower())

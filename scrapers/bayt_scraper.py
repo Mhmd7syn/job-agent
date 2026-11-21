@@ -11,45 +11,65 @@ from bs4 import BeautifulSoup
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
 from core.job_utils import normalize_job_dict, make_job_id
-from scrapers.common import fetch_page_content, extract_json_ld_job, fetch_details_concurrently
+from scrapers.common import (
+    fetch_page_content,
+    extract_json_ld_job,
+    fetch_details_concurrently,
+    resolve_canonical_apply_url,
+    extract_embedded_apply_url,
+)
 
-def _parse_bayt_soup(soup):
+def _parse_bayt_soup(soup, raw_html=""):
     # 1. Schema.org JSON-LD
     json_ld = extract_json_ld_job(soup)
     desc = json_ld.get('description', '')
     company = json_ld.get('company', '')
-
-    if desc and len(desc) > 30:
-        return {'description': desc, 'company': company}
+    apply_url = json_ld.get('apply_url', '')
+    is_ea = json_ld.get('is_easy_apply')
 
     # 2. Modern DOM fallback (ignoring chat promotion popup)
-    for tag in soup.find_all(['div', 'section']):
-        c = ' '.join(tag.get('class', []))
-        if any(k in c for k in ['t-break', 'job-description', 'card-content', 'is-space-bottom-large']):
-            t = tag.get_text(separator='\n', strip=True)
-            if 'chat feature' not in t.lower() and len(t) > 80:
-                return {'description': t, 'company': company}
+    if not desc or len(desc) <= 30:
+        for tag in soup.find_all(['div', 'section']):
+            c = ' '.join(tag.get('class', []))
+            if any(k in c for k in ['t-break', 'job-description', 'card-content', 'is-space-bottom-large']):
+                t = tag.get_text(separator='\n', strip=True)
+                if 'chat feature' not in t.lower() and len(t) > 80:
+                    desc = t
+                    break
 
-    return {'description': '', 'company': company}
+    embedded_apply = extract_embedded_apply_url(html_content=raw_html, text_content=desc)
+    if embedded_apply:
+        apply_url = embedded_apply
+        is_ea = False
+
+    if apply_url:
+        apply_url = resolve_canonical_apply_url(apply_url)
+
+    return {
+        'description': desc,
+        'company': company,
+        'apply_url': apply_url or '',
+        'is_easy_apply': is_ea
+    }
 
 _BAYT_DETAILS_CACHE = {}
 
 def fetch_bayt_job_details(job_url, *args, **kwargs):
-    """Fetches full job description and company name from a Bayt job page via HTTP."""
+    """Fetches full job description, company, apply URL, and easy apply flag from a Bayt job page."""
     if not job_url or 'bayt.com/en/' not in job_url:
-        return {'description': '', 'company': ''}
+        return {'description': '', 'company': '', 'apply_url': '', 'is_easy_apply': None}
     if job_url in _BAYT_DETAILS_CACHE:
         return _BAYT_DETAILS_CACHE[job_url]
 
     html = fetch_page_content(job_url, timeout=6)
     if html:
         soup = BeautifulSoup(html, 'html.parser')
-        res = _parse_bayt_soup(soup)
+        res = _parse_bayt_soup(soup, raw_html=html)
         if res.get('description'):
             _BAYT_DETAILS_CACHE[job_url] = res
             return res
 
-    return {'description': '', 'company': ''}
+    return {'description': '', 'company': '', 'apply_url': '', 'is_easy_apply': None}
 
 def fetch_bayt_full_description(job_url, *args, **kwargs):
     """Fetches the complete full job description and requirements via lightweight HTTP."""
@@ -164,13 +184,15 @@ def scrape_bayt(search_term, location, results_wanted=15, hours_old=None, *args,
         # Concurrent description fetching
         def _fetch_desc(job):
             try:
-                full_desc = fetch_bayt_full_description(job['job_url'])
-                if full_desc and len(full_desc) > len(job['description']):
-                    job['description'] = full_desc
-                if job.get('company') in ('Unknown', '', None):
-                    details = fetch_bayt_job_details(job['job_url'])
-                    if details.get('company'):
-                        job['company'] = details['company']
+                details = fetch_bayt_job_details(job['job_url'])
+                if details.get('description') and len(details['description']) > len(job['description']):
+                    job['description'] = details['description']
+                if details.get('company') and job.get('company') in ('Unknown', '', None):
+                    job['company'] = details['company']
+                if details.get('apply_url'):
+                    job['apply_url'] = details['apply_url']
+                if details.get('is_easy_apply') is not None:
+                    job['is_easy_apply'] = details['is_easy_apply']
             except Exception as e:
                 logging.debug(f"Bayt desc fetch failed for {job['job_url']}: {e}")
             return normalize_job_dict(job)

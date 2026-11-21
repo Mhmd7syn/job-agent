@@ -11,7 +11,13 @@ import concurrent.futures
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
 from core.job_utils import normalize_job_dict, make_job_id
-from scrapers.common import fetch_page_content, extract_json_ld_job, fetch_details_concurrently
+from scrapers.common import (
+    fetch_page_content,
+    extract_json_ld_job,
+    fetch_details_concurrently,
+    resolve_canonical_apply_url,
+    extract_embedded_apply_url,
+)
 
 def _parse_wuzzuf_soup(soup):
     # 1. Schema.org JSON-LD
@@ -45,19 +51,39 @@ def _parse_wuzzuf_soup(soup):
         return req_sec.get_text(separator=' ', strip=True)
     return ""
 
-def fetch_wuzzuf_full_description(job_url, driver=None):
-    """Fetches the complete full job description and requirements via fast HTTP with driver fallback."""
+def fetch_wuzzuf_job_details(job_url, driver=None):
+    """Fetches complete full job description, apply URL, and direct apply flag from Wuzzuf."""
     if not job_url:
-        return ""
+        return {'description': '', 'apply_url': '', 'is_easy_apply': None}
 
     html = fetch_page_content(job_url, driver=driver, timeout=6)
     if html:
         soup = BeautifulSoup(html, 'html.parser')
-        desc = _parse_wuzzuf_soup(soup)
-        if desc:
-            return desc
+        json_ld = extract_json_ld_job(soup)
+        desc = _parse_wuzzuf_soup(soup) or json_ld.get('description', '')
+        apply_url = json_ld.get('apply_url', '')
+        is_ea = json_ld.get('is_easy_apply')
 
-    return ""
+        embedded_apply = extract_embedded_apply_url(html_content=html, text_content=desc)
+        if embedded_apply:
+            apply_url = embedded_apply
+            is_ea = False
+
+        if apply_url:
+            apply_url = resolve_canonical_apply_url(apply_url)
+
+        return {
+            'description': desc,
+            'apply_url': apply_url or '',
+            'is_easy_apply': is_ea
+        }
+
+    return {'description': '', 'apply_url': '', 'is_easy_apply': None}
+
+def fetch_wuzzuf_full_description(job_url, driver=None):
+    """Fetches the complete full job description and requirements via fast HTTP with driver fallback."""
+    details = fetch_wuzzuf_job_details(job_url, driver=driver)
+    return details.get('description', '')
 
 def parse_wuzzuf_date_to_hours(date_str):
     date_str = date_str.lower()
@@ -191,9 +217,13 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
         # Concurrent description fetching
         def _fetch_desc(job):
             try:
-                full_desc = fetch_wuzzuf_full_description(job['job_url'])
-                if full_desc and len(full_desc) > len(job['description']):
-                    job['description'] = full_desc
+                details = fetch_wuzzuf_job_details(job['job_url'])
+                if details.get('description') and len(details['description']) > len(job['description']):
+                    job['description'] = details['description']
+                if details.get('apply_url'):
+                    job['apply_url'] = details['apply_url']
+                if details.get('is_easy_apply') is not None:
+                    job['is_easy_apply'] = details['is_easy_apply']
             except Exception as e:
                 logging.debug(f"Wuzzuf desc fetch failed for {job['job_url']}: {e}")
             return normalize_job_dict(job)
