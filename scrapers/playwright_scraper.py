@@ -417,7 +417,8 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
                             dsoup = BeautifulSoup(dr.text, 'html.parser')
                             dtext = dsoup.find('div', class_='show-more-less-html__markup')
                             if dtext:
-                                description = dtext.get_text(separator='\n', strip=True)
+                                from scrapers.common import html_to_text
+                                description = html_to_text(str(dtext))
 
                             apply_a = dsoup.find("a", class_=lambda c: c and "apply" in c) or dsoup.find("a", href=lambda h: h and ("/safety/go/" in h or "externalApply" in h))
                             if apply_a and apply_a.get("href"):
@@ -548,7 +549,9 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                 title = page.evaluate("() => document.querySelector('.jobs-unified-top-card__job-title, .top-card-layout__title, h1')?.innerText.trim() || ''")
                 company = page.evaluate("() => document.querySelector('.jobs-unified-top-card__company-name, .topcard__org-name-link, .job-details-jobs-unified-top-card__company-name')?.innerText.trim() || ''")
                 loc_val = page.evaluate("() => document.querySelector('.jobs-unified-top-card__bullet, .topcard__flavor--bullet, .job-details-jobs-unified-top-card__bullet')?.innerText.trim() || ''")
-                desc = page.evaluate("() => document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerText.trim() || ''")
+                desc_html = page.evaluate("() => document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerHTML || ''")
+                from scrapers.common import html_to_text
+                desc = html_to_text(desc_html) if desc_html else ""
                 setup_val = page.evaluate("""() => {
                     const main = document.querySelector('main') || document.body;
                     const chips = Array.from(main.querySelectorAll('span, button, div, a, li')).filter(el => {
@@ -580,7 +583,8 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                         title = json_ld.get('title', '')
                         company = json_ld.get('company', company)
                         loc_val = json_ld.get('location', loc_val)
-                        desc = json_ld.get('description', desc)
+                        json_ld_desc = json_ld.get('description', '')
+                        desc = html_to_text(json_ld_desc) if json_ld_desc else desc
 
                 apply_info = page.evaluate("""() => {
                     let applyHref = null;

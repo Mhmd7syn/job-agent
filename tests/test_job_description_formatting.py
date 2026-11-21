@@ -51,6 +51,39 @@ class TestJobDescriptionFormatting(unittest.TestCase):
         self.assertEqual(html_to_text(''), '')
         self.assertEqual(html_to_text('   '), '')
 
+    def test_linkedin_markup_spacing_and_paragraphs(self):
+        linkedin_html = (
+            '<div class="show-more-less-html__markup">'
+            '<strong>About the job</strong><br><br>'
+            '<p>First paragraph detailing company culture.</p>'
+            '<p><br></p>'
+            '<p>Second paragraph detailing mission.</p>'
+            '<strong>Responsibilities:</strong>'
+            '<ul>'
+            '<li><span><p>Build scalable REST APIs</p></span></li>'
+            '<li><span><p>Collaborate with frontend teams</p></span></li>'
+            '</ul>'
+            '</div>'
+        )
+        cleaned = html_to_text(linkedin_html)
+        self.assertEqual(
+            cleaned,
+            'About the job\n\n'
+            'First paragraph detailing company culture.\n\n'
+            'Second paragraph detailing mission.\n\n'
+            'Responsibilities:\n\n'
+            '• Build scalable REST APIs\n'
+            '• Collaborate with frontend teams'
+        )
+
+    def test_strip_existing_bullets_in_list_items(self):
+        html = '<ul><li>• Bullet with existing dot</li><li>- Bullet with dash</li></ul>'
+        cleaned = html_to_text(html)
+        self.assertEqual(
+            cleaned,
+            '• Bullet with existing dot\n• Bullet with dash'
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

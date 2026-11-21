@@ -269,6 +269,7 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
     """
     title = str(raw_job.get("title") or "").strip()
     desc = str(raw_job.get("description") or "").strip()
+    desc = re.sub(r'\n{3,}', '\n\n', desc)
     company = normalize_company(raw_job.get("company", ""), desc)
     raw_location = str(raw_job.get("location") or "Not specified").strip()
     location, extracted_setup = extract_location_and_setup(

@@ -2750,12 +2750,17 @@ async function submitAddJob() {
 let currentModalJobId = null;
 let currentModalJobText = '';
 
+function formatJobDescription(text) {
+    if (!text) return '';
+    return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function openJobDetailsModal(jobId) {
     const job = allJobs.find(j => String(j.job_id) === String(jobId));
     if (!job) return;
 
     currentModalJobId = jobId;
-    currentModalJobText = job.description || 'No job description text provided.';
+    currentModalJobText = formatJobDescription(job.description) || 'No job description text provided.';
 
     const titleEl = document.getElementById('job-details-title');
     const companyEl = document.getElementById('job-details-company');
@@ -3080,8 +3085,9 @@ function openJobDetailsModal(jobId) {
                         job.apply_payload = fullJob.apply_payload;
                     }
                     if (currentModalJobId === jobId) {
-                        currentModalJobText = fullJob.description;
-                        if (contentEl) contentEl.textContent = fullJob.description;
+                        const cleanedDesc = formatJobDescription(fullJob.description);
+                        currentModalJobText = cleanedDesc;
+                        if (contentEl) contentEl.textContent = cleanedDesc;
                     }
                 } else if (currentModalJobId === jobId && contentEl) {
                     contentEl.textContent = 'No job description text provided.';

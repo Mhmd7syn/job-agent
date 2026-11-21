@@ -28,6 +28,14 @@ def html_to_text(raw_html: str) -> str:
                 block.insert_after('\n')
             block.unwrap()
     for li in soup.find_all('li'):
+        first_text = None
+        for desc in li.descendants:
+            if isinstance(desc, str) and desc.strip():
+                first_text = desc
+                break
+        if first_text:
+            cleaned = re.sub(r'^[•\-\*·–]\s*', '', str(first_text))
+            first_text.replace_with(cleaned)
         li.insert_before('\n• ')
     for tag in soup.find_all(_BLOCK_TAGS):
         tag.insert_before('\n\n')

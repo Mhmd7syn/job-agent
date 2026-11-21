@@ -95,7 +95,8 @@ def _scrape_linkedin_job(url: str) -> dict:
                 title = title_elem.text.strip() if title_elem else ""
                 company = comp_elem.text.strip() if comp_elem else "Unknown"
                 loc_val = loc_elem.text.strip() if loc_elem else "Not specified"
-                desc = desc_elem.get_text(separator="\n", strip=True) if desc_elem else ""
+                from scrapers.common import html_to_text
+                desc = html_to_text(str(desc_elem)) if desc_elem else ""
                 date_str = time_tag.text.strip() if time_tag else ""
 
                 if criteria_text and desc:
@@ -223,7 +224,7 @@ def _scrape_linkedin_job(url: str) -> dict:
                     let loc = locEls.length > 0 ? locEls[0].innerText.trim() : (document.querySelector('.jobs-unified-top-card__bullet, .topcard__flavor--bullet')?.innerText.trim() || '');
 
                     // Description
-                    const desc = document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerText.trim() || '';
+                    const desc = document.querySelector('.jobs-description__content, .show-more-less-html__markup, #job-details')?.innerHTML || '';
 
                     // Apply info
                     let applyHref = null;
@@ -283,13 +284,15 @@ def _scrape_linkedin_job(url: str) -> dict:
                 if title:
                     comp = pw_extracted.get("company") or "Unknown"
                     pw_loc = pw_extracted.get("location") or "Not specified"
-                    clean_loc, extracted_setup = extract_location_and_setup(pw_loc, title, pw_extracted.get("description", ""))
+                    from scrapers.common import html_to_text
+                    pw_desc = html_to_text(pw_extracted.get("description") or "")
+                    clean_loc, extracted_setup = extract_location_and_setup(pw_loc, title, pw_desc)
                     return {
                         "title": title,
                         "company": comp,
                         "location": clean_loc or pw_loc,
-                        "job_type": _fix_job_type("", title, pw_extracted.get("description", "")),
-                        "description": pw_extracted.get("description") or "",
+                        "job_type": _fix_job_type("", title, pw_desc),
+                        "description": pw_desc,
                         "date_posted": datetime.date.today().isoformat(),
                         "site": "linkedin",
                         "job_url": clean_url,
