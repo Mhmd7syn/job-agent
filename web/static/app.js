@@ -743,7 +743,6 @@ function refreshSettingsUI() {
     const briefEl = document.getElementById('config-user-brief');
     if (briefEl) briefEl.value = currentConfig.USER_BRIEF || '';
 
-    initTagInput('config-resume-keywords', currentConfig.RESUME_KEYWORDS || []);
     initTagInput('config-exclude-keywords', currentConfig.EXCLUDE_KEYWORDS || []);
     initTagInput('config-favorite-companies', currentConfig.FAVORITE_COMPANIES || []);
     initTagInput('config-excluded-companies', currentConfig.EXCLUDED_COMPANIES || []);
@@ -1572,7 +1571,6 @@ async function saveSettings() {
 
     newConfig.USER_BRIEF = document.getElementById('config-user-brief')?.value || '';
     
-    newConfig.RESUME_KEYWORDS = getTagInputValues('config-resume-keywords');
     newConfig.EXCLUDE_KEYWORDS = getTagInputValues('config-exclude-keywords');
     newConfig.FAVORITE_COMPANIES = getTagInputValues('config-favorite-companies');
     newConfig.EXCLUDED_COMPANIES = getTagInputValues('config-excluded-companies');
@@ -1997,18 +1995,19 @@ function renderRolesUI() {
     roles.forEach((role) => {
         const userExp = role.years_experience !== undefined ? role.years_experience : 0;
         const resumePath = role.resume_path || (currentProfileData?.smart_screening?.resumes_by_role?.[role.title]) || '';
-        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms || role.terms || [], userExp, resumePath);
+        const extractedKeywords = role.extracted_keywords || role.resume_keywords || [];
+        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms || role.terms || [], userExp, resumePath, extractedKeywords);
     });
     renderRoleResumesOverview();
 }
 
 function addRoleUI() {
     const container = document.getElementById('roles-container');
-    addRoleCard(container, roleIndexCounter++, 'New Role', [], 0, '');
+    addRoleCard(container, roleIndexCounter++, 'New Role', [], 0, '', []);
     renderRoleResumesOverview();
 }
 
-function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '') {
+function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', extractedKeywords = []) {
     const card = document.createElement('div');
     card.className = 'role-card';
     card.style = 'background: rgba(0, 0, 0, 0.2); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--card-border); position: relative;';
@@ -2108,6 +2107,27 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '') 
     const enContainer = document.createElement('div');
     enContainer.id = 'role-en-' + index;
     
+    // Auto-extracted Core Skills Preview (read-only badges)
+    const skillsLabel = document.createElement('label');
+    skillsLabel.style = 'margin-top: 0.8rem; font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between;';
+    skillsLabel.innerHTML = `<span><i class="fa-solid fa-tags" style="color: var(--accent); margin-right: 4px;"></i>Auto-Extracted Skills (From Tailored Resume)</span> <span style="font-size: 0.75rem; color: var(--text-muted);">${extractedKeywords && extractedKeywords.length ? extractedKeywords.length + ' skills' : 'None detected'}</span>`;
+
+    const skillsContainer = document.createElement('div');
+    skillsContainer.id = `role-skills-preview-${index}`;
+    skillsContainer.style = 'display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.3rem; padding: 0.5rem; background: rgba(0, 0, 0, 0.25); border-radius: 0.35rem; min-height: 32px; align-items: center;';
+
+    if (extractedKeywords && extractedKeywords.length > 0) {
+        extractedKeywords.forEach(kw => {
+            const badge = document.createElement('span');
+            badge.className = 'badge';
+            badge.style = 'background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--text-main); font-size: 0.78rem; padding: 2px 8px; border-radius: 4px;';
+            badge.innerText = kw;
+            skillsContainer.appendChild(badge);
+        });
+    } else {
+        skillsContainer.innerHTML = '<span style="color: var(--text-muted); font-size: 0.78rem; font-style: italic;">Set a valid resume file above to auto-extract core skills.</span>';
+    }
+
     card.appendChild(titleLabel);
     card.appendChild(titleInput);
     card.appendChild(maxExpLabel);
@@ -2116,6 +2136,8 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '') 
     card.appendChild(resumeRow);
     card.appendChild(enLabel);
     card.appendChild(enContainer);
+    card.appendChild(skillsLabel);
+    card.appendChild(skillsContainer);
     
     container.appendChild(card);
     

@@ -25,9 +25,17 @@ def load_current_config():
 
 def format_config_for_prompt(config_data):
     """Formats active configuration into a concise summary string for LLM prompts."""
+    resume_kws = config_data.get('RESUME_KEYWORDS', [])
+    if not resume_kws:
+        try:
+            from core.role_keywords import get_unified_resume_keywords
+            resume_kws = get_unified_resume_keywords(config=config_data)
+        except Exception:
+            resume_kws = []
+
     return f"""
     CURRENT ACTIVE CONFIGURATION:
-    - RESUME_KEYWORDS: {json.dumps(config_data.get('RESUME_KEYWORDS', []))}
+    - RESUME_KEYWORDS: {json.dumps(resume_kws)}
     - EXCLUDE_KEYWORDS: {json.dumps(config_data.get('EXCLUDE_KEYWORDS', []))}
     - FAVORITE_COMPANIES: {json.dumps(config_data.get('FAVORITE_COMPANIES', []))}
     - EXCLUDED_COMPANIES: {json.dumps(config_data.get('EXCLUDED_COMPANIES', []))}

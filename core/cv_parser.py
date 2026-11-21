@@ -128,21 +128,25 @@ def parse_cv_with_ai(file_path, api_key=None):
 
 def parse_cv_heuristic(text):
     """Heuristic offline taxonomy matcher for CV text."""
+    try:
+        from core.role_keywords import extract_skills_from_resume_text
+        found_skills = extract_skills_from_resume_text(text)
+    except Exception:
+        found_skills = []
+
     text_lower = text.lower()
-    
-    # Common skill taxonomy
-    common_skills = [
-        "python", "sql", "mysql", "postgresql", "mongodb", "nosql", "java", "c++", "c#", "javascript", "typescript",
-        "react", "angular", "vue", "html", "css", "node.js", "express", "django", "flask", "fastapi", "spring", "dotnet",
-        "artificial intelligence", "ai", "machine learning", "ml", "deep learning", "dl", "nlp", "computer vision",
-        "tensorflow", "keras", "pytorch", "scikit-learn", "pandas", "numpy", "matplotlib", "seaborn", "scipy",
-        "power bi", "tableau", "excel", "dax", "bi", "data engineering", "etl", "spark", "hadoop", "airflow", "snowflake",
-        "docker", "kubernetes", "aws", "azure", "gcp", "linux", "git", "github", "mlops", "ci/cd", "restful api",
-        "genai", "llm", "transformers", "huggingface", "langchain", "llamaindex", "rag", "opencv", "yolo", "cnn", "rnn",
-        "lstm", "statistics", "a/b testing", "feature engineering", "eda", "data analyst", "data scientist", "data engineer"
-    ]
-    
-    found_skills = [s for s in common_skills if re.search(r'\b' + re.escape(s) + r'\b', text_lower)]
+    if not found_skills:
+        common_skills = [
+            "python", "sql", "mysql", "postgresql", "mongodb", "nosql", "java", "c++", "c#", "javascript", "typescript",
+            "react", "angular", "vue", "html", "css", "node.js", "express", "django", "flask", "fastapi", "spring", "dotnet",
+            "artificial intelligence", "ai", "machine learning", "ml", "deep learning", "dl", "nlp", "computer vision",
+            "tensorflow", "keras", "pytorch", "scikit-learn", "pandas", "numpy", "matplotlib", "seaborn", "scipy",
+            "power bi", "tableau", "excel", "dax", "bi", "data engineering", "etl", "spark", "hadoop", "airflow", "snowflake",
+            "docker", "kubernetes", "aws", "azure", "gcp", "linux", "git", "github", "mlops", "ci/cd", "restful api",
+            "genai", "llm", "transformers", "huggingface", "langchain", "llamaindex", "rag", "opencv", "yolo", "cnn", "rnn",
+            "lstm", "statistics", "a/b testing", "feature engineering", "eda", "data analyst", "data scientist", "data engineer"
+        ]
+        found_skills = [s for s in common_skills if re.search(r'\b' + re.escape(s) + r'\b', text_lower)]
     
     core_skills = found_skills[:15] if found_skills else ["python", "sql", "problem solving"]
     

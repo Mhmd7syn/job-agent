@@ -192,7 +192,18 @@ def get_config():
     config_path = CONFIG_JSON_PATH
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+        
+        # Populate auto-extracted resume keywords per role for UI preview
+        try:
+            from core.role_keywords import get_resume_keywords_for_role
+            for r in data.get("ROLES", []):
+                r_title = r.get("title", "")
+                r["extracted_keywords"] = get_resume_keywords_for_role(r_title, config=data)
+        except Exception as e:
+            logging.debug(f"Failed to populate extracted keywords for roles: {e}")
+
+        return data
     except Exception as e:
         return {"error": str(e)}
 
@@ -202,6 +213,11 @@ async def update_config(request: Request, background_tasks: BackgroundTasks):
     try:
         new_config = await request.json()
         new_config["last_reviewed_date"] = datetime.now().strftime("%Y-%m-%d")
+
+        # Clean read-only preview fields before saving
+        for r in new_config.get("ROLES", []):
+            r.pop("extracted_keywords", None)
+
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(new_config, f, indent=2, ensure_ascii=False)
         

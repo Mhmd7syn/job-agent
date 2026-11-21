@@ -257,6 +257,12 @@ def reload_config():
         SEARCH_TERMS = _config_data.get("SEARCH_TERMS", [])
 
     RESUME_KEYWORDS = _config_data.get("RESUME_KEYWORDS", [])
+    if not RESUME_KEYWORDS and ROLES:
+        try:
+            from core.role_keywords import get_unified_resume_keywords
+            RESUME_KEYWORDS = get_unified_resume_keywords(_config_data)
+        except Exception:
+            pass
     EXCLUDE_KEYWORDS = _config_data.get("EXCLUDE_KEYWORDS", [])
     EXCLUDED_COMPANIES = _config_data.get("EXCLUDED_COMPANIES", [])
     FAVORITE_COMPANIES = _config_data.get("FAVORITE_COMPANIES", [])
