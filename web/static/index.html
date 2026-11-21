@@ -117,15 +117,6 @@
 
                         <!-- SubPane 1.1: Roles & Keywords -->
                         <div id="subpane-matching-roles" class="settings-subsection-pane active">
-                            <div style="background: rgba(59, 130, 246, 0.12); border: 1px dashed var(--accent); padding: 1rem; border-radius: 0.75rem; text-align: center; margin-bottom: 1.2rem; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
-                                <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-main);"><i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent); margin-right: 0.5rem;"></i>AI Smart CV Ingestion</span>
-                                <p style="margin: 0; font-size: 0.82rem; color: var(--text-muted);">Upload your resume and let Gemini AI generate tailored configuration suggestions for your review!</p>
-                                <input type="file" id="cv-upload-input" accept=".pdf,.docx,.txt,.md" style="display: none;" onchange="handleCVUpload(this.files)">
-                                <button type="button" class="btn btn-primary" onclick="document.getElementById('cv-upload-input').click()" id="upload-cv-btn" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">
-                                    <i class="fa-solid fa-file-arrow-up" id="cv-btn-icon"></i><i class="fa-solid fa-spinner fa-spin hidden" id="cv-btn-spinner"></i> <span id="cv-btn-text">Import Skills & Preferences from CV</span>
-                                </button>
-                            </div>
-
                             <label style="font-size: 0.9rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.3rem;">AI User Profile Brief (Used for relevance scoring)</label>
                             <textarea id="config-user-brief" rows="4" class="input-field" style="width: 100%; padding: 0.65rem; margin-bottom: 1.2rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-family: inherit; font-size: 0.85rem; line-height: 1.5;"></textarea>
 
@@ -306,11 +297,7 @@
                                 </label>
                                 <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 0.5rem 0;">Used whenever a job does not match any specific configured role.</p>
                                 <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                    <input type="text" id="profile-default-resume" style="flex: 1;" placeholder="Absolute path or upload (e.g. C:\Users\...\General_Resume.pdf)">
-                                    <input type="file" id="default-resume-upload-input" accept=".pdf,.docx,.txt" style="display: none;" onchange="handleDefaultResumeUpload(this.files)">
-                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('default-resume-upload-input').click()" style="white-space: nowrap;">
-                                        <i class="fa-solid fa-file-arrow-up"></i> Upload / Browse
-                                    </button>
+                                    <input type="text" id="profile-default-resume" style="flex: 1;" placeholder="Absolute path (e.g. C:\Users\...\General_Resume.pdf)">
                                 </div>
                             </div>
 
@@ -795,6 +782,60 @@
             </div>
             <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: flex-end; gap: 0.75rem; background: rgba(0,0,0,0.2);">
                 <button class="btn btn-secondary" onclick="hideProposalsModal()"><i class="fa-solid fa-xmark"></i> Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Role Resume Keyword Diff & Proposals Modal -->
+    <div id="role-keyword-diff-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-code-compare" style="color: var(--accent);"></i> Review Resume Skills Extraction</h2>
+                <button class="close-btn" onclick="hideRoleKeywordDiffModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem 1.5rem;">
+                <div style="margin-bottom: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.75rem;">
+                    <div style="font-size: 1rem; font-weight: 600; color: var(--text-main);" id="diff-modal-role-title">Role: </div>
+                    <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 3px;">
+                        Review proposed skill additions and removals below. Accepted changes will update this role's tags immediately.
+                    </div>
+                </div>
+
+                <!-- Diff summary badges -->
+                <div style="display: flex; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                    <span id="diff-badge-add" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; border-radius: 99px; padding: 3px 10px; font-size: 0.78rem; font-weight: 600;">
+                        <i class="fa-solid fa-plus"></i> <span id="diff-count-add">0</span> New to Add
+                    </span>
+                    <span id="diff-badge-remove" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid #ef4444; border-radius: 99px; padding: 3px 10px; font-size: 0.78rem; font-weight: 600;">
+                        <i class="fa-solid fa-minus"></i> <span id="diff-count-remove">0</span> Missing from CV
+                    </span>
+                    <span id="diff-badge-unchanged" style="background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid var(--card-border); border-radius: 99px; padding: 3px 10px; font-size: 0.78rem; font-weight: 600;">
+                        <i class="fa-solid fa-check"></i> <span id="diff-count-unchanged">0</span> In Both
+                    </span>
+                </div>
+
+                <!-- Quick selection buttons -->
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid var(--card-border); padding: 0.5rem 0.75rem; border-radius: 0.4rem; font-size: 0.82rem;">
+                    <span style="color: var(--text-muted);">Quick Presets:</span>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="setDiffPreset('merge')" style="font-size: 0.78rem; padding: 4px 10px;" title="Add new skills from CV while preserving your existing manual tags">
+                            <i class="fa-solid fa-code-merge" style="color: var(--accent);"></i> Keep Existing & Add New
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="setDiffPreset('replace')" style="font-size: 0.78rem; padding: 4px 10px;" title="Set skills to exactly match the resume extraction">
+                            <i class="fa-solid fa-arrows-rotate" style="color: #ef4444;"></i> Exact Resume Reset
+                        </button>
+                    </div>
+                </div>
+
+                <div id="diff-modal-content-list" style="display: flex; flex-direction: column; gap: 1rem; max-height: 400px; overflow-y: auto; padding-right: 0.4rem;">
+                    <!-- Sections injected dynamically: Additions, Removals, Unchanged -->
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 0.85rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
+                <button type="button" class="btn btn-secondary" onclick="hideRoleKeywordDiffModal()"><i class="fa-solid fa-xmark"></i> Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="applyRoleKeywordDiff()" id="apply-diff-btn">
+                    <i class="fa-solid fa-check"></i> Apply Selected Changes (<span id="diff-preview-final-count">0</span> Skills)
+                </button>
             </div>
         </div>
     </div>

@@ -691,45 +691,6 @@ async function fetchConfig() {
     }
 }
 
-async function handleCVUpload(files) {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const btnIcon = document.getElementById('cv-btn-icon');
-    const btnSpinner = document.getElementById('cv-btn-spinner');
-    const btnText = document.getElementById('cv-btn-text');
-
-    if (btnIcon) btnIcon.classList.add('hidden');
-    if (btnSpinner) btnSpinner.classList.remove('hidden');
-    if (btnText) btnText.textContent = "AI Analysing Resume...";
-
-    try {
-        const res = await fetch('/api/parse-cv', {
-            method: 'POST',
-            body: formData
-        });
-        const data = await res.json();
-        
-        if (data.status === 'success' || !data.error) {
-            showToast('CV Analyzed Successfully! Generated proposals for your review.', 'success', 'fa-check');
-            await checkPendingUpdates();
-            openProposalsModal();
-        } else {
-            showToast('Error analyzing CV: ' + (data.error || 'Unknown error'), 'danger', 'fa-xmark');
-        }
-    } catch (e) {
-        showToast('Upload failed: ' + e.message, 'danger', 'fa-xmark');
-    } finally {
-        if (btnIcon) btnIcon.classList.remove('hidden');
-        if (btnSpinner) btnSpinner.classList.add('hidden');
-        if (btnText) btnText.textContent = "Import Skills & Preferences from CV";
-        const inputEl = document.getElementById('cv-upload-input');
-        if (inputEl) inputEl.value = "";
-    }
-}
-
 function refreshSettingsUI() {
     renderRolesUI();
     checkPendingUpdates();
@@ -1540,16 +1501,19 @@ async function saveSettings() {
         const maxExp = maxExpStr !== undefined && maxExpStr !== '' ? parseInt(maxExpStr) : 0;
         const enTerms = getTagInputValues('role-en-' + index);
         const resumePath = card.querySelector('.role-resume-input')?.value.trim() || '';
+        const resumeKeywords = getTagInputValues('role-kws-' + index);
         if (title || enTerms.length > 0) {
             newRoles.push({
                 title: title || 'Unnamed Role',
                 years_experience: maxExp,
                 english_terms: enTerms,
-                resume_path: resumePath
+                resume_path: resumePath,
+                resume_keywords: resumeKeywords
             });
         }
     });
     newConfig.ROLES = newRoles;
+    delete newConfig.RESUME_KEYWORDS;
     
     newConfig.LOCATION = getTagInputValues('config-location');
     newConfig.TARGET_LOCATIONS = getTagInputValues('config-target-locations');
@@ -1648,6 +1612,10 @@ window.onclick = function(event) {
     const jobTextModal = document.getElementById('job-text-modal');
     if (event.target == jobTextModal) {
         hideJobTextModal();
+    }
+    const roleDiffModal = document.getElementById('role-keyword-diff-modal');
+    if (event.target == roleDiffModal) {
+        hideRoleKeywordDiffModal();
     }
 }
 
@@ -1852,32 +1820,6 @@ async function uploadRoleResumeFile(file, inputEl, statusBadgeEl, roleIndex) {
     }
 }
 
-async function handleDefaultResumeUpload(files) {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-        const res = await fetch('/api/upload-role-resume', {
-            method: 'POST',
-            body: formData
-        });
-        const data = await res.json();
-        if (data.status === 'success' && data.file_path) {
-            const el = document.getElementById('profile-default-resume');
-            if (el) el.value = data.file_path;
-            showToast(`Default fallback resume uploaded: ${data.filename}`, 'success', 'fa-check');
-        } else {
-            showToast(data.error || 'Failed to upload resume', 'danger', 'fa-triangle-exclamation');
-        }
-    } catch (e) {
-        showToast('Upload error: ' + e.message, 'danger', 'fa-xmark');
-    } finally {
-        const inputEl = document.getElementById('default-resume-upload-input');
-        if (inputEl) inputEl.value = '';
-    }
-}
-
 function renderRoleResumesOverview() {
     const listEl = document.getElementById('role-resumes-overview-list');
     if (!listEl) return;
@@ -1995,7 +1937,7 @@ function renderRolesUI() {
     roles.forEach((role) => {
         const userExp = role.years_experience !== undefined ? role.years_experience : 0;
         const resumePath = role.resume_path || (currentProfileData?.smart_screening?.resumes_by_role?.[role.title]) || '';
-        const extractedKeywords = role.extracted_keywords || role.resume_keywords || [];
+        const extractedKeywords = (role.resume_keywords !== undefined && role.resume_keywords !== null) ? role.resume_keywords : (role.extracted_keywords || []);
         addRoleCard(container, roleIndexCounter++, role.title, role.english_terms || role.terms || [], userExp, resumePath, extractedKeywords);
     });
     renderRoleResumesOverview();
@@ -2084,6 +2026,49 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', 
     uploadBtn.innerHTML = '<i class="fa-solid fa-file-arrow-up"></i> Upload / Browse';
     uploadBtn.onclick = () => fileInput.click();
 
+    const reExtractBtn = document.createElement('button');
+    reExtractBtn.type = 'button';
+    reExtractBtn.className = 'btn btn-secondary btn-sm';
+    reExtractBtn.style = 'white-space: nowrap; padding: 0.5rem 0.8rem; font-size: 0.82rem;';
+    reExtractBtn.title = 'Re-extract technical keywords from configured CV using Gemini';
+    reExtractBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Re-extract from CV';
+    reExtractBtn.onclick = async () => {
+        const path = resumeInput.value.trim();
+        if (!path) {
+            showToast('Please specify or upload a valid resume file first.', 'warning', 'fa-triangle-exclamation');
+            return;
+        }
+        const origHtml = reExtractBtn.innerHTML;
+        reExtractBtn.disabled = true;
+        reExtractBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Extracting...';
+        try {
+            const res = await fetch('/api/extract-resume-keywords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ resume_path: path })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'success' && Array.isArray(data.keywords)) {
+                const currentTags = getTagInputValues(`role-kws-${index}`);
+                const roleTitleInput = card.querySelector('.role-title-input');
+                const roleTitle = roleTitleInput ? roleTitleInput.value.trim() : `Role #${index + 1}`;
+                openRoleKeywordDiffModal({
+                    roleIndex: index,
+                    roleTitle: roleTitle || `Role #${index + 1}`,
+                    currentTags: currentTags,
+                    freshKeywords: data.keywords
+                });
+            } else {
+                showToast(data.detail || data.error || 'Failed to extract skills from CV', 'danger', 'fa-triangle-exclamation');
+            }
+        } catch (err) {
+            showToast('Error extracting skills: ' + err.message, 'danger', 'fa-xmark');
+        } finally {
+            reExtractBtn.disabled = false;
+            reExtractBtn.innerHTML = origHtml;
+        }
+    };
+
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
     clearBtn.className = 'btn btn-secondary btn-sm';
@@ -2100,6 +2085,7 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', 
     resumeRow.appendChild(resumeInput);
     resumeRow.appendChild(fileInput);
     resumeRow.appendChild(uploadBtn);
+    resumeRow.appendChild(reExtractBtn);
     resumeRow.appendChild(clearBtn);
 
     const enLabel = document.createElement('label');
@@ -2107,26 +2093,13 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', 
     const enContainer = document.createElement('div');
     enContainer.id = 'role-en-' + index;
     
-    // Auto-extracted Core Skills Preview (read-only badges)
+    // Editable Core Skills Tag Input per Role
     const skillsLabel = document.createElement('label');
-    skillsLabel.style = 'margin-top: 0.8rem; font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between;';
-    skillsLabel.innerHTML = `<span><i class="fa-solid fa-tags" style="color: var(--accent); margin-right: 4px;"></i>Auto-Extracted Skills (From Tailored Resume)</span> <span style="font-size: 0.75rem; color: var(--text-muted);">${extractedKeywords && extractedKeywords.length ? extractedKeywords.length + ' skills' : 'None detected'}</span>`;
+    skillsLabel.innerText = 'Role Keywords / Extracted Skills';
+    skillsLabel.style = 'margin-top: 0.8rem; display: block;';
 
     const skillsContainer = document.createElement('div');
-    skillsContainer.id = `role-skills-preview-${index}`;
-    skillsContainer.style = 'display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.3rem; padding: 0.5rem; background: rgba(0, 0, 0, 0.25); border-radius: 0.35rem; min-height: 32px; align-items: center;';
-
-    if (extractedKeywords && extractedKeywords.length > 0) {
-        extractedKeywords.forEach(kw => {
-            const badge = document.createElement('span');
-            badge.className = 'badge';
-            badge.style = 'background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--text-main); font-size: 0.78rem; padding: 2px 8px; border-radius: 4px;';
-            badge.innerText = kw;
-            skillsContainer.appendChild(badge);
-        });
-    } else {
-        skillsContainer.innerHTML = '<span style="color: var(--text-muted); font-size: 0.78rem; font-style: italic;">Set a valid resume file above to auto-extract core skills.</span>';
-    }
+    skillsContainer.id = `role-kws-${index}`;
 
     card.appendChild(titleLabel);
     card.appendChild(titleInput);
@@ -2142,6 +2115,246 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', 
     container.appendChild(card);
     
     initTagInput(enContainer.id, enTerms || []);
+    initTagInput(skillsContainer.id, extractedKeywords || []);
+}
+
+// --- Role Resume Keyword Diff & Proposals Modal Logic ---
+let activeRoleDiff = null;
+
+function openRoleKeywordDiffModal({ roleIndex, roleTitle, currentTags, freshKeywords }) {
+    const currentNormMap = new Map();
+    (currentTags || []).forEach(t => {
+        const trimmed = String(t).trim();
+        if (trimmed) currentNormMap.set(trimmed.toLowerCase(), trimmed);
+    });
+
+    const freshNormMap = new Map();
+    (freshKeywords || []).forEach(t => {
+        const trimmed = String(t).trim();
+        if (trimmed) freshNormMap.set(trimmed.toLowerCase(), trimmed);
+    });
+
+    const additions = [];
+    for (const [lower, orig] of freshNormMap.entries()) {
+        if (!currentNormMap.has(lower)) {
+            additions.push({ term: orig, selected: true });
+        }
+    }
+
+    const removals = [];
+    for (const [lower, orig] of currentNormMap.entries()) {
+        if (!freshNormMap.has(lower)) {
+            // Default to keep: true so manual additions are preserved across re-extractions!
+            removals.push({ term: orig, keep: true });
+        }
+    }
+
+    const unchanged = [];
+    for (const [lower, orig] of currentNormMap.entries()) {
+        if (freshNormMap.has(lower)) {
+            unchanged.push(orig);
+        }
+    }
+
+    if (additions.length === 0 && removals.length === 0) {
+        showToast('All extracted skills already match your current role tags. No changes needed.', 'info', 'fa-circle-info');
+        return;
+    }
+
+    activeRoleDiff = {
+        roleIndex,
+        roleTitle,
+        additions,
+        removals,
+        unchanged
+    };
+
+    const titleEl = document.getElementById('diff-modal-role-title');
+    if (titleEl) titleEl.innerText = `Role: ${roleTitle}`;
+
+    const addBadgeEl = document.getElementById('diff-count-add');
+    if (addBadgeEl) addBadgeEl.innerText = additions.length;
+
+    const remBadgeEl = document.getElementById('diff-count-remove');
+    if (remBadgeEl) remBadgeEl.innerText = removals.length;
+
+    const unchBadgeEl = document.getElementById('diff-count-unchanged');
+    if (unchBadgeEl) unchBadgeEl.innerText = unchanged.length;
+
+    renderRoleKeywordDiffModal();
+
+    const modal = document.getElementById('role-keyword-diff-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function hideRoleKeywordDiffModal() {
+    const modal = document.getElementById('role-keyword-diff-modal');
+    if (modal) modal.classList.add('hidden');
+    activeRoleDiff = null;
+}
+
+function renderRoleKeywordDiffModal() {
+    if (!activeRoleDiff) return;
+    const container = document.getElementById('diff-modal-content-list');
+    if (!container) return;
+
+    let html = '';
+
+    // 1. Additions Section
+    html += `
+        <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 0.5rem; padding: 0.85rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                <span style="font-weight: 600; color: #10b981; font-size: 0.88rem;">
+                    <i class="fa-solid fa-plus-circle"></i> New Skills from CV (${activeRoleDiff.additions.length})
+                </span>
+                ${activeRoleDiff.additions.length > 0 ? `
+                <div style="display: flex; gap: 0.5rem; font-size: 0.78rem;">
+                    <button type="button" class="btn btn-link btn-xs" onclick="toggleAllDiffAdditions(true)" style="color: #10b981; padding: 0; text-decoration: underline; background: none; border: none; cursor: pointer;">Select All</button>
+                    <span style="color: var(--text-muted);">|</span>
+                    <button type="button" class="btn btn-link btn-xs" onclick="toggleAllDiffAdditions(false)" style="color: var(--text-muted); padding: 0; text-decoration: underline; background: none; border: none; cursor: pointer;">Deselect All</button>
+                </div>` : ''}
+            </div>
+            ${activeRoleDiff.additions.length === 0 ? `
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">No new skills discovered in resume.</div>
+            ` : `
+                <div style="display: flex; flex-wrap: wrap; gap: 0.45rem;">
+                    ${activeRoleDiff.additions.map((item, idx) => `
+                        <label style="display: inline-flex; align-items: center; gap: 0.35rem; background: ${item.selected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)'}; border: 1px solid ${item.selected ? '#10b981' : 'var(--card-border)'}; border-radius: 0.25rem; padding: 4px 8px; font-size: 0.82rem; cursor: pointer; user-select: none; transition: all 0.15s ease;">
+                            <input type="checkbox" id="diff-add-${idx}" ${item.selected ? 'checked' : ''} onchange="toggleDiffAdd(${idx}, this.checked)" style="cursor: pointer; margin: 0;">
+                            <span style="color: ${item.selected ? '#ffffff' : 'var(--text-muted)'}; font-weight: 500;">+ ${escapeHtml(item.term)}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            `}
+        </div>
+    `;
+
+    // 2. Missing from CV / Manual tags section
+    html += `
+        <div style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 0.5rem; padding: 0.85rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span style="font-weight: 600; color: #f59e0b; font-size: 0.88rem;">
+                    <i class="fa-solid fa-shield-halved"></i> Missing from CV / Manual Skills (${activeRoleDiff.removals.length})
+                </span>
+                ${activeRoleDiff.removals.length > 0 ? `
+                <div style="display: flex; gap: 0.5rem; font-size: 0.78rem;">
+                    <button type="button" class="btn btn-link btn-xs" onclick="toggleAllDiffRemovals(true)" style="color: #60a5fa; padding: 0; text-decoration: underline; background: none; border: none; cursor: pointer;">Keep All (Preserve)</button>
+                    <span style="color: var(--text-muted);">|</span>
+                    <button type="button" class="btn btn-link btn-xs" onclick="toggleAllDiffRemovals(false)" style="color: #ef4444; padding: 0; text-decoration: underline; background: none; border: none; cursor: pointer;">Remove All</button>
+                </div>` : ''}
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.6rem;">
+                Keep checked to preserve your manual edits. Unchecking will remove the tag from this role.
+            </div>
+            ${activeRoleDiff.removals.length === 0 ? `
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">All current skills were found in the resume.</div>
+            ` : `
+                <div style="display: flex; flex-wrap: wrap; gap: 0.45rem;">
+                    ${activeRoleDiff.removals.map((item, idx) => `
+                        <label style="display: inline-flex; align-items: center; gap: 0.35rem; background: ${item.keep ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.12)'}; border: 1px solid ${item.keep ? '#3b82f6' : 'rgba(239, 68, 68, 0.4)'}; border-radius: 0.25rem; padding: 4px 8px; font-size: 0.82rem; cursor: pointer; user-select: none; transition: all 0.15s ease;">
+                            <input type="checkbox" id="diff-rem-${idx}" ${item.keep ? 'checked' : ''} onchange="toggleDiffRem(${idx}, this.checked)" style="cursor: pointer; margin: 0;">
+                            <span style="color: ${item.keep ? '#ffffff' : '#ef4444'}; text-decoration: ${item.keep ? 'none' : 'line-through'}; font-weight: 500;">
+                                <i class="${item.keep ? 'fa-solid fa-lock' : 'fa-solid fa-trash'}" style="font-size: 0.72rem; margin-right: 2px;"></i>
+                                ${escapeHtml(item.term)}
+                            </span>
+                        </label>
+                    `).join('')}
+                </div>
+            `}
+        </div>
+    `;
+
+    // 3. Unchanged Skills Section
+    if (activeRoleDiff.unchanged.length > 0) {
+        html += `
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 0.85rem;">
+                <div style="font-weight: 600; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.5rem;">
+                    <i class="fa-solid fa-check"></i> In Both / Unchanged (${activeRoleDiff.unchanged.length})
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; max-height: 90px; overflow-y: auto;">
+                    ${activeRoleDiff.unchanged.map(term => `
+                        <span style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--card-border); border-radius: 0.25rem; padding: 2px 7px; font-size: 0.78rem; color: var(--text-muted);">
+                            ${escapeHtml(term)}
+                        </span>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+    updateDiffFinalCount();
+}
+
+function updateDiffFinalCount() {
+    if (!activeRoleDiff) return;
+    const addCount = activeRoleDiff.additions.filter(a => a.selected).length;
+    const remCount = activeRoleDiff.removals.filter(r => r.keep).length;
+    const unchCount = activeRoleDiff.unchanged.length;
+    const total = addCount + remCount + unchCount;
+    const el = document.getElementById('diff-preview-final-count');
+    if (el) el.innerText = total;
+}
+
+function toggleDiffAdd(idx, checked) {
+    if (!activeRoleDiff || !activeRoleDiff.additions[idx]) return;
+    activeRoleDiff.additions[idx].selected = checked;
+    renderRoleKeywordDiffModal();
+}
+
+function toggleDiffRem(idx, checked) {
+    if (!activeRoleDiff || !activeRoleDiff.removals[idx]) return;
+    activeRoleDiff.removals[idx].keep = checked;
+    renderRoleKeywordDiffModal();
+}
+
+function toggleAllDiffAdditions(selected) {
+    if (!activeRoleDiff) return;
+    activeRoleDiff.additions.forEach(a => { a.selected = selected; });
+    renderRoleKeywordDiffModal();
+}
+
+function toggleAllDiffRemovals(keep) {
+    if (!activeRoleDiff) return;
+    activeRoleDiff.removals.forEach(r => { r.keep = keep; });
+    renderRoleKeywordDiffModal();
+}
+
+function setDiffPreset(preset) {
+    if (!activeRoleDiff) return;
+    if (preset === 'merge') {
+        // Keep all existing manual tags, add all newly discovered skills from CV
+        activeRoleDiff.additions.forEach(a => { a.selected = true; });
+        activeRoleDiff.removals.forEach(r => { r.keep = true; });
+    } else if (preset === 'replace') {
+        // Exact CV reset: add all new skills, discard tags not in CV
+        activeRoleDiff.additions.forEach(a => { a.selected = true; });
+        activeRoleDiff.removals.forEach(r => { r.keep = false; });
+    }
+    renderRoleKeywordDiffModal();
+}
+
+function applyRoleKeywordDiff() {
+    if (!activeRoleDiff) return;
+    const finalSkills = [];
+    activeRoleDiff.unchanged.forEach(t => finalSkills.push(t));
+    activeRoleDiff.removals.filter(r => r.keep).forEach(r => finalSkills.push(r.term));
+    activeRoleDiff.additions.filter(a => a.selected).forEach(a => finalSkills.push(a.term));
+
+    const seen = new Set();
+    const deduped = [];
+    for (const skill of finalSkills) {
+        const lower = skill.toLowerCase();
+        if (!seen.has(lower)) {
+            seen.add(lower);
+            deduped.push(skill);
+        }
+    }
+
+    initTagInput(`role-kws-${activeRoleDiff.roleIndex}`, deduped);
+    const roleTitle = activeRoleDiff.roleTitle;
+    hideRoleKeywordDiffModal();
+    showToast(`Updated keywords for ${roleTitle} (${deduped.length} skills total)`, 'success', 'fa-check');
 }
 
 // --- Scraper Control Logic ---

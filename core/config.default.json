@@ -1,21 +1,4 @@
 {
-  "RESUME_KEYWORDS": [
-    "python",
-    "sql",
-    "machine learning",
-    "data science",
-    "artificial intelligence",
-    "pandas",
-    "numpy",
-    "scikit-learn",
-    "deep learning",
-    "tensorflow",
-    "pytorch",
-    "nlp",
-    "computer vision",
-    "git",
-    "fastapi"
-  ],
   "EXCLUDE_KEYWORDS": [
     "sales",
     "marketing",
@@ -44,7 +27,24 @@
         "Deep Learning Engineer"
       ],
       "years_experience": 1,
-      "resume_path": ""
+      "resume_path": "",
+      "resume_keywords": [
+        "python",
+        "sql",
+        "machine learning",
+        "data science",
+        "artificial intelligence",
+        "pandas",
+        "numpy",
+        "scikit-learn",
+        "deep learning",
+        "tensorflow",
+        "pytorch",
+        "nlp",
+        "computer vision",
+        "git",
+        "fastapi"
+      ]
     }
   ],
   "LOCATION": [

@@ -121,3 +121,26 @@ def test_check_resume_file_endpoint(client, tmp_path):
     resp_missing = client.post("/api/check-resume-file", json={"path": "C:\\fake_path_12345.pdf"})
     assert resp_missing.status_code == 200
     assert resp_missing.json()["exists"] is False
+
+def test_extract_resume_keywords_endpoint(client, tmp_path):
+    """Test /api/extract-resume-keywords endpoint extracting skills from resume file."""
+    temp_resume = tmp_path / "my_tech_cv.txt"
+    temp_resume.write_text("CORE SKILLS:\nLanguages: Python, SQL\nFrameworks: FastAPI, PyTorch, Docker", encoding="utf-8")
+
+    # 1. Valid resume path
+    resp = client.post("/api/extract-resume-keywords", json={"resume_path": str(temp_resume)})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert "python" in data["keywords"]
+    assert "pytorch" in data["keywords"]
+    assert data["count"] == len(data["keywords"])
+
+    # 2. Missing resume_path
+    resp_missing = client.post("/api/extract-resume-keywords", json={"resume_path": ""})
+    assert resp_missing.status_code == 400
+
+    # 3. Non-existent file path
+    resp_404 = client.post("/api/extract-resume-keywords", json={"resume_path": "C:\\fake_cv_non_existent.pdf"})
+    assert resp_404.status_code == 404
+

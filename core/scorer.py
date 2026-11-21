@@ -241,7 +241,9 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     if not all_search_terms:
         all_search_terms = config.get("SEARCH_TERMS", [])
 
-    resume_keywords = config.get("RESUME_KEYWORDS", [])
+    resume_keywords = config.get("RESUME_KEYWORDS")
+    if not resume_keywords:
+        resume_keywords = get_unified_resume_keywords(config=config)
     exclude_keywords = config.get("EXCLUDE_KEYWORDS", [])
     excluded_companies = [c.lower() for c in config.get("EXCLUDED_COMPANIES", []) if c.strip()]
     favorite_companies = [c.lower() for c in config.get("FAVORITE_COMPANIES", []) if c.strip()]

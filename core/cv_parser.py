@@ -2,8 +2,6 @@ import os
 import re
 import json
 import logging
-from pydantic import BaseModel, Field
-from core.career_levels import normalize_category_name
 
 def extract_text_from_file(file_path):
     """Extract raw text from PDF, DOCX, or TXT resumes."""
@@ -49,82 +47,6 @@ def extract_text_from_file(file_path):
         
     return text.strip()
 
-class RoleSuggestionSchema(BaseModel):
-    title: str = Field(description="Title of the recommended job role, e.g., Data Scientist or AI Engineer.")
-    english_terms: list[str] = Field(description="List of English search keywords for this role.")
-    arabic_terms: list[str] = Field(default=[], description="Optional legacy Arabic translations.")
-
-class CVExtractionSchema(BaseModel):
-    resume_keywords: list[str] = Field(description="List of core technical skills, programming languages, frameworks, and methodologies found in the CV (in lowercase, e.g., python, sql, machine learning, pytorch, aws). Extract atomic/single standalone skills only; DO NOT include compounded skills or combinations like 'python mentor' or 'python instructor'.")
-    suggested_removals: list[str] = Field(default=[], description="List of irrelevant skills, outdated technologies, or conflicting keywords currently in config that should be removed.")
-    target_roles: list[RoleSuggestionSchema] = Field(description="Recommended target job roles based on the candidate's CV experience.")
-    roles_to_remove: list[str] = Field(default=[], description="Titles of current target roles that do not fit the candidate's background.")
-    target_levels: list[str] = Field(description="Inferred target seniority levels matching canonical categories: 'Intern / Student', 'Fresh Graduate / Entry-level', 'Junior', 'Mid-Level', 'Senior / Lead', 'Manager / Director'.")
-    levels_to_remove: list[str] = Field(default=[], description="Conflicting seniority levels from canonical categories to exclude.")
-    user_brief: str = Field(description="A clear, professional 3-4 sentence first-person profile summary describing the user's background, core expertise, experience level, and what kind of roles they are seeking.")
-    location: str = Field(default="Egypt", description="The country or primary residency mentioned in the CV if found.")
-
-def generate_cv_proposals(parsed_cv, current_config):
-    """
-    Delegates proposal generation to the master generate_proposals function in core.config_tuner.
-    """
-    from core.config_tuner import generate_proposals
-    return generate_proposals(
-        candidate_updates=parsed_cv,
-        current_config=current_config,
-        source_name="CV Import",
-        reason_context="Extracted from CV profile"
-    )
-
-def parse_cv_with_ai(file_path, api_key=None):
-    """
-    Parses a CV/Resume file using Gemini AI and returns structured AI matching configurations.
-    Falls back to intelligent local keyword matching if no AI key or if API calls fail.
-    """
-    raw_text = extract_text_from_file(file_path)
-    if not raw_text:
-        return {"error": "Extracted text is empty. Could not read CV contents."}
-        
-    from core.gemini_client import get_gemini_client, generate_content_resilient
-
-    client = get_gemini_client(api_key=api_key)
-    if client:
-        try:
-            from google.genai import types
-            
-            prompt = f"""
-            You are an expert technical recruiter and AI career profiling assistant.
-            Analyze the following resume text and generate optimal configuration settings for an AI-powered job matching agent.
-            Extract core technical skills as `resume_keywords` (extract atomic/single standalone skills only, e.g., 'python', 'sql', 'instructor'; DO NOT include compounded/combined skills like 'python mentor' or 'python instructor'), infer appropriate `target_roles` with search terms in English and Arabic, determine `target_levels` (strictly select matching canonical categories from: 'Intern / Student', 'Fresh Graduate / Entry-level', 'Junior', 'Mid-Level', 'Senior / Lead', 'Manager / Director'), extract residency country `location`, and craft an authoritative 3-4 sentence `user_brief` in first person summarizing the candidate's profile for LLM job scoring.
-            Also identify any `suggested_removals` (skills/keywords currently unsuited), `roles_to_remove`, or `levels_to_remove`.
-            
-            RESUME TEXT:
-            {raw_text[:8000]}
-            """
-            
-            response, model_used = generate_content_resilient(
-                client=client,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=CVExtractionSchema,
-                ),
-                preferred_model="gemini-flash-lite-latest",
-            )
-            parsed = json.loads(response.text)
-            parsed["status"] = "success"
-            parsed["engine"] = f"gemini ({model_used})"
-            if "target_levels" in parsed:
-                parsed["target_levels"] = [normalize_category_name(l) for l in parsed["target_levels"] if normalize_category_name(l)]
-            if "levels_to_remove" in parsed:
-                parsed["levels_to_remove"] = [normalize_category_name(l) for l in parsed["levels_to_remove"] if normalize_category_name(l)]
-            return parsed
-            
-        except Exception as e:
-            logging.warning(f"Gemini AI CV parsing failed ({e}). Falling back to intelligent heuristic parser.")
-
-    # Intelligent Heuristic Fallback Engine
-    return parse_cv_heuristic(raw_text)
 
 def parse_cv_heuristic(text):
     """Heuristic offline taxonomy matcher for CV text."""

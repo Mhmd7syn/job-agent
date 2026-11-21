@@ -23,8 +23,7 @@ from core.database import (
     get_jobs_by_status, update_job_status, get_job_by_id, toggle_job_applied,
     delete_job_by_id, save_or_update_job
 )
-from core.config_tuner import analyze_job_and_tune_config
-from core.cv_parser import parse_cv_with_ai
+from core.config_tuner import analyze_job_and_tune_config, _get_alert_path, apply_config_updates
 from core.scorer import rescore_all_jobs
 from scrapers.link_scraper import scrape_job_from_url
 import core.config as app_config
@@ -214,7 +213,8 @@ async def update_config(request: Request, background_tasks: BackgroundTasks):
         new_config = await request.json()
         new_config["last_reviewed_date"] = datetime.now().strftime("%Y-%m-%d")
 
-        # Clean read-only preview fields before saving
+        # Clean read-only preview fields and deprecated global keywords before saving
+        new_config.pop("RESUME_KEYWORDS", None)
         for r in new_config.get("ROLES", []):
             r.pop("extracted_keywords", None)
 
@@ -230,6 +230,37 @@ async def update_config(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         logging.error(f"Error updating config: {e}")
         return {"status": "error", "error": str(e)}
+
+class ExtractResumeKeywordsRequest(BaseModel):
+    resume_path: str = Field(default="")
+
+@app.post("/api/extract-resume-keywords")
+def extract_resume_keywords_endpoint(data: ExtractResumeKeywordsRequest):
+    """Extracts, normalizes, and deduplicates keywords from the resume at resume_path."""
+    if not data.resume_path or not data.resume_path.strip():
+        raise HTTPException(status_code=400, detail="resume_path is required")
+
+    from core.role_keywords import extract_keywords_from_resume_path
+    resume_path = data.resume_path.strip()
+    if not os.path.exists(resume_path):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        rel_path = os.path.join(base_dir, resume_path)
+        if not os.path.exists(rel_path):
+            raise HTTPException(status_code=404, detail=f"Resume file not found at '{resume_path}'")
+        resume_path = rel_path
+
+    try:
+        keywords = extract_keywords_from_resume_path(resume_path, force_refresh=True)
+        return {
+            "status": "success",
+            "resume_path": resume_path,
+            "keywords": keywords,
+            "count": len(keywords)
+        }
+    except Exception as e:
+        logging.error(f"Error extracting resume keywords from '{resume_path}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 
 class WhatsAppConfigRequest(BaseModel):
@@ -324,48 +355,6 @@ async def whatsapp_webhook_receiver(request: Request):
     payload = await request.json()
     res = process_incoming_payload(payload)
     return {"status": "received", "result": res}
-
-from core.cv_parser import parse_cv_with_ai, generate_cv_proposals
-from core.config_tuner import _get_alert_path, save_proposals, apply_config_updates
-
-@app.post("/api/parse-cv")
-async def parse_cv_endpoint(file: UploadFile = File(...)):
-    """Uploads a CV file (PDF/DOCX/TXT), generates structured ADD/REMOVE proposals, and queues them for user review."""
-    try:
-        suffix = os.path.splitext(file.filename)[1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            shutil.copyfileobj(file.file, tmp)
-            tmp_path = tmp.name
-            
-        result = parse_cv_with_ai(tmp_path)
-        try:
-            os.remove(tmp_path)
-        except OSError as e:
-            logging.warning(f"Could not delete temp CV file: {e}")
-
-        if "error" in result and result.get("status") != "success":
-            return result
-
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'core', 'config.json')
-        config_data = {}
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config_data = json.load(f)
-
-        proposals = generate_cv_proposals(result, config_data)
-        if proposals:
-            save_proposals(proposals)
-
-        return {
-            "status": "success",
-            "proposals": proposals,
-            "user_brief": result.get("user_brief"),
-            "engine": result.get("engine")
-        }
-    except Exception as e:
-        logging.error(f"CV parsing error: {e}")
-        return {"error": f"Failed to parse CV: {e}", "status": "error"}
-
 
 @app.get("/api/status")
 def get_status():
