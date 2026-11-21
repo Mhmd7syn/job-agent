@@ -2144,7 +2144,7 @@ function openRoleKeywordDiffModal({ roleIndex, roleTitle, currentTags, freshKeyw
     const removals = [];
     for (const [lower, orig] of currentNormMap.entries()) {
         if (!freshNormMap.has(lower)) {
-            // Default to keep: true so manual additions are preserved across re-extractions!
+            // Marked/checked by default so manual edits are preserved
             removals.push({ term: orig, keep: true });
         }
     }
@@ -2172,15 +2172,6 @@ function openRoleKeywordDiffModal({ roleIndex, roleTitle, currentTags, freshKeyw
     const titleEl = document.getElementById('diff-modal-role-title');
     if (titleEl) titleEl.innerText = `Role: ${roleTitle}`;
 
-    const addBadgeEl = document.getElementById('diff-count-add');
-    if (addBadgeEl) addBadgeEl.innerText = additions.length;
-
-    const remBadgeEl = document.getElementById('diff-count-remove');
-    if (remBadgeEl) remBadgeEl.innerText = removals.length;
-
-    const unchBadgeEl = document.getElementById('diff-count-unchanged');
-    if (unchBadgeEl) unchBadgeEl.innerText = unchanged.length;
-
     renderRoleKeywordDiffModal();
 
     const modal = document.getElementById('role-keyword-diff-modal');
@@ -2200,28 +2191,28 @@ function renderRoleKeywordDiffModal() {
 
     let html = '';
 
-    // 1. Additions Section
+    // 1. New Additions Section
     html += `
-        <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 0.5rem; padding: 0.85rem;">
+        <div style="background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 0.45rem; padding: 0.85rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
                 <span style="font-weight: 600; color: #10b981; font-size: 0.88rem;">
-                    <i class="fa-solid fa-plus-circle"></i> New Skills from CV (${activeRoleDiff.additions.length})
+                    <i class="fa-solid fa-plus-circle"></i> New Additions (${activeRoleDiff.additions.length})
                 </span>
                 ${activeRoleDiff.additions.length > 0 ? `
                 <div style="display: flex; gap: 0.5rem; font-size: 0.78rem;">
-                    <button type="button" class="btn btn-link btn-xs" onclick="toggleAllDiffAdditions(true)" style="color: #10b981; padding: 0; text-decoration: underline; background: none; border: none; cursor: pointer;">Select All</button>
+                    <button type="button" onclick="toggleAllDiffAdditions(true)" style="color: #10b981; background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0;">Check All</button>
                     <span style="color: var(--text-muted);">|</span>
-                    <button type="button" class="btn btn-link btn-xs" onclick="toggleAllDiffAdditions(false)" style="color: var(--text-muted); padding: 0; text-decoration: underline; background: none; border: none; cursor: pointer;">Deselect All</button>
+                    <button type="button" onclick="toggleAllDiffAdditions(false)" style="color: var(--text-muted); background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0;">Uncheck All</button>
                 </div>` : ''}
             </div>
             ${activeRoleDiff.additions.length === 0 ? `
-                <div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">No new skills discovered in resume.</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">No new skills found in resume.</div>
             ` : `
                 <div style="display: flex; flex-wrap: wrap; gap: 0.45rem;">
                     ${activeRoleDiff.additions.map((item, idx) => `
-                        <label style="display: inline-flex; align-items: center; gap: 0.35rem; background: ${item.selected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)'}; border: 1px solid ${item.selected ? '#10b981' : 'var(--card-border)'}; border-radius: 0.25rem; padding: 4px 8px; font-size: 0.82rem; cursor: pointer; user-select: none; transition: all 0.15s ease;">
+                        <label id="diff-add-label-${idx}" style="display: inline-flex; align-items: center; gap: 0.4rem; background: ${item.selected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.04)'}; border: 1px solid ${item.selected ? '#10b981' : 'var(--card-border)'}; border-radius: 0.25rem; padding: 4px 8px; font-size: 0.82rem; cursor: pointer; user-select: none; transition: all 0.15s ease;">
                             <input type="checkbox" id="diff-add-${idx}" ${item.selected ? 'checked' : ''} onchange="toggleDiffAdd(${idx}, this.checked)" style="cursor: pointer; margin: 0;">
-                            <span style="color: ${item.selected ? '#ffffff' : 'var(--text-muted)'}; font-weight: 500;">+ ${escapeHtml(item.term)}</span>
+                            <span class="pill-text" style="color: ${item.selected ? '#ffffff' : 'var(--text-muted)'}; font-weight: 500;">+ ${escapeHtml(item.term)}</span>
                         </label>
                     `).join('')}
                 </div>
@@ -2229,32 +2220,28 @@ function renderRoleKeywordDiffModal() {
         </div>
     `;
 
-    // 2. Missing from CV / Manual tags section
+    // 2. Missing from CV (Manual / Existing) Section
     html += `
-        <div style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 0.5rem; padding: 0.85rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                <span style="font-weight: 600; color: #f59e0b; font-size: 0.88rem;">
-                    <i class="fa-solid fa-shield-halved"></i> Missing from CV / Manual Skills (${activeRoleDiff.removals.length})
+        <div style="background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 0.45rem; padding: 0.85rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                <span style="font-weight: 600; color: #60a5fa; font-size: 0.88rem;">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Missing from CV (${activeRoleDiff.removals.length})
                 </span>
                 ${activeRoleDiff.removals.length > 0 ? `
                 <div style="display: flex; gap: 0.5rem; font-size: 0.78rem;">
-                    <button type="button" class="btn btn-link btn-xs" onclick="toggleAllDiffRemovals(true)" style="color: #60a5fa; padding: 0; text-decoration: underline; background: none; border: none; cursor: pointer;">Keep All (Preserve)</button>
+                    <button type="button" onclick="toggleAllDiffRemovals(true)" style="color: #60a5fa; background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0;">Check All</button>
                     <span style="color: var(--text-muted);">|</span>
-                    <button type="button" class="btn btn-link btn-xs" onclick="toggleAllDiffRemovals(false)" style="color: #ef4444; padding: 0; text-decoration: underline; background: none; border: none; cursor: pointer;">Remove All</button>
+                    <button type="button" onclick="toggleAllDiffRemovals(false)" style="color: var(--text-muted); background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0;">Uncheck All</button>
                 </div>` : ''}
             </div>
-            <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.6rem;">
-                Keep checked to preserve your manual edits. Unchecking will remove the tag from this role.
-            </div>
             ${activeRoleDiff.removals.length === 0 ? `
-                <div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">All current skills were found in the resume.</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">All current skills were found in resume.</div>
             ` : `
                 <div style="display: flex; flex-wrap: wrap; gap: 0.45rem;">
                     ${activeRoleDiff.removals.map((item, idx) => `
-                        <label style="display: inline-flex; align-items: center; gap: 0.35rem; background: ${item.keep ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.12)'}; border: 1px solid ${item.keep ? '#3b82f6' : 'rgba(239, 68, 68, 0.4)'}; border-radius: 0.25rem; padding: 4px 8px; font-size: 0.82rem; cursor: pointer; user-select: none; transition: all 0.15s ease;">
+                        <label id="diff-rem-label-${idx}" style="display: inline-flex; align-items: center; gap: 0.4rem; background: ${item.keep ? 'rgba(59, 130, 246, 0.18)' : 'rgba(239, 68, 68, 0.12)'}; border: 1px solid ${item.keep ? '#3b82f6' : 'rgba(239, 68, 68, 0.35)'}; border-radius: 0.25rem; padding: 4px 8px; font-size: 0.82rem; cursor: pointer; user-select: none; transition: all 0.15s ease;">
                             <input type="checkbox" id="diff-rem-${idx}" ${item.keep ? 'checked' : ''} onchange="toggleDiffRem(${idx}, this.checked)" style="cursor: pointer; margin: 0;">
-                            <span style="color: ${item.keep ? '#ffffff' : '#ef4444'}; text-decoration: ${item.keep ? 'none' : 'line-through'}; font-weight: 500;">
-                                <i class="${item.keep ? 'fa-solid fa-lock' : 'fa-solid fa-trash'}" style="font-size: 0.72rem; margin-right: 2px;"></i>
+                            <span class="pill-text" style="color: ${item.keep ? '#ffffff' : '#ef4444'}; text-decoration: ${item.keep ? 'none' : 'line-through'}; font-weight: 500;">
                                 ${escapeHtml(item.term)}
                             </span>
                         </label>
@@ -2264,20 +2251,12 @@ function renderRoleKeywordDiffModal() {
         </div>
     `;
 
-    // 3. Unchanged Skills Section
+    // 3. Unchanged Skills Notice
     if (activeRoleDiff.unchanged.length > 0) {
         html += `
-            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 0.85rem;">
-                <div style="font-weight: 600; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.5rem;">
-                    <i class="fa-solid fa-check"></i> In Both / Unchanged (${activeRoleDiff.unchanged.length})
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; max-height: 90px; overflow-y: auto;">
-                    ${activeRoleDiff.unchanged.map(term => `
-                        <span style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--card-border); border-radius: 0.25rem; padding: 2px 7px; font-size: 0.78rem; color: var(--text-muted);">
-                            ${escapeHtml(term)}
-                        </span>
-                    `).join('')}
-                </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.02); border-radius: 0.4rem; border: 1px solid var(--card-border);">
+                <i class="fa-solid fa-check" style="color: var(--accent); margin-right: 4px;"></i>
+                <strong>${activeRoleDiff.unchanged.length}</strong> unchanged skills will also be kept
             </div>
         `;
     }
@@ -2299,39 +2278,67 @@ function updateDiffFinalCount() {
 function toggleDiffAdd(idx, checked) {
     if (!activeRoleDiff || !activeRoleDiff.additions[idx]) return;
     activeRoleDiff.additions[idx].selected = checked;
-    renderRoleKeywordDiffModal();
+    const label = document.getElementById(`diff-add-label-${idx}`);
+    if (label) {
+        label.style.background = checked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.04)';
+        label.style.borderColor = checked ? '#10b981' : 'var(--card-border)';
+        const textSpan = label.querySelector('.pill-text');
+        if (textSpan) textSpan.style.color = checked ? '#ffffff' : 'var(--text-muted)';
+    }
+    updateDiffFinalCount();
 }
 
 function toggleDiffRem(idx, checked) {
     if (!activeRoleDiff || !activeRoleDiff.removals[idx]) return;
     activeRoleDiff.removals[idx].keep = checked;
-    renderRoleKeywordDiffModal();
+    const label = document.getElementById(`diff-rem-label-${idx}`);
+    if (label) {
+        label.style.background = checked ? 'rgba(59, 130, 246, 0.18)' : 'rgba(239, 68, 68, 0.12)';
+        label.style.borderColor = checked ? '#3b82f6' : 'rgba(239, 68, 68, 0.35)';
+        const textSpan = label.querySelector('.pill-text');
+        if (textSpan) {
+            textSpan.style.color = checked ? '#ffffff' : '#ef4444';
+            textSpan.style.textDecoration = checked ? 'none' : 'line-through';
+        }
+    }
+    updateDiffFinalCount();
 }
 
 function toggleAllDiffAdditions(selected) {
     if (!activeRoleDiff) return;
-    activeRoleDiff.additions.forEach(a => { a.selected = selected; });
-    renderRoleKeywordDiffModal();
+    activeRoleDiff.additions.forEach((a, idx) => {
+        a.selected = selected;
+        const cb = document.getElementById(`diff-add-${idx}`);
+        if (cb) cb.checked = selected;
+        const label = document.getElementById(`diff-add-label-${idx}`);
+        if (label) {
+            label.style.background = selected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.04)';
+            label.style.borderColor = selected ? '#10b981' : 'var(--card-border)';
+            const textSpan = label.querySelector('.pill-text');
+            if (textSpan) textSpan.style.color = selected ? '#ffffff' : 'var(--text-muted)';
+        }
+    });
+    updateDiffFinalCount();
 }
 
 function toggleAllDiffRemovals(keep) {
     if (!activeRoleDiff) return;
-    activeRoleDiff.removals.forEach(r => { r.keep = keep; });
-    renderRoleKeywordDiffModal();
-}
-
-function setDiffPreset(preset) {
-    if (!activeRoleDiff) return;
-    if (preset === 'merge') {
-        // Keep all existing manual tags, add all newly discovered skills from CV
-        activeRoleDiff.additions.forEach(a => { a.selected = true; });
-        activeRoleDiff.removals.forEach(r => { r.keep = true; });
-    } else if (preset === 'replace') {
-        // Exact CV reset: add all new skills, discard tags not in CV
-        activeRoleDiff.additions.forEach(a => { a.selected = true; });
-        activeRoleDiff.removals.forEach(r => { r.keep = false; });
-    }
-    renderRoleKeywordDiffModal();
+    activeRoleDiff.removals.forEach((r, idx) => {
+        r.keep = keep;
+        const cb = document.getElementById(`diff-rem-${idx}`);
+        if (cb) cb.checked = keep;
+        const label = document.getElementById(`diff-rem-label-${idx}`);
+        if (label) {
+            label.style.background = keep ? 'rgba(59, 130, 246, 0.18)' : 'rgba(239, 68, 68, 0.12)';
+            label.style.borderColor = keep ? '#3b82f6' : 'rgba(239, 68, 68, 0.35)';
+            const textSpan = label.querySelector('.pill-text');
+            if (textSpan) {
+                textSpan.style.color = keep ? '#ffffff' : '#ef4444';
+                textSpan.style.textDecoration = keep ? 'none' : 'line-through';
+            }
+        }
+    });
+    updateDiffFinalCount();
 }
 
 function applyRoleKeywordDiff() {
