@@ -1,10 +1,12 @@
 import sqlite3
 import os
 import json
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple, Set
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output", "jobs_state.db")
+MAX_STORED_PROPOSALS = 50
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -464,6 +466,134 @@ def record_job_applied(job_id: str, channel: str = "", extra_payload: Optional[D
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+def prune_unapplied_proposals(max_proposals: int = MAX_STORED_PROPOSALS, conn: Optional[sqlite3.Connection] = None) -> int:
+    """
+    Enforces a hard ceiling of active stored staging proposals in SQLite.
+    When stored unapplied proposals exceed max_proposals, evicts the oldest
+    proposals via FIFO order, pruning only their staging payloads while
+    preserving applied jobs' permanent application history and original job metadata.
+    """
+    should_close = False
+    if conn is None:
+        if not os.path.exists(DB_PATH):
+            return 0
+        conn = sqlite3.connect(DB_PATH, timeout=15)
+        should_close = True
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT job_id, apply_payload, timestamp 
+            FROM jobs 
+            WHERE (is_applied = 0 OR is_applied IS NULL)
+              AND (apply_status IS NULL OR apply_status != 'applied')
+        """)
+        rows = cursor.fetchall()
+
+        unapplied_proposals = []
+        for job_id, raw_payload, job_ts in rows:
+            if not raw_payload:
+                continue
+            try:
+                payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+
+            has_proposal = bool(
+                payload.get("generated_email")
+                or payload.get("generated_whatsapp")
+                or payload.get("generated_cover_letter")
+                or payload.get("question_answers")
+            )
+            if has_proposal:
+                prop_ts = payload.get("proposal_updated_at") or payload.get("proposal_timestamp") or job_ts or ""
+                unapplied_proposals.append({
+                    "job_id": job_id,
+                    "timestamp": prop_ts,
+                    "payload": payload
+                })
+
+        if len(unapplied_proposals) <= max_proposals:
+            return 0
+
+        # Sort FIFO: oldest proposals first
+        unapplied_proposals.sort(key=lambda x: str(x["timestamp"]))
+
+        excess_count = len(unapplied_proposals) - max_proposals
+        to_prune = unapplied_proposals[:excess_count]
+
+        staging_keys = {
+            "generated_email",
+            "generated_whatsapp",
+            "generated_cover_letter",
+            "question_answers",
+            "proposal_updated_at",
+            "proposal_timestamp"
+        }
+
+        pruned_count = 0
+        for item in to_prune:
+            payload = item["payload"]
+            for k in staging_keys:
+                payload.pop(k, None)
+            cursor.execute(
+                "UPDATE jobs SET apply_payload = ? WHERE job_id = ?",
+                (json.dumps(payload, ensure_ascii=False), item["job_id"])
+            )
+            pruned_count += 1
+
+        conn.commit()
+        return pruned_count
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Error pruning unapplied proposals: {e}")
+        return 0
+    finally:
+        if should_close:
+            conn.close()
+
+def get_unapplied_proposals_count(conn: Optional[sqlite3.Connection] = None) -> int:
+    """Returns the count of active unapplied staging proposals in SQLite."""
+    should_close = False
+    if conn is None:
+        if not os.path.exists(DB_PATH):
+            return 0
+        conn = sqlite3.connect(DB_PATH, timeout=15)
+        should_close = True
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT apply_payload 
+            FROM jobs 
+            WHERE (is_applied = 0 OR is_applied IS NULL)
+              AND (apply_status IS NULL OR apply_status != 'applied')
+        """)
+        rows = cursor.fetchall()
+        count = 0
+        for (raw_payload,) in rows:
+            if not raw_payload:
+                continue
+            try:
+                payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
+            except Exception:
+                continue
+            if isinstance(payload, dict) and (
+                payload.get("generated_email")
+                or payload.get("generated_whatsapp")
+                or payload.get("generated_cover_letter")
+                or payload.get("question_answers")
+            ):
+                count += 1
+        return count
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Error counting unapplied proposals: {e}")
+        return 0
+    finally:
+        if should_close:
+            conn.close()
+
 def save_job_generated_content(
     job_id: str,
     generated_email: Optional[Dict[str, Any]] = None,
@@ -474,6 +604,7 @@ def save_job_generated_content(
     """
     Saves generated assets (email draft, WhatsApp message, question answers, cover letter)
     to the job's apply_payload in SQLite so they do not need to be regenerated.
+    Enforces a hard ceiling of 50 active stored proposals via FIFO eviction for unapplied jobs.
     """
     if not job_id or not os.path.exists(DB_PATH):
         return False
@@ -510,8 +641,14 @@ def save_job_generated_content(
         if generated_cover_letter is not None:
             payload["generated_cover_letter"] = generated_cover_letter
 
+        payload["proposal_updated_at"] = datetime.now().isoformat()
+
         cursor.execute("UPDATE jobs SET apply_payload = ? WHERE job_id = ?", (json.dumps(payload, ensure_ascii=False), job_id))
         conn.commit()
+
+        # Enforce FIFO cap on unapplied staging proposals
+        prune_unapplied_proposals(max_proposals=MAX_STORED_PROPOSALS, conn=conn)
+
         conn.close()
         return True
     except Exception as e:

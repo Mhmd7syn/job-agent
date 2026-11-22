@@ -15,7 +15,10 @@ from core.database import (
     save_or_update_job,
     get_job_by_id,
     save_job_generated_content,
-    get_job_generated_content
+    get_job_generated_content,
+    prune_unapplied_proposals,
+    get_unapplied_proposals_count,
+    MAX_STORED_PROPOSALS
 )
 from appliers.email_generator import generate_email_draft
 from appliers.whatsapp_copilot import generate_whatsapp_pitch
@@ -345,5 +348,121 @@ def test_prepare_easy_apply_and_ats_return_saved_content():
     assert ats_data["status"] == "success"
     assert ats_data["question_answers"]["Notice period?"] == "1 month"
     assert ats_data["cover_letter"] == "Pre-generated cover letter"
+
+
+def test_prune_unapplied_proposals_fifo_eviction():
+    """Verify FIFO eviction caps active unapplied stored proposals at 50."""
+    total_jobs = 55
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Pre-populate 55 unapplied jobs with sequential timestamps
+    for i in range(total_jobs):
+        jid = f"test_saved_fifo_job_{i:02d}"
+        iso_ts = f"2026-01-01T10:{i:02d}:00"
+        cursor.execute("""
+            INSERT INTO jobs (job_id, title, company, location, job_url, apply_type, apply_payload, is_applied, apply_status, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'unapplied', ?)
+        """, (
+            jid,
+            f"Test Title {i}",
+            f"Company {i}",
+            "Cairo",
+            f"https://example.com/jobs/{i}",
+            "email",
+            json.dumps({"recipient_email": f"hr{i}@example.com"}),
+            iso_ts
+        ))
+    conn.commit()
+    conn.close()
+
+    # Now sequentially generate content for all 55 jobs
+    for i in range(total_jobs):
+        jid = f"test_saved_fifo_job_{i:02d}"
+        save_job_generated_content(
+            job_id=jid,
+            generated_email={"subject": f"Pitch {i}", "body": f"Body {i}"}
+        )
+
+    # Active unapplied proposals must not exceed MAX_STORED_PROPOSALS (50)
+    assert get_unapplied_proposals_count() == MAX_STORED_PROPOSALS
+
+    # The first 5 (oldest FIFO: 0 to 4) should have their staging proposal pruned
+    for i in range(5):
+        jid = f"test_saved_fifo_job_{i:02d}"
+        job = get_job_by_id(jid)
+        assert job is not None
+        # Underlying job metadata and scraper payload must be preserved
+        assert job["title"] == f"Test Title {i}"
+        payload = job["apply_payload"]
+        assert payload.get("recipient_email") == f"hr{i}@example.com"
+        # Staging proposal fields must be pruned
+        assert payload.get("generated_email") is None
+
+    # The newest 50 (5 to 54) must retain their generated email proposal
+    for i in range(5, total_jobs):
+        jid = f"test_saved_fifo_job_{i:02d}"
+        job = get_job_by_id(jid)
+        payload = job["apply_payload"]
+        assert payload.get("generated_email") is not None
+        assert payload["generated_email"]["subject"] == f"Pitch {i}"
+
+
+def test_prune_unapplied_proposals_preserves_applied_jobs():
+    """Verify applied jobs retain permanent application history and are never pruned by FIFO eviction."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    applied_job_id = "test_saved_applied_job_1"
+    cursor.execute("""
+        INSERT INTO jobs (job_id, title, company, location, job_url, apply_type, apply_payload, is_applied, apply_status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'applied', '2025-01-01T00:00:00')
+    """, (
+        applied_job_id,
+        "Applied Job",
+        "Applied Corp",
+        "Cairo",
+        "https://example.com/jobs/applied",
+        "email",
+        json.dumps({
+            "recipient_email": "applied@example.com",
+            "generated_email": {"subject": "Permanent Subject", "body": "Permanent Body"}
+        })
+    ))
+    conn.commit()
+    conn.close()
+
+    # Run eviction with max_proposals = 0 (prune all unapplied proposals)
+    pruned = prune_unapplied_proposals(max_proposals=0)
+
+    # Applied job must remain 100% intact with its permanent proposal history
+    applied_job = get_job_by_id(applied_job_id)
+    assert applied_job is not None
+    assert applied_job["is_applied"] == 1
+    assert applied_job["apply_payload"]["generated_email"]["subject"] == "Permanent Subject"
+
+
+def test_save_proposals_fifo_capping_pending_alerts(tmp_path, monkeypatch):
+    """Verify core.config_tuner.save_proposals enforces FIFO ceiling on pending_alerts.json."""
+    from core.config_tuner import save_proposals
+    alert_file = tmp_path / "pending_alerts.json"
+    monkeypatch.setattr("core.config_tuner._get_alert_path", lambda: str(alert_file))
+
+    # Add 6 proposals with a cap of 4
+    proposals = [
+        {"field": "RESUME_KEYWORDS", "type": "add", "value": f"skill_{i}", "display_name": f"Skill {i}", "reason": "test"}
+        for i in range(6)
+    ]
+    save_proposals(proposals, max_proposals=4)
+
+    assert alert_file.exists()
+    with open(alert_file, "r", encoding="utf-8") as f:
+        stored = json.load(f)
+
+    # Must be capped at 4
+    assert len(stored) == 4
+    # Oldest (skill_0, skill_1) evicted; newest (skill_2, skill_3, skill_4, skill_5) retained
+    stored_values = [p["value"] for p in stored]
+    assert stored_values == ["skill_2", "skill_3", "skill_4", "skill_5"]
+
 
 

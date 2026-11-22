@@ -45,10 +45,13 @@ def format_config_for_prompt(config_data):
     - USER_BRIEF: {json.dumps(config_data.get('USER_BRIEF', ''))}
     """
 
-def save_proposals(new_proposals):
+MAX_PENDING_PROPOSALS = 50
+
+def save_proposals(new_proposals, max_proposals: int = MAX_PENDING_PROPOSALS):
     """
     Saves a list of proposal dicts into pending_alerts.json.
     Each proposal has: {id, source, field, type ('add'|'remove'), value, display_name, reason}
+    Enforces a FIFO cap of max_proposals to prevent unbounded growth.
     """
     alert_path = _get_alert_path()
     existing_proposals = []
@@ -77,6 +80,10 @@ def save_proposals(new_proposals):
             existing_proposals.append(prop)
             existing_keys.add(dedup_key)
             added_count += 1
+
+    # Enforce FIFO ceiling
+    if max_proposals and len(existing_proposals) > max_proposals:
+        existing_proposals = existing_proposals[-max_proposals:]
 
     with open(alert_path, 'w', encoding='utf-8') as f:
         json.dump(existing_proposals, f, indent=2, ensure_ascii=False)
