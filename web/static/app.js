@@ -3481,7 +3481,7 @@ let currentEmailCvPath = null;
 let currentEmailRawBody = null;
 let currentEmailPersonalSig = null;
 
-async function openEmailCopilotModal(jobId, forceRegenerate = false) {
+async function openEmailCopilotModal(jobId, forceRegenerate = false, userInstructions = null) {
     currentEmailJobId = jobId;
     const job = allJobs.find(j => String(j.job_id) === String(jobId));
     if (!job) {
@@ -3495,6 +3495,13 @@ async function openEmailCopilotModal(jobId, forceRegenerate = false) {
     // Reset status banner
     const statusBanner = document.getElementById('email-copilot-status-banner');
     if (statusBanner) statusBanner.style.display = 'none';
+
+    // Clear custom instructions on fresh open (unless regenerating)
+    const instructionsEl = document.getElementById('email-copilot-instructions');
+    if (!forceRegenerate && instructionsEl) {
+        instructionsEl.value = '';
+    }
+    const instructions = userInstructions !== null ? userInstructions : (instructionsEl ? instructionsEl.value.trim() : null);
 
     // Reset fields to loading state
     const titleEl = document.getElementById('email-copilot-job-title');
@@ -3561,10 +3568,14 @@ async function openEmailCopilotModal(jobId, forceRegenerate = false) {
     modal.classList.remove('hidden');
 
     try {
+        const payloadBody = { job_id: jobId, force_regenerate: forceRegenerate };
+        if (instructions) {
+            payloadBody.user_instructions = instructions;
+        }
         const res = await fetch('/api/email/generate-draft', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ job_id: jobId, force_regenerate: forceRegenerate })
+            body: JSON.stringify(payloadBody)
         });
         const data = await res.json();
 
@@ -3655,7 +3666,8 @@ function hideEmailCopilotModal() {
 
 function regenerateEmailDraft() {
     if (currentEmailJobId) {
-        openEmailCopilotModal(currentEmailJobId, true);
+        const instructions = document.getElementById('email-copilot-instructions')?.value.trim() || null;
+        openEmailCopilotModal(currentEmailJobId, true, instructions);
     }
 }
 
@@ -3837,7 +3849,7 @@ let currentWhatsAppPhone = null;
 let currentWhatsAppCvPath = null;
 let currentWhatsAppTargetUrl = null;
 
-async function openWhatsAppCopilotModal(jobId, forceRegenerate = false) {
+async function openWhatsAppCopilotModal(jobId, forceRegenerate = false, userInstructions = null) {
     currentWhatsAppJobId = jobId;
     const job = allJobs.find(j => String(j.job_id) === String(jobId));
     if (!job) {
@@ -3851,6 +3863,13 @@ async function openWhatsAppCopilotModal(jobId, forceRegenerate = false) {
     // Reset status banner
     const statusBanner = document.getElementById('whatsapp-copilot-status-banner');
     if (statusBanner) statusBanner.style.display = 'none';
+
+    // Clear custom instructions on fresh open (unless regenerating)
+    const instructionsEl = document.getElementById('whatsapp-copilot-instructions');
+    if (!forceRegenerate && instructionsEl) {
+        instructionsEl.value = '';
+    }
+    const instructions = userInstructions !== null ? userInstructions : (instructionsEl ? instructionsEl.value.trim() : null);
 
     // Set job title & company
     const titleEl = document.getElementById('whatsapp-copilot-job-title');
@@ -3927,10 +3946,14 @@ async function openWhatsAppCopilotModal(jobId, forceRegenerate = false) {
     modal.classList.remove('hidden');
 
     try {
+        const payloadBody = { job_id: jobId, force_regenerate: forceRegenerate };
+        if (instructions) {
+            payloadBody.user_instructions = instructions;
+        }
         const res = await fetch('/api/whatsapp/generate-pitch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ job_id: jobId, force_regenerate: forceRegenerate })
+            body: JSON.stringify(payloadBody)
         });
         const data = await res.json();
 
@@ -4023,7 +4046,8 @@ function hideWhatsAppCopilotModal() {
 
 function regenerateWhatsAppPitch() {
     if (currentWhatsAppJobId) {
-        openWhatsAppCopilotModal(currentWhatsAppJobId, true);
+        const instructions = document.getElementById('whatsapp-copilot-instructions')?.value.trim() || null;
+        openWhatsAppCopilotModal(currentWhatsAppJobId, true, instructions);
     }
 }
 

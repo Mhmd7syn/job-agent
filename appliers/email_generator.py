@@ -85,7 +85,8 @@ from core.whatsapp_bot import notify_whatsapp_candidate
 def generate_email_draft(
     job_id: Optional[str] = None,
     job_data: Optional[Dict[str, Any]] = None,
-    force_regenerate: bool = False
+    force_regenerate: bool = False,
+    user_instructions: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Generates a personalized, tailored email application draft for an active job opening.
@@ -119,7 +120,7 @@ def generate_email_draft(
 
     # Check if a draft was already generated and saved to this job
     saved_email = apply_payload.get("generated_email")
-    if not force_regenerate and saved_email and isinstance(saved_email, dict) and saved_email.get("body"):
+    if not force_regenerate and not user_instructions and saved_email and isinstance(saved_email, dict) and saved_email.get("body"):
         logger.info(f"Using saved email draft for job {target_job_id}")
         return {
             "status": "success",
@@ -195,6 +196,13 @@ def generate_email_draft(
         description=description[:4000],
         cv_text=cv_text[:6000] if cv_text else "Technical background in software development and data science."
     )
+
+    if user_instructions and user_instructions.strip():
+        user_prompt += (
+            f"\n\nADDITIONAL USER INSTRUCTIONS/FOCUS:\n"
+            f"{user_instructions.strip()}\n"
+            f"Please adhere strictly to these instructions."
+        )
 
     parsed_draft = None
     last_error = None

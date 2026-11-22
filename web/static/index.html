@@ -918,6 +918,14 @@
                     </div>
                     <textarea id="email-copilot-body" class="input-field" rows="11" style="width: 100%; font-family: inherit; font-size: 0.9rem; line-height: 1.6; resize: vertical;"></textarea>
                 </div>
+
+                <!-- Custom Instructions for AI -->
+                <div style="margin-top: 0.85rem;">
+                    <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.3rem; display: block;">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Custom AI Instructions (Optional)
+                    </label>
+                    <input type="text" id="email-copilot-instructions" class="input-field" placeholder="Custom instructions for AI (e.g., focus on PyTorch, keep under 50 words, formal tone)..." style="width: 100%; font-size: 0.85rem;" onkeydown="if(event.key==='Enter'){event.preventDefault();regenerateEmailDraft();}">
+                </div>
             </div>
             <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); flex-wrap: wrap; gap: 0.75rem;">
                 <div style="display: flex; gap: 0.5rem;">
@@ -1013,6 +1021,14 @@
                         <span style="font-size: 0.75rem; color: #a7f3d0;"><i class="fa-solid fa-check"></i> Concise & Grounded in CV</span>
                     </div>
                     <textarea id="whatsapp-copilot-pitch" class="input-field" rows="9" style="width: 100%; font-family: inherit; font-size: 0.9rem; line-height: 1.6; resize: vertical;" dir="ltr"></textarea>
+                </div>
+
+                <!-- Custom Instructions for AI -->
+                <div style="margin-top: 0.85rem;">
+                    <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.3rem; display: block;">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Custom AI Instructions (Optional)
+                    </label>
+                    <input type="text" id="whatsapp-copilot-instructions" class="input-field" placeholder="Custom instructions for AI (e.g., focus on PyTorch, keep under 50 words, formal tone)..." style="width: 100%; font-size: 0.85rem;" onkeydown="if(event.key==='Enter'){event.preventDefault();regenerateWhatsAppPitch();}">
                 </div>
             </div>
             <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); flex-wrap: wrap; gap: 0.75rem;">

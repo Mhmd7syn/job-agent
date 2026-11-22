@@ -256,7 +256,8 @@ def generate_fallback_pitch(
 def generate_whatsapp_pitch(
     job_id: Optional[str] = None,
     job_data: Optional[Dict[str, Any]] = None,
-    force_regenerate: bool = False
+    force_regenerate: bool = False,
+    user_instructions: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Generates a tailored, high-converting recruiter WhatsApp outreach pitch strictly in English.
@@ -291,7 +292,7 @@ def generate_whatsapp_pitch(
 
     # Check if a WhatsApp pitch was already generated and saved to this job
     saved_whatsapp = apply_payload.get("generated_whatsapp")
-    if not force_regenerate and saved_whatsapp and isinstance(saved_whatsapp, dict) and saved_whatsapp.get("pitch"):
+    if not force_regenerate and not user_instructions and saved_whatsapp and isinstance(saved_whatsapp, dict) and saved_whatsapp.get("pitch"):
         logger.info(f"Using saved WhatsApp pitch for job {target_job_id}")
         pitch_text = saved_whatsapp.get("pitch", "")
         return {
@@ -388,6 +389,13 @@ def generate_whatsapp_pitch(
 {cv_text[:6000] if cv_text else "Technical background in software development, data science, machine learning, and training."}
 \"\"\"
 """
+
+    if user_instructions and user_instructions.strip():
+        user_prompt += (
+            f"\n\nADDITIONAL USER INSTRUCTIONS/FOCUS:\n"
+            f"{user_instructions.strip()}\n"
+            f"Please adhere strictly to these instructions."
+        )
 
     try:
         response, model_used = generate_content_resilient(

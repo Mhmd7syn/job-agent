@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 class EmailDraftRequest(BaseModel):
     job_id: str
     force_regenerate: Optional[bool] = False
+    user_instructions: Optional[str] = None
 
 class SaveEmailDraftRequest(BaseModel):
     job_id: str
@@ -73,7 +74,11 @@ class MarkAppliedRequest(BaseModel):
 
 @router.post("/api/email/generate-draft")
 def generate_email_draft_endpoint(req: EmailDraftRequest):
-    draft = generate_email_draft(job_id=req.job_id, force_regenerate=bool(req.force_regenerate))
+    draft = generate_email_draft(
+        job_id=req.job_id,
+        force_regenerate=bool(req.force_regenerate),
+        user_instructions=req.user_instructions
+    )
     if draft.get("status") == "error":
         raise HTTPException(status_code=404, detail=draft.get("message", "Job not found"))
     return draft
@@ -280,6 +285,7 @@ def mark_email_applied_endpoint(req: MarkAppliedRequest):
 class WhatsAppPitchRequest(BaseModel):
     job_id: str
     force_regenerate: Optional[bool] = False
+    user_instructions: Optional[str] = None
 
 class SaveWhatsAppPitchRequest(BaseModel):
     job_id: str
@@ -300,7 +306,11 @@ class MarkWhatsAppAppliedRequest(BaseModel):
 
 @router.post("/api/whatsapp/generate-pitch")
 def generate_whatsapp_pitch_endpoint(req: WhatsAppPitchRequest):
-    pitch_data = generate_whatsapp_pitch(job_id=req.job_id, force_regenerate=bool(req.force_regenerate))
+    pitch_data = generate_whatsapp_pitch(
+        job_id=req.job_id,
+        force_regenerate=bool(req.force_regenerate),
+        user_instructions=req.user_instructions
+    )
     if pitch_data.get("status") == "error":
         raise HTTPException(status_code=404, detail=pitch_data.get("message", "Job not found"))
     return pitch_data
