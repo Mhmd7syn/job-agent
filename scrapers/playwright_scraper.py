@@ -708,13 +708,16 @@ def get_posts_as_dataframe(term, loc, page=None):
     if not feed_text or len(feed_text) < 50:
         return pd.DataFrame()
 
+    from scrapers.common import filter_linkedin_social_noise
+    feed_text = filter_linkedin_social_noise(feed_text)
+
     valid_jobs = []
     ai_data = extract_feed_posts_with_ai(feed_text[:15000])
 
     if ai_data and not ai_data.get("error"):
         for job in ai_data.get("jobs", []):
             if job.get("is_job"):
-                p_desc = job.get('description', '')
+                p_desc = filter_linkedin_social_noise(job.get('description', ''))
                 p_apply = extract_embedded_apply_url(text_content=p_desc)
                 valid_jobs.append({
                     'title': job.get('title', 'Unknown'),

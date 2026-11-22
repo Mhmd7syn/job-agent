@@ -2994,7 +2994,73 @@ let currentModalJobText = '';
 
 function formatJobDescription(text) {
     if (!text) return '';
-    return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    let cleaned = text.replace(/\r\n/g, '\n');
+    const noiseLines = [
+        /^(?:Like|Comment|Repost|Share|Send)(?:\s+(?:Like|Comment|Repost|Share|Send))*$/i,
+        /^\s*[\d,KMkkm\+]+\s*(?:reactions?|comments?|reposts?)\b/i,
+        /^\s*(?:See\s+all\s+)?\d+\s+comments?\b/i,
+        /^\s*[\d,KMkkm\+]+\s+followers?\b/i,
+        /^(?:\+?\s*Follow|\+?\s*Connect|Following|Pending)$/i,
+        /^.*(?:\blikes this\b|\bcommented on this\b|\breposted this\b|\bcelebrates this\b)/i,
+        /^\s*\d+\s*[hdwmy]\s*(?:•\s*(?:Edited\s*•\s*)?)?(?:Visible to public)?\s*$/i,
+        /^(?:Open\s+control\s+menu|More\s+options|Report\s+post|Show\s+more\s+results)$/i
+    ];
+    const lines = cleaned.split('\n');
+    const filtered = lines.filter(line => {
+        const t = line.trim();
+        if (!t) return true;
+        return !noiseLines.some(re => re.test(t));
+    });
+    return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function renderFormattedJobDescription(rawText) {
+    if (!rawText || !rawText.trim()) {
+        return '<p style="color: var(--text-muted); font-style: italic; margin: 0;">No job description text provided.</p>';
+    }
+
+    const cleaned = formatJobDescription(rawText);
+    const blocks = cleaned.split(/\n\s*\n/);
+    const htmlBlocks = [];
+
+    const headingRegex = /^(?:about\s+(?:the\s+)?(?:job|role|company|us)|responsibilities|requirements|qualifications|what\s+you(?:'ll|\s+will)\s+do|what\s+we(?:'re|\s+are)\s+looking\s+for|skills\s+(?:&|and)\s+experience|key\s+responsibilities|preferred\s+qualifications|benefits|job\s+summary|overview|role\s+overview|job\s+description)[\s:]*$/i;
+
+    for (let block of blocks) {
+        const trimmed = block.trim();
+        if (!trimmed) continue;
+
+        const lines = trimmed.split('\n').map(l => l.trim()).filter(Boolean);
+        const isBulletBlock = lines.every(l => /^[•\-*·–]\s+/.test(l)) || (lines.length > 1 && lines.some(l => /^[•\-*·–]\s+/.test(l)));
+
+        if (isBulletBlock) {
+            const listItems = [];
+            let leadText = [];
+            for (let line of lines) {
+                if (/^[•\-*·–]\s+/.test(line)) {
+                    const itemContent = line.replace(/^[•\-*·–]\s+/, '');
+                    listItems.push(`<li style="margin-bottom: 0.35rem; line-height: 1.5;">${escapeHtml(itemContent)}</li>`);
+                } else if (listItems.length === 0) {
+                    leadText.push(escapeHtml(line));
+                } else {
+                    listItems.push(`<li style="margin-bottom: 0.35rem; line-height: 1.5;">${escapeHtml(line)}</li>`);
+                }
+            }
+
+            let blockHtml = '';
+            if (leadText.length > 0) {
+                blockHtml += `<p style="margin-bottom: 0.4rem; font-weight: 600; color: var(--text-main);">${leadText.join('<br>')}</p>`;
+            }
+            blockHtml += `<ul style="padding-left: 1.4rem; margin-top: 0.25rem; margin-bottom: 0.85rem; color: var(--text-main);">${listItems.join('')}</ul>`;
+            htmlBlocks.push(blockHtml);
+        } else if (lines.length === 1 && (headingRegex.test(trimmed) || (trimmed.length < 50 && trimmed.endsWith(':')))) {
+            htmlBlocks.push(`<h4 style="font-size: 0.95rem; font-weight: 700; color: var(--primary); margin-top: 0.9rem; margin-bottom: 0.4rem; letter-spacing: 0.02em;">${escapeHtml(trimmed)}</h4>`);
+        } else {
+            const escapedParagraph = lines.map(l => escapeHtml(l)).join('<br>');
+            htmlBlocks.push(`<p style="margin-bottom: 0.75rem; line-height: 1.55; color: var(--text-main);">${escapedParagraph}</p>`);
+        }
+    }
+
+    return htmlBlocks.join('');
 }
 
 function openJobDetailsModal(jobId) {
@@ -3329,20 +3395,20 @@ function openJobDetailsModal(jobId) {
                     if (currentModalJobId === jobId) {
                         const cleanedDesc = formatJobDescription(fullJob.description);
                         currentModalJobText = cleanedDesc;
-                        if (contentEl) contentEl.textContent = cleanedDesc;
+                        if (contentEl) contentEl.innerHTML = renderFormattedJobDescription(cleanedDesc);
                     }
                 } else if (currentModalJobId === jobId && contentEl) {
-                    contentEl.textContent = 'No job description text provided.';
+                    contentEl.innerHTML = renderFormattedJobDescription('');
                 }
             })
             .catch(err => {
                 console.error('Error fetching job detail:', err);
                 if (currentModalJobId === jobId && contentEl) {
-                    contentEl.textContent = 'No job description text provided.';
+                    contentEl.innerHTML = renderFormattedJobDescription('');
                 }
             });
     } else {
-        if (contentEl) contentEl.textContent = currentModalJobText;
+        if (contentEl) contentEl.innerHTML = renderFormattedJobDescription(currentModalJobText);
     }
 
     // View Original Job link - ONLY show when distinct from primary action destination

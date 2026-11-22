@@ -291,8 +291,8 @@ def _scrape_linkedin_job(url: str) -> dict:
                 if title:
                     comp = pw_extracted.get("company") or "Unknown"
                     pw_loc = pw_extracted.get("location") or "Not specified"
-                    from scrapers.common import html_to_text
-                    pw_desc = html_to_text(pw_extracted.get("description") or "")
+                    from scrapers.common import html_to_text, filter_linkedin_social_noise
+                    pw_desc = filter_linkedin_social_noise(html_to_text(pw_extracted.get("description") or ""))
                     clean_loc, extracted_setup = extract_location_and_setup(pw_loc, title, pw_desc)
                     return {
                         "title": title,
@@ -352,6 +352,9 @@ def _scrape_linkedin_post(url: str, raw_text: str = "") -> dict:
 
     if not post_text:
         raise ValueError("Could not extract post content from LinkedIn. Please ensure the link is accessible or paste the post text.")
+
+    from scrapers.common import filter_linkedin_social_noise
+    post_text = filter_linkedin_social_noise(post_text)
 
     # Extract any embedded apply link (e.g. ATS, Google Forms, unshortened lnkd.in/bit.ly)
     apply_url = extract_embedded_apply_url(text_content=post_text)

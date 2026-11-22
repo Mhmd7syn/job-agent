@@ -45,6 +45,51 @@ def html_to_text(raw_html: str) -> str:
     return re.sub(r'\n{3,}', '\n\n', '\n'.join(lines)).strip()
 
 
+_LINKEDIN_NOISE_PATTERNS = [
+    # Social action buttons
+    r"^(?:Like|Comment|Repost|Share|Send)(?:\s+(?:Like|Comment|Repost|Share|Send))*$",
+    # Reaction and comment count summaries
+    r"^\s*[\d,KMkkm\+]+\s*(?:reactions?|comments?|reposts?)\b.*$",
+    r"^\s*(?:See\s+all\s+)?\d+\s+comments?\b.*$",
+    # Follower counts & connection actions
+    r"^\s*[\d,KMkkm\+]+\s+followers?\b.*$",
+    r"^(?:\+?\s*Follow|\+?\s*Connect|Following|Pending)$",
+    # Engagement headers
+    r"^.*(?:\blikes this\b|\bcommented on this\b|\breposted this\b|\bcelebrates this\b).*$",
+    # Relative post age and visibility metadata
+    r"^\s*\d+\s*[hdwmy]\s*(?:•\s*(?:Edited\s*•\s*)?)?(?:Visible to public)?\s*$",
+    # Controls / menu triggers
+    r"^(?:Open\s+control\s+menu|More\s+options|Report\s+post|Show\s+more\s+results)$",
+]
+_COMPILED_NOISE_RE = [re.compile(p, re.IGNORECASE) for p in _LINKEDIN_NOISE_PATTERNS]
+
+
+def filter_linkedin_social_noise(text: str) -> str:
+    """
+    Strips out LinkedIn social engagement artifacts, reaction buttons, follower counts,
+    and activity headers from scraped posting containers.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+
+    lines = text.split("\n")
+    cleaned_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            cleaned_lines.append("")
+            continue
+
+        is_noise = any(rx.match(stripped) for rx in _COMPILED_NOISE_RE)
+        if not is_noise:
+            cleaned_lines.append(line)
+
+    result = "\n".join(cleaned_lines)
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return result.strip()
+
+
 def fetch_page_content(
     url: str,
     driver=None,
