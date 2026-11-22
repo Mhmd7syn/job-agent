@@ -1001,6 +1001,13 @@ async function loadProfileSettingsUI() {
         const relocateCb = document.getElementById('screening-relocate-rule');
         if (relocateCb) relocateCb.checked = screening.relocate_outside_home_only !== false;
 
+        const writingStyle = data.writing_style || {};
+        const toneEl = document.getElementById('profile-writing-tone');
+        if (toneEl) toneEl.value = writingStyle.tone || 'Direct & Professional';
+
+        const sampleWritingEl = document.getElementById('profile-sample-writing');
+        if (sampleWritingEl) sampleWritingEl.value = writingStyle.sample_writing || '';
+
         // Render explicit role resumes overview
         renderRoleResumesOverview();
 
@@ -1363,10 +1370,16 @@ async function saveProfileAndApplySettingsFromDOM() {
             platform: Boolean(document.getElementById('chan-platform')?.checked)
         };
 
+        const writingStyle = {
+            tone: document.getElementById('profile-writing-tone')?.value || 'Direct & Professional',
+            sample_writing: document.getElementById('profile-sample-writing')?.value.trim() || ''
+        };
+
         const updatedProfile = {
             personal_info: pInfo,
             smart_screening: screening,
             auto_apply_settings: autoApply,
+            writing_style: writingStyle,
             custom_qa_pairs: currentProfileData?.custom_qa_pairs || {}
         };
 

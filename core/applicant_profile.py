@@ -62,10 +62,15 @@ class AutoApplySettings(BaseModel):
     whatsapp_mode: str = "deep_link"  # 'deep_link' (co-pilot) or 'web_automation' (auto-pilot)
     whatsapp_default_language: str = "auto"  # 'auto', 'arabic', 'english'
 
+class WritingStyleSettings(BaseModel):
+    tone: str = "Direct & Professional"  # 'Direct & Professional', 'Technical & Detailed', 'Warm & Conversational', 'Executive & Impact-Driven'
+    sample_writing: str = ""
+
 class CandidateProfile(BaseModel):
     personal_info: PersonalInfo = Field(default_factory=PersonalInfo)
     smart_screening: SmartScreening = Field(default_factory=SmartScreening)
     auto_apply_settings: AutoApplySettings = Field(default_factory=AutoApplySettings)
+    writing_style: WritingStyleSettings = Field(default_factory=WritingStyleSettings)
     custom_qa_pairs: Dict[str, str] = Field(default_factory=dict)
 
 def get_default_profile() -> Dict[str, Any]:

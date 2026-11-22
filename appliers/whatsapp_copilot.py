@@ -390,6 +390,18 @@ def generate_whatsapp_pitch(
 \"\"\"
 """
 
+    writing_style = profile.get("writing_style", {})
+    tone = writing_style.get("tone", "").strip()
+    sample_writing = writing_style.get("sample_writing", "").strip()
+    if tone:
+        user_prompt += f"\n\nPREFERRED TONE:\n{tone}"
+    if sample_writing:
+        user_prompt += (
+            f"\n\nCANDIDATE AUTHENTIC WRITING STYLE SAMPLE:\n"
+            f'"""\n{sample_writing}\n"""\n'
+            f"Please reflect the natural cadence, phrasing style, and authentic voice shown in this sample."
+        )
+
     if user_instructions and user_instructions.strip():
         user_prompt += (
             f"\n\nADDITIONAL USER INSTRUCTIONS/FOCUS:\n"

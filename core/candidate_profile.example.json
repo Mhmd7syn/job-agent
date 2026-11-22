@@ -50,5 +50,9 @@
     "whatsapp_mode": "deep_link",
     "whatsapp_default_language": "auto"
   },
+  "writing_style": {
+    "tone": "Direct & Professional",
+    "sample_writing": ""
+  },
   "custom_qa_pairs": {}
 }

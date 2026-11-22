@@ -248,6 +248,9 @@
                             <button type="button" class="settings-subnav-pill" id="pill-profile-screening" onclick="switchSettingsSubSection('profile', 'screening')">
                                 <i class="fa-solid fa-scale-balanced"></i> Smart Screening Rules
                             </button>
+                            <button type="button" class="settings-subnav-pill" id="pill-profile-style" onclick="switchSettingsSubSection('profile', 'style')">
+                                <i class="fa-solid fa-pen-nib"></i> Writing Style & Voice
+                            </button>
                         </div>
 
                         <!-- SubPane 2.1: Personal & Contact Info -->
@@ -355,6 +358,30 @@
                                     <input type="checkbox" id="screening-relocate-rule" checked style="width: 1.1rem; height: 1.1rem; margin: 0; accent-color: var(--accent);">
                                     <span>Context-Aware Relocation: Only willing to relocate for jobs outside home city (Cairo) / abroad</span>
                                 </label>
+                            </div>
+                        </div>
+
+                        <!-- SubPane 2.4: Writing Style & Voice -->
+                        <div id="subpane-profile-style" class="settings-subsection-pane">
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-main); font-size: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.4rem;">✍️ Writing Style & Voice Matching</h3>
+                            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+                                Personalize how AI drafts your emails, cover letters, and WhatsApp outreach messages to reflect your genuine voice rather than generic templates.
+                            </p>
+
+                            <div style="margin-bottom: 1rem;">
+                                <label style="font-size: 0.88rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.35rem; display: block;">Tone Preset</label>
+                                <select id="profile-writing-tone" class="input-field" style="width: 100%; padding: 0.5rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-size: 0.88rem;">
+                                    <option value="Direct & Professional">Direct & Professional (Concise, impact-first, polite)</option>
+                                    <option value="Technical & Detailed">Technical & Detailed (Focus on architectures, tools, metrics)</option>
+                                    <option value="Warm & Conversational">Warm & Conversational (Approachable, engaging, collegial)</option>
+                                    <option value="Executive & Impact-Driven">Executive & Impact-Driven (High-level business outcomes, leadership)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label style="font-size: 0.88rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.35rem; display: block;">Sample Writing / Email Voice Examples (Optional)</label>
+                                <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0; margin-bottom: 0.4rem;">Paste an example email, pitch, or cover letter you wrote. The AI will analyze and emulate your vocabulary, sentence length, and authentic voice.</p>
+                                <textarea id="profile-sample-writing" rows="5" class="input-field" style="width: 100%; padding: 0.65rem; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 0.4rem; color: var(--text-main); font-family: inherit; font-size: 0.85rem; line-height: 1.5;" placeholder="e.g. Hi Team, I noticed your opening for a Lead ML Engineer. In my previous role I scaled our computer vision inference pipeline by 3x..."></textarea>
                             </div>
                         </div>
                     </div>
