@@ -48,7 +48,8 @@ def send_smtp_email(
     recipient_email: str,
     subject: str,
     body: str,
-    cv_path: Optional[str] = None
+    cv_path: Optional[str] = None,
+    target_role: Optional[str] = None
 ) -> bool:
     """Sends an application email via direct SMTP with attached CV PDF."""
     clean_password = (sender_password or "").replace(" ", "").strip()
@@ -65,7 +66,7 @@ def send_smtp_email(
 
     msg_alt = MIMEMultipart("alternative")
     msg_alt.attach(MIMEText(body, "plain", "utf-8"))
-    html_content = format_email_body_html(body, append_signature=True)
+    html_content = format_email_body_html(body, append_signature=True, target_role=target_role)
     msg_alt.attach(MIMEText(html_content, "html", "utf-8"))
     msg.attach(msg_alt)
 
@@ -286,7 +287,8 @@ def run_email_autopilot_batch(
                 recipient_email=recipient_email,
                 subject=subject,
                 body=body,
-                cv_path=cv_path
+                cv_path=cv_path,
+                target_role=title
             )
             delivery_method = "smtp"
         else:

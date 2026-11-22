@@ -140,15 +140,23 @@ def test_fastapi_generate_draft_endpoint(client):
 
     if row:
         job_id = row[0]
-        response = client.post("/api/email/generate-draft", json={"job_id": job_id})
-        assert response.status_code == 200
-        data = response.json()
-        assert data.get("status") == "success"
-        assert "subject" in data
-        assert "body" in data
-        assert len(data["body"]) > 50
-        assert "attached_cv" in data
-        assert data["attached_cv"]["exists"] is True
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = json.dumps({
+            "body": "Dear Hiring Team,\n\nI am writing to express my strong interest in this position.\n\n• Built production services and pipelines.\n• Optimized system performance and reliability.\n\nI look forward to discussing how my background fits your team."
+        })
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch("appliers.email_generator.client", mock_client):
+            response = client.post("/api/email/generate-draft", json={"job_id": job_id})
+            assert response.status_code == 200
+            data = response.json()
+            assert data.get("status") == "success"
+            assert "subject" in data
+            assert "body" in data
+            assert len(data["body"]) > 50
+            assert "attached_cv" in data
+            assert data["attached_cv"]["exists"] is True
 
 
 def test_fastapi_open_in_gmail_endpoint(client):

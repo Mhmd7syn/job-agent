@@ -146,8 +146,8 @@ def generate_email_draft(
     auto_apply = profile.get("auto_apply_settings", {})
 
     candidate_name = personal_info.get("full_name", "").strip()
-    signature_text = get_signature_text(profile)
-    signature_html = get_signature_html(profile)
+    signature_text = get_signature_text(profile, target_role=job_title)
+    signature_html = get_signature_html(profile, target_role=job_title)
 
     cv_text = ""
     if cv_path and os.path.exists(cv_path):

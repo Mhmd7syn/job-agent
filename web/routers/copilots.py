@@ -192,9 +192,9 @@ def send_direct_smtp_endpoint(req: SendDirectSmtpRequest):
         raise HTTPException(status_code=400, detail="Recipient email is required.")
 
     subject = (req.subject or "").strip()
+    job = get_job_by_id(req.job_id) if req.job_id else None
+    job_title = (job.get("title") or "").strip() if job else ""
     if not subject:
-        job = get_job_by_id(req.job_id)
-        job_title = (job.get("title") or "").strip() if job else ""
         cand_name = profile.get("personal_info", {}).get("full_name", "").strip()
         subject = f"Application: {job_title} – {cand_name}" if (job_title and cand_name) else (f"Application: {job_title}" if job_title else "Job Application")
 
@@ -206,7 +206,8 @@ def send_direct_smtp_endpoint(req: SendDirectSmtpRequest):
         recipient_email=req.recipient,
         subject=subject,
         body=req.body,
-        cv_path=req.cv_path
+        cv_path=req.cv_path,
+        target_role=job_title
     )
 
     if not success:

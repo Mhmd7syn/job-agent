@@ -49,27 +49,96 @@ class _HTMLToTextExtractor(HTMLParser):
         return "\n".join(cleaned).strip()
 
 
-def get_signature_path_from_config(profile: Optional[Dict[str, Any]] = None) -> str:
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _role_matches(configured_role: str, target_role: str) -> bool:
+    """Checks whether a configured role name matches a target role query."""
+    if not configured_role or not target_role:
+        return False
+    cr = configured_role.strip().lower()
+    tr = target_role.strip().lower()
+    if cr == tr or cr in tr or tr in cr:
+        return True
+
+    cr_words = {w for w in re.split(r"[\s&/,\-\+_]+", cr) if len(w) >= 3 and w not in {"and", "the", "for"}}
+    tr_words = {w for w in re.split(r"[\s&/,\-\+_]+", tr) if len(w) >= 3 and w not in {"and", "the", "for"}}
+    common = cr_words & tr_words
+    if len(common) >= 2:
+        return True
+    if len(common) == 1:
+        word = next(iter(common))
+        if len(word) >= 5 or word in ("data", "stem", "bi"):
+            return True
+    return False
+
+
+def get_signature_path_from_config(
+    profile: Optional[Dict[str, Any]] = None,
+    target_role: Optional[str] = None
+) -> str:
     """
     Retrieves the HTML signature file path from candidate profile configuration.
+    Supports role-specific signatures with fallback to global configuration and default signature.html files.
     """
     if profile is None:
         profile = load_profile()
-    return profile.get("auto_apply_settings", {}).get("email_signature_path", "").strip()
+
+    auto_apply = profile.get("auto_apply_settings", {})
+    smart_screen = profile.get("smart_screening", {})
+
+    # 1. Role-specific signature check
+    if target_role:
+        # Check signatures_by_role in auto_apply_settings or smart_screening
+        sig_by_role = auto_apply.get("signatures_by_role", {}) or smart_screen.get("signatures_by_role", {})
+        for role_key, path in sig_by_role.items():
+            if _role_matches(role_key, target_role):
+                if path and str(path).strip():
+                    return str(path).strip()
+
+        # Check ROLES in core.config
+        try:
+            import core.config as app_config
+            roles = getattr(app_config, "ROLES", [])
+            for r in roles:
+                role_title = r.get("title", "").strip()
+                if _role_matches(role_title, target_role):
+                    sig_p = r.get("signature_path", "")
+                    if sig_p and str(sig_p).strip():
+                        return str(sig_p).strip()
+        except Exception:
+            pass
+
+    # 2. Global configured signature path
+    global_path = auto_apply.get("email_signature_path", "").strip()
+    if global_path:
+        return global_path
+
+    # 3. Default auto-discovery for signature.html in project root or data/ directory
+    candidate_default_paths = [
+        os.path.join(BASE_DIR, "signature.html"),
+        os.path.join(BASE_DIR, "data", "signature.html"),
+    ]
+    for p in candidate_default_paths:
+        if os.path.exists(p):
+            return p
+
+    return ""
 
 
 def get_signature_html(
     profile: Optional[Dict[str, Any]] = None,
-    signature_path: Optional[str] = None
+    signature_path: Optional[str] = None,
+    target_role: Optional[str] = None
 ) -> str:
     """
     Loads and extracts the HTML signature from the configured path.
-    Extracts the inner body / table structure cleanly so it can be embedded into email drafts.
+    Supports role-specific overrides, inner body/table extraction, and legacy fallback.
     """
     if profile is None:
         profile = load_profile()
 
-    path = signature_path or get_signature_path_from_config(profile)
+    path = signature_path or get_signature_path_from_config(profile, target_role=target_role)
 
     if path and os.path.exists(path):
         try:
@@ -92,11 +161,14 @@ def get_signature_html(
     return legacy_sig
 
 
-def get_signature_text(profile: Optional[Dict[str, Any]] = None) -> str:
+def get_signature_text(
+    profile: Optional[Dict[str, Any]] = None,
+    target_role: Optional[str] = None
+) -> str:
     """
     Converts the HTML signature into a clean plain text representation for plain text email bodies or fallbacks.
     """
-    sig_html = get_signature_html(profile)
+    sig_html = get_signature_html(profile, target_role=target_role)
     if not sig_html:
         return ""
 
@@ -109,15 +181,18 @@ def get_signature_text(profile: Optional[Dict[str, Any]] = None) -> str:
     return sig_html.strip()
 
 
-def get_signature_from_config(profile: Optional[Dict[str, Any]] = None) -> str:
+def get_signature_from_config(
+    profile: Optional[Dict[str, Any]] = None,
+    target_role: Optional[str] = None
+) -> str:
     """
     Retrieves the signature from configuration. Returns the HTML signature if available,
     falling back to plain text.
     """
-    html_sig = get_signature_html(profile)
+    html_sig = get_signature_html(profile, target_role=target_role)
     if html_sig:
         return html_sig
-    return get_signature_text(profile)
+    return get_signature_text(profile, target_role=target_role)
 
 
 def strip_signoff_from_body(body: str) -> str:
@@ -135,6 +210,7 @@ def format_email_body_html(
     body_text: str,
     signature: Optional[str] = None,
     append_signature: bool = True,
+    target_role: Optional[str] = None,
     **kwargs
 ) -> str:
     """
@@ -144,7 +220,7 @@ def format_email_body_html(
     if not append_signature:
         sig = ""
     else:
-        sig = signature if signature is not None else get_signature_html()
+        sig = signature if signature is not None else get_signature_html(target_role=target_role)
 
     body_clean = strip_signoff_from_body(body_text) if sig else body_text.strip()
     paragraphs = re.split(r"\n\s*\n", body_clean.strip())
