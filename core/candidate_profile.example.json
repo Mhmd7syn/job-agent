@@ -28,6 +28,16 @@
       "Data Science & Machine Learning": 0,
       "Data Analytics & BI": 0,
       "Teaching & STEM Instructor": 3
+    },
+    "expected_salary_by_role": {
+      "Computer Vision & AI": {
+        "egp": 45000,
+        "usd": 2000
+      },
+      "Data Analytics & BI": {
+        "egp": 30000,
+        "usd": 1200
+      }
     }
   },
   "auto_apply_settings": {

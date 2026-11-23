@@ -11,7 +11,7 @@ try:
 except ImportError:
     pass
 
-from core.applicant_profile import load_profile, resolve_contextual_screening, get_resume_for_role
+from core.applicant_profile import load_profile, resolve_contextual_screening, get_resume_for_role, resolve_expected_salary_for_role
 from core.cv_parser import extract_text_from_file
 
 logger = logging.getLogger(__name__)
@@ -187,10 +187,15 @@ class ScreeningResolver:
         # 8. Salary Expectations
         if any(k in clean_lbl for k in ["salary", "compensation", "expected rate", "pay expectation"]):
             is_home = self.contextual.get("is_home_country", True)
-            if "usd" in clean_lbl or not is_home:
-                val = self.smart_screening.get("expected_salary_usd", 1500)
+            if "usd" in clean_lbl or "$" in clean_lbl or not is_home:
+                curr = "usd"
             else:
-                val = self.smart_screening.get("expected_salary_egp", 35000)
+                curr = "egp"
+            val = resolve_expected_salary_for_role(
+                role_title=self.job_title,
+                currency=curr,
+                profile=self.profile
+            )
             return val if field_type == "number" else str(val)
 
         # 9. Years of Experience with Specific Tech / Overall

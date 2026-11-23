@@ -13,7 +13,7 @@ except ImportError:
     pass
 
 from core.database import get_job_by_id
-from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
+from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening, resolve_expected_salary_for_role
 from core.config import (
     get_edge_binary_path,
     get_browser_user_data_dir,
@@ -129,8 +129,8 @@ def prepare_easy_apply(job_id: str) -> Dict[str, Any]:
             "willing_to_relocate": contextual.get("willing_to_relocate", True),
             "driving_license": screening.get("driving_license", False),
             "notice_period_days": screening.get("notice_period_days", 30),
-            "expected_salary_egp": screening.get("expected_salary_egp", 35000),
-            "expected_salary_usd": screening.get("expected_salary_usd", 1500)
+            "expected_salary_egp": resolve_expected_salary_for_role(job_title, "egp", profile=profile),
+            "expected_salary_usd": resolve_expected_salary_for_role(job_title, "usd", profile=profile)
         },
         "question_answers": payload.get("question_answers") or {}
     }
