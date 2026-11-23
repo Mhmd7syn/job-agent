@@ -15,7 +15,7 @@ except ImportError:
     pass
 
 from core.database import DB_PATH, get_job_by_id, record_job_applied
-from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening
+from core.applicant_profile import load_profile, get_resume_for_role, resolve_contextual_screening, resolve_expected_salary_for_role
 from core.cv_parser import extract_text_from_file
 from core.config import (
     get_edge_binary_path,
@@ -353,6 +353,9 @@ def prepare_ats_application(job_id: str) -> Dict[str, Any]:
         "Authorized to work without sponsorship."
     )
 
+    role_sal_egp = resolve_expected_salary_for_role(job_title, "egp", profile=profile)
+    role_sal_usd = resolve_expected_salary_for_role(job_title, "usd", profile=profile)
+
     return {
         "status": "success",
         "job_id": job_id,
@@ -377,8 +380,8 @@ def prepare_ats_application(job_id: str) -> Dict[str, Any]:
             "linkedin_url": personal.get("linkedin_url", ""),
             "github_url": personal.get("github_url", ""),
             "portfolio_url": personal.get("portfolio_url", ""),
-            "expected_salary_egp": f"{screening.get('expected_salary_egp', 35000):,} EGP/month",
-            "expected_salary_usd": f"${screening.get('expected_salary_usd', 1500):,}/month",
+            "expected_salary_egp": f"{role_sal_egp:,} EGP/month",
+            "expected_salary_usd": f"${role_sal_usd:,}/month",
             "notice_period": f"{screening.get('notice_period_days', 30)} days",
             "sponsorship_statement": sponsorship_statement
         },
@@ -387,8 +390,8 @@ def prepare_ats_application(job_id: str) -> Dict[str, Any]:
             "willing_to_relocate": contextual.get("willing_to_relocate", True),
             "driving_license": screening.get("driving_license", False),
             "notice_period_days": screening.get("notice_period_days", 30),
-            "expected_salary_egp": screening.get("expected_salary_egp", 35000),
-            "expected_salary_usd": screening.get("expected_salary_usd", 1500)
+            "expected_salary_egp": role_sal_egp,
+            "expected_salary_usd": role_sal_usd
         },
         "question_answers": payload.get("question_answers") or {},
         "cover_letter": cover_letter

@@ -40,6 +40,7 @@ class SmartScreening(BaseModel):
         "Teaching & STEM Instructor": 0
     })
     resumes_by_role: Dict[str, str] = Field(default_factory=dict)
+    expected_salary_by_role: Dict[str, Dict[str, int]] = Field(default_factory=dict)
 
 class AutoApplySettings(BaseModel):
     enabled: bool = False
@@ -327,3 +328,79 @@ def resolve_contextual_screening(job_location: str, job_country: str = "") -> Di
         "is_home_country": is_in_home_country,
         "is_home_city": is_in_home_city
     }
+
+def resolve_expected_salary_for_role(
+    role_title: Optional[str],
+    currency: str = "egp",
+    profile: Optional[Dict[str, Any]] = None,
+    config: Optional[dict] = None
+) -> int:
+    """
+    Resolves the expected salary for a given role title and currency ('egp' or 'usd').
+    Prioritizes role-specific salary configured in expected_salary_by_role (or role definition),
+    falling back to global smart_screening expected_salary_egp / expected_salary_usd.
+    """
+    if profile is None:
+        profile = load_profile()
+    screening = profile.get("smart_screening", {})
+    curr = (currency or "egp").strip().lower()
+    global_fallback = screening.get(f"expected_salary_{curr}", 0) or (35000 if curr == "egp" else 1500)
+    
+    if not role_title:
+        return global_fallback
+
+    salary_by_role = screening.get("expected_salary_by_role") or {}
+    rt_lower = role_title.strip().lower()
+
+    # 1. Exact match against expected_salary_by_role keys
+    for title, sal_map in salary_by_role.items():
+        if title.strip().lower() == rt_lower and isinstance(sal_map, dict):
+            val = sal_map.get(curr) or sal_map.get(curr.upper())
+            if val is not None and int(val) > 0:
+                return int(val)
+
+    # 2. Case-insensitive substring match
+    for title, sal_map in salary_by_role.items():
+        t_clean = title.strip().lower()
+        if t_clean and (t_clean in rt_lower or rt_lower in t_clean) and isinstance(sal_map, dict):
+            val = sal_map.get(curr) or sal_map.get(curr.upper())
+            if val is not None and int(val) > 0:
+                return int(val)
+
+    # 3. Check config ROLES if provided
+    if config:
+        roles = config.get("ROLES", [])
+        for r in roles:
+            t = r.get("title", "").strip().lower()
+            terms = [term.lower() for term in r.get("english_terms", r.get("terms", []))]
+            if (t and (t in rt_lower or rt_lower in t)) or any(term in rt_lower for term in terms):
+                r_sal = r.get("expected_salary", {})
+                if isinstance(r_sal, dict):
+                    val = r_sal.get(curr) or r_sal.get(curr.upper())
+                    if val is not None and int(val) > 0:
+                        return int(val)
+                r_title = r.get("title", "")
+                if r_title in salary_by_role and isinstance(salary_by_role[r_title], dict):
+                    val = salary_by_role[r_title].get(curr) or salary_by_role[r_title].get(curr.upper())
+                    if val is not None and int(val) > 0:
+                        return int(val)
+
+    # 4. Token overlap match
+    rt_tokens = set(re.split(r'[\s&/,\-\+_]+', rt_lower))
+    best_role = None
+    best_overlap = 0
+    for title, sal_map in salary_by_role.items():
+        if not isinstance(sal_map, dict):
+            continue
+        title_tokens = [w for w in re.split(r'[\s&/,\-\+_]+', title.lower()) if len(w) >= 3 and w not in {'and', 'the', 'for'}]
+        overlap = sum(1 for tw in title_tokens if tw in rt_tokens)
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_role = title
+
+    if best_role and best_overlap > 0:
+        val = salary_by_role[best_role].get(curr) or salary_by_role[best_role].get(curr.upper())
+        if val is not None and int(val) > 0:
+            return int(val)
+
+    return global_fallback

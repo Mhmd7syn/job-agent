@@ -1315,18 +1315,29 @@ async function saveProfileAndApplySettingsFromDOM() {
         pInfo.resume_base_dir = document.getElementById('profile-resume-dir')?.value.trim() || pInfo.resume_base_dir || '';
         pInfo.default_resume_path = document.getElementById('profile-default-resume')?.value.trim() || pInfo.default_resume_path || '';
 
-        // Synchronize resumes_by_role from configured roles
+        // Synchronize resumes_by_role and expected_salary_by_role from configured roles
         const resumesByRole = {};
+        const expectedSalaryByRole = {};
         const rolesContainer = document.getElementById('roles-container');
         if (rolesContainer) {
             const roleCards = rolesContainer.querySelectorAll('.role-card');
             roleCards.forEach(card => {
                 const title = card.querySelector('.role-title-input')?.value.trim();
                 const cv = card.querySelector('.role-resume-input')?.value.trim() || '';
-                if (title) resumesByRole[title] = cv;
+                const salEgpVal = card.querySelector('.role-salary-egp-input')?.value;
+                const salUsdVal = card.querySelector('.role-salary-usd-input')?.value;
+                const salEgp = (salEgpVal !== undefined && salEgpVal !== '') ? parseInt(salEgpVal) : 0;
+                const salUsd = (salUsdVal !== undefined && salUsdVal !== '') ? parseInt(salUsdVal) : 0;
+                if (title) {
+                    resumesByRole[title] = cv;
+                    if (salEgp > 0 || salUsd > 0) {
+                        expectedSalaryByRole[title] = { egp: salEgp, usd: salUsd };
+                    }
+                }
             });
         }
         screening.resumes_by_role = resumesByRole;
+        screening.expected_salary_by_role = expectedSalaryByRole;
 
         // 2. Smart Screening
         screening.military_status = document.getElementById('screening-military')?.value.trim() || 'Exempted / Completed';
@@ -1499,6 +1510,10 @@ async function saveSettings() {
         const title = card.querySelector('.role-title-input').value.trim();
         const maxExpStr = card.querySelector('.role-max-exp-input')?.value;
         const maxExp = maxExpStr !== undefined && maxExpStr !== '' ? parseInt(maxExpStr) : 0;
+        const salEgpVal = card.querySelector('.role-salary-egp-input')?.value;
+        const salUsdVal = card.querySelector('.role-salary-usd-input')?.value;
+        const salEgp = (salEgpVal !== undefined && salEgpVal !== '') ? parseInt(salEgpVal) : 0;
+        const salUsd = (salUsdVal !== undefined && salUsdVal !== '') ? parseInt(salUsdVal) : 0;
         const enTerms = getTagInputValues('role-en-' + index);
         const resumePath = card.querySelector('.role-resume-input')?.value.trim() || '';
         const resumeKeywords = getTagInputValues('role-kws-' + index);
@@ -1506,6 +1521,7 @@ async function saveSettings() {
             newRoles.push({
                 title: title || 'Unnamed Role',
                 years_experience: maxExp,
+                expected_salary: { egp: salEgp, usd: salUsd },
                 english_terms: enTerms,
                 resume_path: resumePath,
                 resume_keywords: resumeKeywords
@@ -1938,18 +1954,21 @@ function renderRolesUI() {
         const userExp = role.years_experience !== undefined ? role.years_experience : 0;
         const resumePath = role.resume_path || (currentProfileData?.smart_screening?.resumes_by_role?.[role.title]) || '';
         const extractedKeywords = (role.resume_keywords !== undefined && role.resume_keywords !== null) ? role.resume_keywords : (role.extracted_keywords || []);
-        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms || role.terms || [], userExp, resumePath, extractedKeywords);
+        const roleSal = (currentProfileData?.smart_screening?.expected_salary_by_role?.[role.title]) || role.expected_salary || {};
+        const salEgp = (roleSal.egp !== undefined && roleSal.egp !== null && roleSal.egp !== 0) ? roleSal.egp : (role.expected_salary_egp || '');
+        const salUsd = (roleSal.usd !== undefined && roleSal.usd !== null && roleSal.usd !== 0) ? roleSal.usd : (role.expected_salary_usd || '');
+        addRoleCard(container, roleIndexCounter++, role.title, role.english_terms || role.terms || [], userExp, resumePath, extractedKeywords, salEgp, salUsd);
     });
     renderRoleResumesOverview();
 }
 
 function addRoleUI() {
     const container = document.getElementById('roles-container');
-    addRoleCard(container, roleIndexCounter++, 'New Role', [], 0, '', []);
+    addRoleCard(container, roleIndexCounter++, 'New Role', [], 0, '', [], '', '');
     renderRoleResumesOverview();
 }
 
-function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', extractedKeywords = []) {
+function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', extractedKeywords = [], salEgp = '', salUsd = '') {
     const card = document.createElement('div');
     card.className = 'role-card';
     card.style = 'background: rgba(0, 0, 0, 0.2); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--card-border); position: relative;';
@@ -1974,6 +1993,10 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', 
     titleInput.style = 'width: 100%; margin-bottom: 0.8rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
     titleInput.oninput = () => renderRoleResumesOverview();
     
+    const expSalRow = document.createElement('div');
+    expSalRow.style = 'display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 0.8rem;';
+
+    const maxExpCol = document.createElement('div');
     const maxExpLabel = document.createElement('label');
     maxExpLabel.innerText = "Your Experience (Years)";
     const maxExpInput = document.createElement('input');
@@ -1981,7 +2004,41 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', 
     maxExpInput.min = '0';
     maxExpInput.className = 'role-max-exp-input';
     maxExpInput.value = maxExp !== undefined ? maxExp : 0;
-    maxExpInput.style = 'width: 100%; margin-bottom: 0.8rem; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+    maxExpInput.style = 'width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+    maxExpCol.appendChild(maxExpLabel);
+    maxExpCol.appendChild(maxExpInput);
+
+    const salEgpCol = document.createElement('div');
+    const salEgpLabel = document.createElement('label');
+    salEgpLabel.innerText = "Min Expected Salary (EGP)";
+    const salEgpInput = document.createElement('input');
+    salEgpInput.type = 'number';
+    salEgpInput.min = '0';
+    salEgpInput.step = '500';
+    salEgpInput.placeholder = 'e.g. 35000';
+    salEgpInput.className = 'role-salary-egp-input';
+    salEgpInput.value = (salEgp !== undefined && salEgp !== null && salEgp !== '') ? salEgp : '';
+    salEgpInput.style = 'width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+    salEgpCol.appendChild(salEgpLabel);
+    salEgpCol.appendChild(salEgpInput);
+
+    const salUsdCol = document.createElement('div');
+    const salUsdLabel = document.createElement('label');
+    salUsdLabel.innerText = "Min Expected Salary (USD)";
+    const salUsdInput = document.createElement('input');
+    salUsdInput.type = 'number';
+    salUsdInput.min = '0';
+    salUsdInput.step = '100';
+    salUsdInput.placeholder = 'e.g. 1500';
+    salUsdInput.className = 'role-salary-usd-input';
+    salUsdInput.value = (salUsd !== undefined && salUsd !== null && salUsd !== '') ? salUsd : '';
+    salUsdInput.style = 'width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); color: white; padding: 0.5rem; border-radius: 0.25rem;';
+    salUsdCol.appendChild(salUsdLabel);
+    salUsdCol.appendChild(salUsdInput);
+
+    expSalRow.appendChild(maxExpCol);
+    expSalRow.appendChild(salEgpCol);
+    expSalRow.appendChild(salUsdCol);
 
     // Tailored Resume Field for this role
     const resumeLabel = document.createElement('label');
@@ -2103,8 +2160,7 @@ function addRoleCard(container, index, title, enTerms, maxExp, resumePath = '', 
 
     card.appendChild(titleLabel);
     card.appendChild(titleInput);
-    card.appendChild(maxExpLabel);
-    card.appendChild(maxExpInput);
+    card.appendChild(expSalRow);
     card.appendChild(resumeLabel);
     card.appendChild(resumeRow);
     card.appendChild(enLabel);

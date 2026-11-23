@@ -5,7 +5,7 @@ import json
 import re
 import time
 import unicodedata
-from typing import Optional, List, Tuple, Dict, Set
+from typing import Optional, List, Tuple, Dict, Set, Any
 from functools import lru_cache
 from datetime import date, datetime
 from core.database import DB_PATH
@@ -19,6 +19,7 @@ from core.text_normalizer import (
 )
 from core.skill_ontology import ontology
 from core.role_keywords import get_resume_keywords_for_role, get_unified_resume_keywords
+from core.applicant_profile import resolve_expected_salary_for_role
 
 SENIORITY_EXCLUDE_KEYWORDS = {
     "senior", "lead", "manager", "principal", "head", "director", "sr",
@@ -201,6 +202,84 @@ def extract_experience_years(text: str) -> Optional[int]:
                 extracted.append(min(nums))
 
     return min(extracted) if extracted else None
+
+_RE_SALARY_RANGE = re.compile(
+    r'(?i)([\$€£]|egp|usd)?\s*(\d+k|\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?:-|to|–|\/)?\s*([\$€£]|egp|usd)?\s*(\d+k|\d{1,3}(?:,\d{3})*(?:\.[0-9]+)?)?\s*(egp|usd|le|pounds?|\$)?'
+)
+_RE_SALARY_EXPLICIT = re.compile(
+    r'(?i)\b(?:salary|compensation|pay|rate|package)[:\s]+([\$€£]|egp|usd)?\s*(\d+k|\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?:-|to|–|\/)?\s*([\$€£]|egp|usd)?\s*(\d+k|\d{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?)?\s*(egp|usd|le|pounds?|\$)?'
+)
+
+def _parse_salary_val(v: Any) -> Optional[float]:
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().lower().replace(',', '')
+    if s.endswith('k'):
+        try:
+            return float(s[:-1]) * 1000
+        except ValueError:
+            return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+def extract_salary_bounds(row_or_text: Any) -> Optional[Tuple[float, float, str]]:
+    """
+    Extracts numerical minimum and maximum salary bounds and currency from a job row or text.
+    Returns (min_salary, max_salary, currency) e.g. (30000.0, 45000.0, 'egp') or None.
+    """
+    if isinstance(row_or_text, dict):
+        min_s = _parse_salary_val(row_or_text.get('min_salary'))
+        max_s = _parse_salary_val(row_or_text.get('max_salary'))
+        curr = str(row_or_text.get('currency') or row_or_text.get('salary_currency') or '').lower()
+        if not curr:
+            curr = 'usd' if '$' in str(row_or_text.get('salary', '')) or 'usd' in str(row_or_text.get('salary', '')).lower() else 'egp'
+        if min_s is not None or max_s is not None:
+            min_val = min_s if min_s is not None else (max_s or 0.0)
+            max_val = max_s if max_s is not None else min_val
+            return (min_val, max_val, curr)
+        raw_sal = row_or_text.get('salary')
+        if raw_sal:
+            if isinstance(raw_sal, (int, float)):
+                return (float(raw_sal), float(raw_sal), curr)
+            m = _RE_SALARY_RANGE.search(str(raw_sal))
+            if m:
+                c1, v1_str, c2, v2_str, c3 = m.groups()
+                v1 = _parse_salary_val(v1_str)
+                v2 = _parse_salary_val(v2_str) if v2_str else None
+                if v1 is not None:
+                    min_v = v1
+                    max_v = v2 if v2 is not None else v1
+                    if max_v < min_v:
+                        min_v, max_v = max_v, min_v
+                    curr_str = f"{c1 or ''} {c2 or ''} {c3 or ''}".lower()
+                    curr = 'usd' if ('$' in curr_str or 'usd' in curr_str) else 'egp'
+                    return (min_v, max_v, curr)
+        text_to_search = str(row_or_text.get('description', ''))[:1000]
+    else:
+        text_to_search = str(row_or_text or '')
+
+    if not text_to_search:
+        return None
+
+    m = _RE_SALARY_EXPLICIT.search(text_to_search)
+    if m:
+        c1, val1_str, c2, val2_str, c3 = m.groups()
+        v1 = _parse_salary_val(val1_str)
+        v2 = _parse_salary_val(val2_str) if val2_str else None
+        if v1 is not None:
+            min_v = v1
+            max_v = v2 if v2 is not None else v1
+            if max_v < min_v:
+                min_v, max_v = max_v, min_v
+            curr_str = f"{c1 or ''} {c2 or ''} {c3 or ''}".lower()
+            curr = 'usd' if ('$' in curr_str or 'usd' in curr_str) else 'egp'
+            return (min_v, max_v, curr)
+
+    return None
 
 def load_latest_config():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -599,6 +678,20 @@ def calculate_score(row, config=None, apply_date_penalty=True):
         diff = min_req_exp - user_exp
         if diff > 0:
             score -= diff * 5
+
+    # Role-Specific Expected Salary Bounds Check
+    salary_bounds = extract_salary_bounds(row)
+    if salary_bounds:
+        job_min_sal, job_max_sal, job_curr = salary_bounds
+        matched_title = matching_roles[0].get("title", "") if matching_roles else None
+        expected_sal = resolve_expected_salary_for_role(matched_title, currency=job_curr, config=config)
+        if expected_sal > 0:
+            if job_max_sal > 0 and job_max_sal < expected_sal * 0.75:
+                # Penalty if compensation ceiling is below candidate expectation for this role
+                score -= 10
+            elif job_min_sal >= expected_sal or job_max_sal >= expected_sal:
+                # Boost if posting meets or exceeds role expectation
+                score += 5
 
     # If date penalty is disabled, return base score directly
     if not apply_date_penalty:
