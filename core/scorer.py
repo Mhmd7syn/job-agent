@@ -8,6 +8,7 @@ import unicodedata
 from typing import Optional, List, Tuple, Dict, Set
 from functools import lru_cache
 from datetime import date, datetime
+import core.database as db
 from core.database import DB_PATH
 from core.career_levels import expand_levels, get_excluded_levels
 
@@ -638,7 +639,7 @@ def rescore_all_jobs():
     config = load_latest_config()
     config["_compiled_meta"] = compile_scorer_meta(config)
 
-    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn = sqlite3.connect(db.DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     

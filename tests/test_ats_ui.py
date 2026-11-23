@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import socket
 import threading
 import uvicorn
 from unittest.mock import patch
@@ -13,15 +14,29 @@ if BASE_DIR not in sys.path:
 
 from web.app import app
 
+TEST_PORT = 8011
+
+def wait_for_server(port: int, timeout: float = 3.0) -> bool:
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return True
+        except OSError:
+            time.sleep(0.05)
+    return False
+
 def run_server():
     with patch("web.app.rescore_all_jobs", return_value=None):
-        uvicorn.run(app, host="127.0.0.1", port=8011, log_level="error")
+        uvicorn.run(app, host="127.0.0.1", port=TEST_PORT, log_level="error")
 
+@pytest.mark.ui
 def test_ats_modal_ui():
     """Verify in headless browser that Company ATS & Web Form Co-Pilot modal opens and renders correctly."""
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
-    time.sleep(2)
+    if not wait_for_server(TEST_PORT):
+        pytest.fail(f"Uvicorn server failed to start on port {TEST_PORT}")
 
     with sync_playwright() as p:
         try:
@@ -35,12 +50,13 @@ def test_ats_modal_ui():
                 except Exception as e:
                     pytest.skip(f"Playwright browser unavailable: {e}")
         page = browser.new_page()
+        page.route("**/*", lambda route: route.abort() if any(h in route.request.url for h in ["fonts.googleapis", "fonts.gstatic", "cdnjs.cloudflare"]) else route.continue_())
 
         console_errors = []
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
-        page.goto("http://127.0.0.1:8011")
-        page.wait_for_selector(".job-card", timeout=10000)
+        page.goto(f"http://127.0.0.1:{TEST_PORT}", wait_until="domcontentloaded")
+        page.wait_for_selector(".job-card", timeout=5000)
 
         # 1. Check that #ats-copilot-modal exists in DOM
         modal = page.query_selector("#ats-copilot-modal")
@@ -52,7 +68,7 @@ def test_ats_modal_ui():
 
         # 3. Open the ATS Co-Pilot modal
         page.evaluate(f"openAtsCopilotModal('{platform_job['job_id']}')")
-        time.sleep(1.8)
+        page.wait_for_function("document.getElementById('ats-qc-name') && document.getElementById('ats-qc-name').textContent.trim().length > 0", timeout=3000)
 
         # 4. Verify ATS modal is visible
         modal_visible = page.is_visible("#ats-copilot-modal")
@@ -84,7 +100,7 @@ def test_ats_modal_ui():
 
         # 7. Test hide modal
         page.evaluate("hideAtsCopilotModal()")
-        time.sleep(0.5)
+        time.sleep(0.1)
         assert page.is_visible("#ats-copilot-modal") is False, "ATS modal should be hidden after closing"
 
         browser.close()

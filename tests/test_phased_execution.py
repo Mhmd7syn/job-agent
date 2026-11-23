@@ -8,13 +8,14 @@ import job_agent
 
 
 class TestPhasedScraperExecution:
+    @patch("core.whatsapp_bot.sync_queued_whatsapp_jobs", return_value={"status": "no_updates", "count": 0})
     @patch("job_agent.process_scraped_batch")
     @patch("job_agent.write_progress")
     @patch("job_agent.ScanCheckpoint")
     @patch("job_agent.cleanup_old_jobs")
     @patch("job_agent.rescore_all_jobs", create=True)
     def test_http_only_mode_never_opens_browsers(
-        self, mock_rescore, mock_cleanup, mock_checkpoint_cls, mock_write_progress, mock_batch
+        self, mock_rescore, mock_cleanup, mock_checkpoint_cls, mock_write_progress, mock_batch, mock_sync_wa
     ):
         mock_checkpoint = MagicMock()
         mock_checkpoint.is_completed.return_value = False
@@ -45,13 +46,14 @@ class TestPhasedScraperExecution:
             # Checkpoint key should have http: prefix
             mock_checkpoint.mark_completed.assert_called_with("http:Python|Egypt")
 
+    @patch("core.whatsapp_bot.sync_queued_whatsapp_jobs", return_value={"status": "no_updates", "count": 0})
     @patch("job_agent.process_scraped_batch")
     @patch("job_agent.write_progress")
     @patch("job_agent.ScanCheckpoint")
     @patch("job_agent.cleanup_old_jobs")
     @patch("job_agent.rescore_all_jobs", create=True)
     def test_phases_are_strictly_isolated_and_never_overlap(
-        self, mock_rescore, mock_cleanup, mock_checkpoint_cls, mock_write_progress, mock_batch
+        self, mock_rescore, mock_cleanup, mock_checkpoint_cls, mock_write_progress, mock_batch, mock_sync_wa
     ):
         mock_checkpoint = MagicMock()
         mock_checkpoint.is_completed.return_value = False
@@ -113,13 +115,14 @@ class TestPhasedScraperExecution:
             assert "linkedin:Backend|Cairo" in completed_keys
             assert "selenium:Backend|Cairo" in completed_keys
 
+    @patch("core.whatsapp_bot.sync_queued_whatsapp_jobs", return_value={"status": "no_updates", "count": 0})
     @patch("job_agent.process_scraped_batch")
     @patch("job_agent.write_progress")
     @patch("job_agent.ScanCheckpoint")
     @patch("job_agent.cleanup_old_jobs")
     @patch("job_agent.rescore_all_jobs", create=True)
     def test_linkedin_session_failure_falls_back_to_guest_api(
-        self, mock_rescore, mock_cleanup, mock_checkpoint_cls, mock_write_progress, mock_batch
+        self, mock_rescore, mock_cleanup, mock_checkpoint_cls, mock_write_progress, mock_batch, mock_sync_wa
     ):
         mock_checkpoint = MagicMock()
         mock_checkpoint.is_completed.return_value = False

@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import socket
 import threading
 import uvicorn
 from unittest.mock import patch
@@ -13,15 +14,29 @@ if BASE_DIR not in sys.path:
 
 from web.app import app
 
+TEST_PORT = 8008
+
+def wait_for_server(port: int, timeout: float = 3.0) -> bool:
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return True
+        except OSError:
+            time.sleep(0.05)
+    return False
+
 def run_server():
     with patch("web.app.rescore_all_jobs", return_value=None):
-        uvicorn.run(app, host="127.0.0.1", port=8008, log_level="error")
+        uvicorn.run(app, host="127.0.0.1", port=TEST_PORT, log_level="error")
 
+@pytest.mark.ui
 def test_email_copilot_modal_ui():
     """Verify in headless browser that Email Co-Pilot modal opens and renders correctly."""
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
-    time.sleep(2)
+    if not wait_for_server(TEST_PORT):
+        pytest.fail(f"Uvicorn server failed to start on port {TEST_PORT}")
 
     with sync_playwright() as p:
         try:
@@ -35,12 +50,13 @@ def test_email_copilot_modal_ui():
                 except Exception as e:
                     pytest.skip(f"Playwright browser unavailable: {e}")
         page = browser.new_page()
+        page.route("**/*", lambda route: route.abort() if any(h in route.request.url for h in ["fonts.googleapis", "fonts.gstatic", "cdnjs.cloudflare"]) else route.continue_())
 
         console_errors = []
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
-        page.goto("http://127.0.0.1:8008")
-        page.wait_for_selector(".job-card", timeout=10000)
+        page.goto(f"http://127.0.0.1:{TEST_PORT}", wait_until="domcontentloaded")
+        page.wait_for_selector(".job-card", timeout=5000)
 
         # Check that #email-copilot-modal exists in DOM
         modal = page.query_selector("#email-copilot-modal")
@@ -56,7 +72,7 @@ def test_email_copilot_modal_ui():
 
         # Open the Email Co-Pilot modal
         page.evaluate(f"openEmailCopilotModal('{email_job['job_id']}')")
-        time.sleep(1.0)
+        page.wait_for_function("document.getElementById('email-copilot-recipient') && document.getElementById('email-copilot-recipient').value.trim().length > 0", timeout=3000)
 
         # Verify email copilot modal is visible
         modal_visible = page.is_visible("#email-copilot-modal")
@@ -67,14 +83,13 @@ def test_email_copilot_modal_ui():
         assert page.query_selector("#email-copilot-subject") is not None
         assert page.query_selector("#email-copilot-body") is not None
         assert page.query_selector("#email-copilot-cv-filename") is not None
-        assert page.query_selector("#email-copilot-outlook-btn") is not None
-        assert page.query_selector("#email-copilot-gmail-btn") is None, "Gmail button should be removed as requested"
+        assert page.query_selector("#email-copilot-smtp-btn") is not None
         assert page.query_selector("#email-copilot-applied-btn") is not None
         assert page.query_selector("#email-copilot-status-banner") is not None
 
         # Test hide modal
         page.evaluate("hideEmailCopilotModal()")
-        time.sleep(0.5)
+        time.sleep(0.1)
         assert page.is_visible("#email-copilot-modal") is False, "Email Co-Pilot modal should be hidden after closing"
 
         browser.close()

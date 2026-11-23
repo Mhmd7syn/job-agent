@@ -255,7 +255,7 @@ def test_launch_whatsapp_web_with_cv():
 
 def test_attach_cv_in_whatsapp_web_mock():
     """Verify _attach_cv_in_whatsapp_web handles document file input and preview send."""
-    from unittest.mock import MagicMock
+    from unittest.mock import MagicMock, patch
     from appliers.whatsapp_worker import _attach_cv_in_whatsapp_web
 
     mock_page = MagicMock()
@@ -269,18 +269,19 @@ def test_attach_cv_in_whatsapp_web_mock():
     if not cv_path or not os.path.exists(cv_path):
         pytest.skip("Configured CV file not found.")
 
-    # Test Autopilot send (click_send=True)
-    success = _attach_cv_in_whatsapp_web(mock_page, cv_path, click_send=True)
-    assert success is True
-    assert mock_doc_input.set_input_files.called
-    assert mock_send_btn.click.called
+    with patch("time.sleep", return_value=None):
+        # Test Autopilot send (click_send=True)
+        success = _attach_cv_in_whatsapp_web(mock_page, cv_path, click_send=True)
+        assert success is True
+        assert mock_doc_input.set_input_files.called
+        assert mock_send_btn.click.called
 
-    # Test Copilot review mode (click_send=False)
-    mock_doc_input.reset_mock()
-    mock_send_btn.reset_mock()
-    review_success = _attach_cv_in_whatsapp_web(mock_page, cv_path, click_send=False)
-    assert review_success is True
-    assert mock_doc_input.set_input_files.called
-    assert not mock_send_btn.click.called, "Should leave preview modal open in review mode"
+        # Test Copilot review mode (click_send=False)
+        mock_doc_input.reset_mock()
+        mock_send_btn.reset_mock()
+        review_success = _attach_cv_in_whatsapp_web(mock_page, cv_path, click_send=False)
+        assert review_success is True
+        assert mock_doc_input.set_input_files.called
+        assert not mock_send_btn.click.called, "Should leave preview modal open in review mode"
 
 

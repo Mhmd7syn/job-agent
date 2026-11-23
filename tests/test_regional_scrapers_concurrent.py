@@ -81,17 +81,17 @@ TANQEEB_HTML = """
 
 class TestWuzzufConcurrent:
     @patch("scrapers.wuzzuf_scraper.is_job_seen")
-    @patch("scrapers.wuzzuf_scraper.fetch_wuzzuf_full_description")
-    def test_wuzzuf_concurrent_success_and_fallback(self, mock_fetch_desc, mock_is_seen):
+    @patch("scrapers.wuzzuf_scraper.fetch_wuzzuf_job_details")
+    def test_wuzzuf_concurrent_success_and_fallback(self, mock_fetch_details, mock_is_seen):
         mock_is_seen.return_value = False
 
         # 1st job returns rich full description, 2nd job returns empty (fallback to card)
         def side_effect_desc(url):
             if "123" in url:
-                return "This is an extensive full job description for Senior Python Engineer with all qualifications and requirements listed in full."
-            return ""
+                return {"description": "This is an extensive full job description for Senior Python Engineer with all qualifications and requirements listed in full."}
+            return {"description": ""}
 
-        mock_fetch_desc.side_effect = side_effect_desc
+        mock_fetch_details.side_effect = side_effect_desc
 
         mock_driver = MagicMock()
         mock_driver.get_page_source.return_value = WUZZUF_HTML
@@ -100,7 +100,7 @@ class TestWuzzufConcurrent:
 
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 2
-        assert mock_fetch_desc.call_count == 2
+        assert mock_fetch_details.call_count == 2
 
         job1 = df.iloc[0]
         assert "extensive full job description" in job1["description"]
@@ -113,10 +113,11 @@ class TestWuzzufConcurrent:
         assert job2["title"] == "Junior Data Analyst"
 
     @patch("scrapers.wuzzuf_scraper.is_job_seen")
-    @patch("scrapers.wuzzuf_scraper.fetch_wuzzuf_full_description")
-    def test_wuzzuf_skips_seen_jobs_before_fetch(self, mock_fetch_desc, mock_is_seen):
+    @patch("scrapers.wuzzuf_scraper.fetch_wuzzuf_job_details")
+    def test_wuzzuf_skips_seen_jobs_before_fetch(self, mock_fetch_details, mock_is_seen):
         # 1st job is seen, 2nd is new
         mock_is_seen.side_effect = lambda url: "123" in url
+        mock_fetch_details.return_value = {"description": "sample description"}
 
         mock_driver = MagicMock()
         mock_driver.get_page_source.return_value = WUZZUF_HTML
@@ -125,22 +126,22 @@ class TestWuzzufConcurrent:
 
         assert len(df) == 1
         assert df.iloc[0]["title"] == "Junior Data Analyst"
-        # mock_fetch_desc should only have been called ONCE for the unseen job
-        assert mock_fetch_desc.call_count == 1
+        # mock_fetch_details should only have been called ONCE for the unseen job
+        assert mock_fetch_details.call_count == 1
 
 
 class TestBaytConcurrent:
     @patch("scrapers.bayt_scraper.is_job_seen")
-    @patch("scrapers.bayt_scraper.fetch_bayt_full_description")
-    def test_bayt_concurrent_success_and_fallback(self, mock_fetch_desc, mock_is_seen):
+    @patch("scrapers.bayt_scraper.fetch_bayt_job_details")
+    def test_bayt_concurrent_success_and_fallback(self, mock_fetch_details, mock_is_seen):
         mock_is_seen.return_value = False
 
         def side_effect_desc(url):
             if "backend" in url:
-                return "Full backend engineer duties and responsibilities with detailed technical stack requirements."
-            return ""
+                return {"description": "Full backend engineer duties and responsibilities with detailed technical stack requirements."}
+            return {"description": ""}
 
-        mock_fetch_desc.side_effect = side_effect_desc
+        mock_fetch_details.side_effect = side_effect_desc
 
         # Mock curl_cffi fast HTTP response
         with patch("curl_cffi.requests.get") as mock_http_get:
@@ -153,7 +154,7 @@ class TestBaytConcurrent:
 
             assert isinstance(df, pd.DataFrame)
             assert len(df) == 2
-            assert mock_fetch_desc.call_count == 2
+            assert mock_fetch_details.call_count == 2
 
             job1 = df.iloc[0]
             assert "Full backend engineer duties" in job1["description"]
@@ -164,9 +165,10 @@ class TestBaytConcurrent:
             assert job2["description"] == "Short card snippet for frontend engineer"
 
     @patch("scrapers.bayt_scraper.is_job_seen")
-    @patch("scrapers.bayt_scraper.fetch_bayt_full_description")
-    def test_bayt_skips_seen_jobs(self, mock_fetch_desc, mock_is_seen):
+    @patch("scrapers.bayt_scraper.fetch_bayt_job_details")
+    def test_bayt_skips_seen_jobs(self, mock_fetch_details, mock_is_seen):
         mock_is_seen.side_effect = lambda url: "backend" in url
+        mock_fetch_details.return_value = {"description": "sample description"}
 
         with patch("curl_cffi.requests.get") as mock_http_get:
             mock_resp = MagicMock()
@@ -178,7 +180,7 @@ class TestBaytConcurrent:
 
             assert len(df) == 1
             assert df.iloc[0]["title"] == "Frontend Engineer"
-            assert mock_fetch_desc.call_count == 1
+            assert mock_fetch_details.call_count == 1
 
 
 class TestTanqeebConcurrent:

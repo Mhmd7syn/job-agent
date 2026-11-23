@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import socket
 import threading
 from unittest.mock import patch
 import pytest
@@ -13,6 +14,17 @@ if BASE_DIR not in sys.path:
 
 from web.app import app
 from core.database import get_jobs_by_apply_type, get_jobs_by_status
+
+
+def wait_for_server(port: int, timeout: float = 3.0) -> bool:
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return True
+        except OSError:
+            time.sleep(0.05)
+    return False
 
 
 def test_database_get_jobs_by_apply_type():
@@ -73,11 +85,13 @@ def run_ui_server():
         uvicorn.run(app, host="127.0.0.1", port=TEST_UI_PORT, log_level="error")
 
 
+@pytest.mark.ui
 def test_ui_apply_method_filter():
     """Verify in headless browser that the applying method filter dropdown works in the UI."""
     server_thread = threading.Thread(target=run_ui_server, daemon=True)
     server_thread.start()
-    time.sleep(2.5)
+    if not wait_for_server(TEST_UI_PORT):
+        pytest.fail(f"Uvicorn server failed to start on port {TEST_UI_PORT}")
 
     with sync_playwright() as p:
         try:
@@ -92,11 +106,14 @@ def test_ui_apply_method_filter():
                     pytest.skip(f"Playwright browser unavailable: {e}")
 
         page = browser.new_page()
+        # Abort external CDN / font requests so tests never block on network stalls
+        page.route("**/*", lambda route: route.abort() if any(h in route.request.url for h in ["fonts.googleapis", "fonts.gstatic", "cdnjs.cloudflare"]) else route.continue_())
+
         console_errors = []
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
-        page.goto(f"http://127.0.0.1:{TEST_UI_PORT}")
-        page.wait_for_selector(".job-card", timeout=15000)
+        page.goto(f"http://127.0.0.1:{TEST_UI_PORT}", wait_until="domcontentloaded")
+        page.wait_for_selector(".job-card", timeout=5000)
 
         # 1. Verify #apply-method-filter dropdown exists
         dropdown = page.query_selector("#apply-method-filter")
@@ -115,17 +132,16 @@ def test_ui_apply_method_filter():
 
         # 4. Filter by Email
         page.select_option("#apply-method-filter", "email")
-        time.sleep(0.5)
+        page.wait_for_selector(".job-card .tag-channel-email", timeout=3000)
         email_count = int(page.inner_text("#job-count"))
         assert 0 < email_count <= initial_count, f"Email jobs count should be positive and <= initial (got {email_count})"
 
-        # Check all rendered cards have email badge
         rendered_badges = page.eval_on_selector_all(".job-card .tag-channel-email", "elements => elements.length")
         assert rendered_badges > 0, "Rendered cards should have tag-channel-email badge"
 
         # 5. Filter by WhatsApp
         page.select_option("#apply-method-filter", "whatsapp")
-        time.sleep(0.5)
+        page.wait_for_selector(".job-card .tag-channel-whatsapp", timeout=3000)
         wa_count = int(page.inner_text("#job-count"))
         assert 0 < wa_count <= initial_count, f"WhatsApp jobs count should be positive (got {wa_count})"
         wa_badges = page.eval_on_selector_all(".job-card .tag-channel-whatsapp", "elements => elements.length")
@@ -133,7 +149,7 @@ def test_ui_apply_method_filter():
 
         # 6. Filter by Easy Apply
         page.select_option("#apply-method-filter", "easy_apply")
-        time.sleep(0.5)
+        page.wait_for_selector(".job-card .tag-channel-easyapply", timeout=3000)
         ea_count = int(page.inner_text("#job-count"))
         assert 0 < ea_count <= initial_count, f"Easy Apply jobs count should be positive (got {ea_count})"
         ea_badges = page.eval_on_selector_all(".job-card .tag-channel-easyapply", "elements => elements.length")
@@ -141,7 +157,7 @@ def test_ui_apply_method_filter():
 
         # 7. Switch back to All
         page.select_option("#apply-method-filter", "all")
-        time.sleep(0.5)
+        time.sleep(0.1)
         restored_count = int(page.inner_text("#job-count"))
         assert restored_count == initial_count, "Resetting filter to 'all' should restore original count"
 

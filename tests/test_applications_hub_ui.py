@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import socket
 import threading
 from unittest.mock import patch
 import pytest
@@ -14,16 +15,28 @@ from web.app import app
 
 TEST_PORT = 8015
 
+def wait_for_server(port: int, timeout: float = 3.0) -> bool:
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return True
+        except OSError:
+            time.sleep(0.05)
+    return False
+
 def run_server():
     import uvicorn
     with patch("web.app.rescore_all_jobs", return_value=None):
         uvicorn.run(app, host="127.0.0.1", port=TEST_PORT, log_level="error")
 
+@pytest.mark.ui
 def test_applications_hub_modal_ui():
     """Verify in headless browser that Applications Hub & Auto-Pilot modal opens and renders correctly."""
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
-    time.sleep(3)
+    if not wait_for_server(TEST_PORT):
+        pytest.fail(f"Uvicorn server failed to start on port {TEST_PORT}")
 
     with sync_playwright() as p:
         try:
@@ -37,12 +50,13 @@ def test_applications_hub_modal_ui():
                 except Exception as e:
                     pytest.skip(f"Playwright browser unavailable: {e}")
         page = browser.new_page()
+        page.route("**/*", lambda route: route.abort() if any(h in route.request.url for h in ["fonts.googleapis", "fonts.gstatic", "cdnjs.cloudflare"]) else route.continue_())
 
         console_errors = []
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
-        page.goto(f"http://127.0.0.1:{TEST_PORT}")
-        page.wait_for_selector(".job-card", timeout=20000)
+        page.goto(f"http://127.0.0.1:{TEST_PORT}", wait_until="domcontentloaded")
+        page.wait_for_selector(".job-card", timeout=5000)
 
         # 1. Check that #applications-hub-modal exists in DOM
         modal = page.query_selector("#applications-hub-modal")
@@ -51,7 +65,7 @@ def test_applications_hub_modal_ui():
 
         # 2. Open Applications Hub modal
         page.evaluate("showApplicationsHub()")
-        time.sleep(1.0)
+        page.wait_for_selector("#applications-hub-modal", state="visible", timeout=3000)
 
         # 3. Verify modal is visible
         assert page.is_visible("#applications-hub-modal") is True, "Applications Hub modal should be visible"
@@ -78,15 +92,15 @@ def test_applications_hub_modal_ui():
 
         # 6. Interact with channel filter
         page.select_option("#hub-channel-filter", "email")
-        time.sleep(0.5)
+        time.sleep(0.1)
 
         # 7. Interact with search input
         page.fill("#hub-search-input", "Engineer")
-        time.sleep(0.5)
+        time.sleep(0.1)
 
         # 8. Close modal
         page.evaluate("hideApplicationsHub()")
-        time.sleep(0.5)
+        time.sleep(0.1)
         assert page.is_visible("#applications-hub-modal") is False, "Applications Hub modal should be hidden after closing"
 
         browser.close()
