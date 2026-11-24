@@ -230,6 +230,9 @@ USER_BRIEF = ""
 GLOBAL_REMOTE_KEYWORDS = []
 RESTRICTED_REMOTE_KEYWORDS = []
 MIN_MATCHED_SKILLS = 2
+LOW_COMPETITION_FILTER = False
+EARLY_APPLICANT_THRESHOLD = 50
+EARLY_APPLICANT_BOOST = 5
 
 
 def reload_config():
@@ -239,6 +242,7 @@ def reload_config():
     global LOCATION, TARGET_LOCATIONS, TARGET_LEVELS, LEVEL_EXCLUDE, SITES
     global RESULTS_PER_TERM, HOURS_OLD, MAX_JOBS_TO_SEND, USER_BRIEF
     global GLOBAL_REMOTE_KEYWORDS, RESTRICTED_REMOTE_KEYWORDS, MIN_MATCHED_SKILLS
+    global LOW_COMPETITION_FILTER, EARLY_APPLICANT_THRESHOLD, EARLY_APPLICANT_BOOST
     global _config_data
 
     target_path = config_json_path if os.path.exists(config_json_path) else default_json_path
@@ -303,6 +307,9 @@ I am looking for suitable roles matching my skills and experience.
 
     # Scraper Specific Configurations
     MIN_MATCHED_SKILLS = _config_data.get("MIN_MATCHED_SKILLS", 2)
+    LOW_COMPETITION_FILTER = _config_data.get("LOW_COMPETITION_FILTER", False)
+    EARLY_APPLICANT_THRESHOLD = _config_data.get("EARLY_APPLICANT_THRESHOLD", 50)
+    EARLY_APPLICANT_BOOST = _config_data.get("EARLY_APPLICANT_BOOST", 5)
 
     return _config_data
 

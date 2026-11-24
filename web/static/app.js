@@ -444,6 +444,13 @@ function createJobCard(job) {
         channelTagHtml = `<div class="tag-channel tag-channel-manual" title="${title}"><i class="fa-solid fa-arrow-up-right-from-square"></i>${label}</div>`;
     }
 
+    // Early Applicant Badge (<50 applicants)
+    let earlyApplicantTagHtml = '';
+    const numApplicants = (job.num_applicants !== undefined && job.num_applicants !== null) ? Number(job.num_applicants) : null;
+    if (numApplicants !== null && !isNaN(numApplicants) && numApplicants >= 0 && numApplicants < 50) {
+        earlyApplicantTagHtml = `<div class="tag tag-early-applicant" title="Early Applicant (${numApplicants} applicants)"><i class="fa-solid fa-fire"></i>Early Applicant (&lt;50)</div>`;
+    }
+
     div.innerHTML = `
         <div class="card-header">
             <h3 class="job-title" title="${job.title}">${job.title}</h3>
@@ -463,6 +470,7 @@ function createJobCard(job) {
             ${typeTagHtml}
             ${siteTagHtml}
             ${channelTagHtml}
+            ${earlyApplicantTagHtml}
         </div>
         
         <div class="job-date"><i class="fa-regular fa-calendar" style="margin-right:6px;"></i>${dateStr}</div>
@@ -716,6 +724,8 @@ function refreshSettingsUI() {
     if (rptEl) rptEl.value = currentConfig.RESULTS_PER_TERM || 15;
     const retEl = document.getElementById('config-retention-days');
     if (retEl) retEl.value = currentConfig.job_retention_days || 90;
+    const lowCompEl = document.getElementById('config-low-competition-filter');
+    if (lowCompEl) lowCompEl.checked = currentConfig.LOW_COMPETITION_FILTER === true;
 
     loadWhatsAppStatusUI();
     checkLoginStatusUI();
@@ -1559,6 +1569,10 @@ async function saveSettings() {
     newConfig.HOURS_OLD = currentConfig.HOURS_OLD || 168;
     newConfig.MAX_JOBS_TO_SEND = currentConfig.MAX_JOBS_TO_SEND || 10;
     newConfig.job_retention_days = parseInt(document.getElementById('config-retention-days')?.value) || 90;
+    const lowCompCheckbox = document.getElementById('config-low-competition-filter');
+    if (lowCompCheckbox) {
+        newConfig.LOW_COMPETITION_FILTER = lowCompCheckbox.checked;
+    }
 
     try {
         const response = await fetch('/api/config', {

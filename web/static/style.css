@@ -252,6 +252,17 @@ header {
     color: var(--primary);
 }
 
+.tag.tag-early-applicant {
+    background: rgba(249, 115, 22, 0.16);
+    border-color: rgba(249, 115, 22, 0.45);
+    color: #fdba74;
+    font-weight: 600;
+}
+
+.tag.tag-early-applicant i {
+    color: #fb923c;
+}
+
 .manual-job-banner {
     margin-top: 0.65rem;
     background: rgba(0, 0, 0, 0.3);

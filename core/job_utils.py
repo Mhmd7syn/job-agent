@@ -336,6 +336,14 @@ def normalize_job_dict(raw_job: dict, default_site: str = "") -> dict:
         norm["apply_type"] = str(raw_job["apply_type"]).strip()
     if "apply_payload" in raw_job and raw_job["apply_payload"]:
         norm["apply_payload"] = raw_job["apply_payload"]
+    num_applicants = raw_job.get("num_applicants")
+    if num_applicants is not None:
+        try:
+            norm["num_applicants"] = int(num_applicants)
+        except (ValueError, TypeError):
+            norm["num_applicants"] = None
+    else:
+        norm["num_applicants"] = None
     return norm
 
 

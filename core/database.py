@@ -40,7 +40,8 @@ def init_db():
         ('pending_questions', "TEXT DEFAULT '[]'"),
         ('apply_url', 'TEXT'),
         ('is_easy_apply', 'INTEGER DEFAULT 0'),
-        ('workplace_setup', "TEXT DEFAULT 'On-site'")
+        ('workplace_setup', "TEXT DEFAULT 'On-site'"),
+        ('num_applicants', 'INTEGER')
     ]:
         try:
             cursor.execute(f'ALTER TABLE jobs ADD COLUMN {col} {col_type}')
@@ -118,12 +119,18 @@ def save_job(job_dict):
 
     apply_url = job_dict.get('apply_url', '')
     is_easy_apply = 1 if job_dict.get('is_easy_apply') else 0
+    num_applicants = job_dict.get('num_applicants')
+    if num_applicants is not None:
+        try:
+            num_applicants = int(num_applicants)
+        except (ValueError, TypeError):
+            num_applicants = None
 
     # Insert or ignore (if it already exists, we might not want to overwrite its status)
     cursor.execute("""
         INSERT OR IGNORE INTO jobs 
-        (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp, is_applied, apply_type, apply_payload, apply_url, is_easy_apply, workplace_setup)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp, is_applied, apply_type, apply_payload, apply_url, is_easy_apply, workplace_setup, num_applicants)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         job_dict.get('job_id', ''),
         job_dict.get('title', ''),
@@ -142,7 +149,8 @@ def save_job(job_dict):
         apply_payload,
         apply_url,
         is_easy_apply,
-        job_dict.get('workplace_setup', 'On-site')
+        job_dict.get('workplace_setup', 'On-site'),
+        num_applicants
     ))
     
     date_posted = str(job_dict.get('date_posted', ''))
@@ -169,7 +177,8 @@ def save_job(job_dict):
             job_url = COALESCE(NULLIF(?, ''), job_url),
             apply_url = COALESCE(NULLIF(?, ''), apply_url),
             is_easy_apply = COALESCE(?, is_easy_apply),
-            workplace_setup = COALESCE(NULLIF(?, ''), workplace_setup)
+            workplace_setup = COALESCE(NULLIF(?, ''), workplace_setup),
+            num_applicants = COALESCE(?, num_applicants)
         WHERE job_id = ? AND status = 'pending'
     """, (
         job_dict.get('relevance_score', 0), apply_type, apply_payload,
@@ -178,6 +187,7 @@ def save_job(job_dict):
         job_url, job_url, site_val,
         site_val,
         job_url, apply_url, is_easy_apply, job_dict.get('workplace_setup', ''),
+        num_applicants,
         job_dict.get('job_id', '')
     ))
 
@@ -263,7 +273,7 @@ def save_or_update_job(job_dict, force_pending=True):
             SET title = ?, company = ?, location = ?, job_url = ?, job_type = ?, 
                 date_posted = ?, site = ?, relevance_score = ?, description = ?, status = ?, timestamp = ?, is_applied = ?,
                 apply_type = ?, apply_payload = ?, apply_url = ?, is_easy_apply = ?, workplace_setup = ?,
-                applied_at = ?, apply_channel = ?, apply_status = ?
+                applied_at = ?, apply_channel = ?, apply_status = ?, num_applicants = ?
             WHERE job_id = ?
         """, (
             job_dict.get('title') or existing_dict.get('title', ''),
@@ -286,6 +296,7 @@ def save_or_update_job(job_dict, force_pending=True):
             applied_at,
             apply_channel,
             apply_status,
+            job_dict.get('num_applicants') if job_dict.get('num_applicants') is not None else existing_dict.get('num_applicants'),
             target_id
         ))
         conn.commit()
@@ -298,6 +309,12 @@ def save_or_update_job(job_dict, force_pending=True):
         is_applied = job_dict.get('is_applied', 0)
         apply_url = job_dict.get('apply_url', '')
         is_easy_apply_val = 1 if job_dict.get('is_easy_apply') else 0
+        num_applicants = job_dict.get('num_applicants')
+        if num_applicants is not None:
+            try:
+                num_applicants = int(num_applicants)
+            except (ValueError, TypeError):
+                num_applicants = None
         
         if not job_dict.get('apply_type'):
             from core.apply_classifier import classify_and_extract
@@ -315,8 +332,8 @@ def save_or_update_job(job_dict, force_pending=True):
 
         cursor.execute("""
             INSERT INTO jobs 
-            (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp, is_applied, apply_type, apply_payload, apply_url, is_easy_apply, workplace_setup, applied_at, apply_channel, apply_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (job_id, title, company, location, job_url, job_type, date_posted, site, relevance_score, description, status, timestamp, is_applied, apply_type, apply_payload, apply_url, is_easy_apply, workplace_setup, applied_at, apply_channel, apply_status, num_applicants)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             job_id,
             job_dict.get('title', ''),
@@ -338,7 +355,8 @@ def save_or_update_job(job_dict, force_pending=True):
             job_dict.get('workplace_setup', 'On-site'),
             applied_at,
             apply_channel,
-            apply_status
+            apply_status,
+            num_applicants
         ))
         conn.commit()
         cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
@@ -358,7 +376,7 @@ def get_jobs_by_status(status_list, include_description: bool = False):
         cols = """job_id, title, company, location, job_url, job_type, date_posted, 
                   site, relevance_score, '' AS description, status, timestamp, is_applied, apply_type, 
                   apply_payload, applied_at, apply_channel, apply_status, pending_questions, 
-                  apply_url, is_easy_apply, workplace_setup"""
+                  apply_url, is_easy_apply, workplace_setup, num_applicants"""
     cursor.execute(f"""
         SELECT {cols} FROM jobs 
         WHERE status IN ({placeholders})

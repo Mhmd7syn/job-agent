@@ -568,6 +568,18 @@ def calculate_score(row, config=None, apply_date_penalty=True):
     if matches_target_loc or is_remote:
         score += 5
 
+    # Early Applicant Boost (< 50 applicants)
+    num_applicants = row.get('num_applicants')
+    if num_applicants is not None:
+        try:
+            n_app = int(num_applicants)
+            early_threshold = config.get("EARLY_APPLICANT_THRESHOLD", 50) if config else 50
+            early_boost = config.get("EARLY_APPLICANT_BOOST", 5) if config else 5
+            if 0 <= n_app < early_threshold:
+                score += early_boost
+        except (ValueError, TypeError):
+            pass
+
     # Location Gate: Reject in-person jobs located outside target country (e.g. on-site Germany/UK)
     if not is_scholarship and not matches_target_loc and not is_remote:
         return 0
@@ -644,7 +656,7 @@ def rescore_all_jobs():
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT job_id, relevance_score, title, description, company, job_type, location, date_posted, timestamp 
+        SELECT job_id, relevance_score, title, description, company, job_type, location, date_posted, timestamp, num_applicants 
         FROM jobs 
         WHERE status IN ('pending', 'liked', 'not_related')
     """)
