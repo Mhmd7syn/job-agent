@@ -17,6 +17,7 @@ from scrapers.common import (
     fetch_details_concurrently,
     resolve_canonical_apply_url,
     extract_embedded_apply_url,
+    extract_applicant_count,
 )
 
 def _parse_wuzzuf_soup(soup):
@@ -72,13 +73,21 @@ def fetch_wuzzuf_job_details(job_url, driver=None):
         if apply_url:
             apply_url = resolve_canonical_apply_url(apply_url)
 
+        num_applicants = None
+        app_el = soup.find(lambda el: el.name in ['span', 'strong', 'div', 'p'] and any(k in el.get_text().lower() for k in ['applicant', 'متقدم']))
+        if app_el:
+            num_applicants = extract_applicant_count(app_el.get_text())
+        if num_applicants is None and html:
+            num_applicants = extract_applicant_count(html)
+
         return {
             'description': desc,
             'apply_url': apply_url or '',
-            'is_easy_apply': is_ea
+            'is_easy_apply': is_ea,
+            'num_applicants': num_applicants
         }
 
-    return {'description': '', 'apply_url': '', 'is_easy_apply': None}
+    return {'description': '', 'apply_url': '', 'is_easy_apply': None, 'num_applicants': None}
 
 def fetch_wuzzuf_full_description(job_url, driver=None):
     """Fetches the complete full job description and requirements via fast HTTP with driver fallback."""
@@ -198,6 +207,7 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
                 career_level = ", ".join(level_tags) if level_tags else "Not specified"
 
                 card_desc = card.get_text(separator=' ', strip=True)
+                card_num_applicants = extract_applicant_count(card_desc)
 
                 candidates.append({
                     'title': title,
@@ -209,7 +219,8 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
                     'description': card_desc,
                     'is_remote': 'remote' in query.lower() or any('remote' in t.lower() or 'work from home' in t.lower() for t in all_tags),
                     'site': 'wuzzuf',
-                    'date_posted': date_posted.date()
+                    'date_posted': date_posted.date(),
+                    'num_applicants': card_num_applicants
                 })
 
             page += 1
@@ -224,6 +235,8 @@ def scrape_wuzzuf(search_term, location, results_wanted=15, hours_old=None, driv
                     job['apply_url'] = details['apply_url']
                 if details.get('is_easy_apply') is not None:
                     job['is_easy_apply'] = details['is_easy_apply']
+                if details.get('num_applicants') is not None:
+                    job['num_applicants'] = details['num_applicants']
             except Exception as e:
                 logging.debug(f"Wuzzuf desc fetch failed for {job['job_url']}: {e}")
             return normalize_job_dict(job)

@@ -105,5 +105,8 @@
     "latam",
     "brazil"
   ],
-  "MIN_MATCHED_SKILLS": 2
+  "MIN_MATCHED_SKILLS": 2,
+  "LOW_COMPETITION_FILTER": false,
+  "EARLY_APPLICANT_THRESHOLD": 50,
+  "EARLY_APPLICANT_BOOST": 5
 }

@@ -12,7 +12,7 @@ import pandas as pd
 from core.llm_parser import extract_feed_posts_with_ai, extract_json_ld
 from core.database import is_job_seen, is_job_id_seen, refresh_republished_job
 from core.job_utils import make_job_id
-from scrapers.common import resolve_canonical_apply_url, extract_embedded_apply_url
+from scrapers.common import resolve_canonical_apply_url, extract_embedded_apply_url, extract_applicant_count
 from core.config import (
     get_chrome_binary_path,
     get_edge_binary_path,
@@ -337,7 +337,7 @@ def _do_scrape_linkedin_posts(page, keyword):
         return ""
 
 
-def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None):
+def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None, low_competition=None):
     """High-speed zero-browser LinkedIn scraper using the public Guest API."""
     import datetime
     jobs = []
@@ -347,6 +347,14 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
         encoded_term = urllib.parse.quote(term)
         encoded_loc = urllib.parse.quote(location)
         base_url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={encoded_term}&location={encoded_loc}&sortBy=DD"
+        if low_competition is None:
+            from core.scorer import load_latest_config
+            cfg = load_latest_config()
+            low_competition = bool(cfg.get("LOW_COMPETITION_FILTER", False))
+
+        if low_competition:
+            base_url += "&f_EA=true"
+
         if hours_old:
             if hours_old <= 24:
                 base_url += "&f_TPR=r86400"
@@ -409,6 +417,7 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
                 description = ""
                 apply_url = None
                 is_ea = None
+                num_applicants = None
                 m_id = re.search(r'(\d{8,12})', clean_url)
                 if m_id:
                     try:
@@ -437,6 +446,12 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
                                     html_content=dr.text if hasattr(dr, 'text') else "",
                                     text_content=description
                                 )
+
+                            app_el = dsoup.find(class_=lambda c: c and ('num-applicants' in c or 'applicant-count' in c))
+                            if app_el:
+                                num_applicants = extract_applicant_count(app_el.get_text())
+                            if num_applicants is None:
+                                num_applicants = extract_applicant_count(dr.text)
                     except Exception:
                         pass
 
@@ -451,7 +466,8 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
                     'site': 'linkedin',
                     'is_remote': 'remote' in str(loc_val).lower() or 'remote' in location.lower(),
                     'date_posted': job_date,
-                    'job_type': 'Not specified'
+                    'job_type': 'Not specified',
+                    'num_applicants': num_applicants
                 })
 
             if valid_cards_in_page == 0:
@@ -467,7 +483,7 @@ def scrape_linkedin_guest_api(term, location, results_wanted=15, hours_old=None)
     return pd.DataFrame(jobs)
 
 
-def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=None):
+def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=None, low_competition=None):
     """Job-scraping logic using an existing page object."""
     import datetime
     jobs = []
@@ -475,6 +491,14 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
     encoded_term = urllib.parse.quote(term)
     encoded_loc = urllib.parse.quote(location)
     base_search_url = f"https://www.linkedin.com/jobs/search/?keywords={encoded_term}&location={encoded_loc}&sortBy=DD"
+    if low_competition is None:
+        from core.scorer import load_latest_config
+        cfg = load_latest_config()
+        low_competition = bool(cfg.get("LOW_COMPETITION_FILTER", False))
+
+    if low_competition:
+        base_search_url += "&f_EA=true"
+
     if hours_old:
         if hours_old <= 24:
             tpr_val = 86400
@@ -614,6 +638,17 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                 if not apply_url and not is_ea:
                     apply_url = extract_embedded_apply_url(html_content=desc_html, text_content=desc)
 
+                applicant_text = page.evaluate("""() => {
+                    const el = document.querySelector('.jobs-unified-top-card__applicant-count, .num-applicants__caption, .jobs-unified-top-card__bullet--applicant-count, .job-details-jobs-unified-top-card__bullet');
+                    if (el && /applicant|متقدم/i.test(el.innerText)) return el.innerText.trim();
+                    const bullets = Array.from(document.querySelectorAll('.jobs-unified-top-card__bullet, .job-details-jobs-unified-top-card__bullet, span.tvm__text, .topcard__flavor--bullet'));
+                    for (const b of bullets) {
+                        if (/applicant|متقدم/i.test(b.innerText)) return b.innerText.trim();
+                    }
+                    return '';
+                }""")
+                num_applicants = extract_applicant_count(applicant_text)
+
                 if title and title not in ("Unknown", "Not specified"):
                     is_rem = (setup_val == 'Remote') or ('remote' in str(loc_val).lower() or 'remote' in location.lower())
                     jobs.append({
@@ -628,7 +663,8 @@ def _do_scrape_linkedin_jobs(page, term, location, results_wanted=5, hours_old=N
                         'is_remote': is_rem,
                         'workplace_setup': setup_val or ('Remote' if is_rem else 'On-site'),
                         'date_posted': datetime.date.today(),
-                        'job_type': 'Not specified'
+                        'job_type': 'Not specified',
+                        'num_applicants': num_applicants
                     })
 
             except Exception as e:
@@ -671,18 +707,18 @@ def scrape_linkedin_posts_playwright(keyword, page=None):
             context.close()
 
 
-def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=None, page=None):
+def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=None, page=None, low_competition=None):
     """Scrape LinkedIn Jobs.
     
     Tries the high-speed Guest API first (< 2s, zero browser overhead).
     Falls back to Playwright if needed.
     """
-    guest_df = scrape_linkedin_guest_api(term, location, results_wanted, hours_old)
+    guest_df = scrape_linkedin_guest_api(term, location, results_wanted, hours_old, low_competition=low_competition)
     if guest_df is not None and not guest_df.empty:
         return guest_df
 
     if page is not None:
-        return _do_scrape_linkedin_jobs(page, term, location, results_wanted, hours_old)
+        return _do_scrape_linkedin_jobs(page, term, location, results_wanted, hours_old, low_competition=low_competition)
 
     # Standalone fallback
     with sync_playwright() as p:
@@ -690,7 +726,7 @@ def scrape_linkedin_jobs_playwright(term, location, results_wanted=5, hours_old=
         pg = context.pages[0] if context.pages else context.new_page()
         Stealth().apply_stealth_sync(pg)
         try:
-            return _do_scrape_linkedin_jobs(pg, term, location, results_wanted, hours_old)
+            return _do_scrape_linkedin_jobs(pg, term, location, results_wanted, hours_old, low_competition=low_competition)
         finally:
             context.close()
 

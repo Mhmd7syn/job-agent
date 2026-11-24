@@ -637,3 +637,75 @@ def is_valid_specific_apply_url(url: Optional[str], job_url: Optional[str] = Non
     except Exception:
         return False
 
+
+_ARABIC_INDIC_TRANS = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+
+
+def extract_applicant_count(content: Union[str, BeautifulSoup, None]) -> Optional[int]:
+    """
+    Parses and normalizes applicant counts from job card or job detail text/HTML.
+    Resilient across English and Arabic phrasing, LinkedIn/Wuzzuf formats,
+    Eastern Arabic numerals, comma separators, and zero-applicant indicators.
+    Returns Optional[int] count or None if unparseable/absent.
+    """
+    if content is None:
+        return None
+
+    if isinstance(content, (int, float)):
+        return int(content)
+
+    if hasattr(content, "get_text"):
+        raw_text = content.get_text(separator=" ", strip=True)
+    else:
+        raw_text = str(content)
+
+    if not raw_text.strip():
+        return None
+
+    text = raw_text.translate(_ARABIC_INDIC_TRANS).lower()
+
+    # Zero applicants indicators
+    if any(p in text for p in ['no applicants', 'be the first to apply', 'كن أول من يتقدم', 'لا يوجد متقدمين']):
+        return 0
+
+    # Normalize thousands commas e.g. 1,245 applicants -> 1245 applicants
+    clean_text = re.sub(r'(\d+),(\d+)', r'\1\2', text)
+
+    # 1. Under / fewer than X applicants
+    m_under = re.search(r'(?:under|less than|fewer than|أقل من)\s*(\d+)\s*(?:applicants?|متقدم(?:ين)?)', clean_text)
+    if m_under:
+        return int(m_under.group(1))
+
+    # 2. Be among the first X applicants
+    m_first = re.search(r'(?:be among the first|first|كن من أول|كن من بين أول)\s*(\d+)\s*(?:applicants?|متقدم(?:ين)?)', clean_text)
+    if m_first:
+        return int(m_first.group(1))
+
+    # 3. Over / more than X applicants
+    m_over = re.search(r'(?:over|more than|أكثر من)\s*(\d+)\s*(?:applicants?|متقدم(?:ين)?)', clean_text)
+    if m_over:
+        return int(m_over.group(1))
+
+    # 4. Applicants: X or Applicants - X or متقدمين: X
+    m_prefix = re.search(r'(?:applicants?|متقدم(?:ين)?)\s*[:\-–]\s*(\d+)', clean_text)
+    if m_prefix:
+        return int(m_prefix.group(1))
+
+    # 5. X+ applicants or +X applicants
+    m_plus = re.search(r'(?:(\d+)\s*\+|\+\s*(\d+))\s*(?:applicants?|متقدم(?:ين)?)', clean_text)
+    if m_plus:
+        return int(m_plus.group(1) or m_plus.group(2))
+
+    # 6. X applicants (e.g., "14 applicants for 1 open position", "23 applicants", "1 applicant", "12 متقدم")
+    m_std = re.search(r'(\d+)\s*(?:applicants?|متقدم(?:ين)?)', clean_text)
+    if m_std:
+        return int(m_std.group(1))
+
+    # 7. Reverse prefix: "applicants\s+(\d+)"
+    m_rev = re.search(r'(?:applicants?|متقدم(?:ين)?)\s+(\d+)', clean_text)
+    if m_rev:
+        return int(m_rev.group(1))
+
+    return None
+
+
