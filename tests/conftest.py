@@ -218,6 +218,13 @@ def isolate_background_and_network_io(monkeypatch):
         pass
 
     try:
+        import core.role_keywords as rk
+        monkeypatch.setattr(rk, "get_gemini_client", lambda *args, **kwargs: None)
+        monkeypatch.setattr(rk, "generate_content_resilient", lambda *args, **kwargs: (_default_mock_resp, "mock-gemini"))
+    except Exception:
+        pass
+
+    try:
         import web.app as web_app
         monkeypatch.setattr(web_app, "analyze_job_and_tune_config", lambda *args, **kwargs: None)
     except Exception:
