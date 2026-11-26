@@ -1,0 +1,5 @@
+Data Scientist - Remote / Cairo
+Requirements:
+- Strong foundation in statistics, Python, Pandas, and SQL.
+- Build and tune tabular ML models using Scikit-learn and XGBoost.
+- Experience with feature engineering and A/B testing.

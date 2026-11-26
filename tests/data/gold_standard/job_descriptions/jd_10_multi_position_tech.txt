@@ -1,0 +1,4 @@
+We are hiring for two open positions in Cairo:
+1) Data Analyst: SQL, Power BI, DAX, ETL.
+2) Machine Learning Engineer: Python, Scikit-learn, XGBoost, Docker.
+Specify the target role in your application subject line.

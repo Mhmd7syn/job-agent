@@ -1,0 +1,4 @@
+Junior Backend / Cloud Engineer - Cairo, Egypt
+Requirements:
+- Deploy microservices on Google Cloud Platform (GCP) using Kubernetes (K8s) and Docker.
+- Design RESTful API services with Python, FastAPI, and PostgreSQL.

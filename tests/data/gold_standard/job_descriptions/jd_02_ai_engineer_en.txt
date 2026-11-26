@@ -1,0 +1,5 @@
+AI Engineer (LLM & Agents) - Cairo, Egypt (Hybrid)
+Requirements:
+- Build multi-agent workflows using Python, LangGraph, and RAG pipelines.
+- Production REST API development with FastAPI and Docker on GCP.
+- Experience evaluating LLM outputs and managing vector databases.

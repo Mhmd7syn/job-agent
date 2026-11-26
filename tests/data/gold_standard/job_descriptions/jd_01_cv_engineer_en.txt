@@ -1,0 +1,5 @@
+Junior Computer Vision Engineer - Cairo, Egypt
+Requirements:
+- 1-2 years experience with Python, PyTorch, OpenCV, and YOLO object detection.
+- Experience deploying containerized inference services with CUDA and Docker.
+- Bonus: Image segmentation (U-Net) and FastAPI model serving.

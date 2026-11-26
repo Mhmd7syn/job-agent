@@ -1,0 +1,9 @@
+Candidate: Test Data Analyst & Scientist
+Location: Cairo, Egypt
+Summary:
+Delivered BI dashboards, ETL pipelines, and tabular predictive models.
+Core Skills:
+SQL, Power BI, DAX, Star Schema, ETL, Python, Pandas, Scikit-learn, XGBoost, Statistics
+Projects:
+- Designed Power BI star-schema dashboards tracking revenue and churn KPIs.
+- Built XGBoost and Scikit-learn classification models on tabular datasets.
