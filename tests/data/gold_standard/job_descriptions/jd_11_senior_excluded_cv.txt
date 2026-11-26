@@ -1,0 +1,5 @@
+Senior Lead Computer Vision Architect - Cairo, Egypt
+Requirements:
+- Minimum 7+ years of industry experience leading CV teams.
+- Deep expertise in PyTorch, CUDA, C++, and TensorRT optimization.
+- Manage multi-team roadmaps and mentor junior engineers.

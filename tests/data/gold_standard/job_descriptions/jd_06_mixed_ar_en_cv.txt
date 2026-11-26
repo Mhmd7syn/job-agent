@@ -1,0 +1,5 @@
+مطلوب مهندس رؤية حاسوبية (Junior Computer Vision Engineer) للعمل في القاهرة
+الشروط:
+- خبرة عملية في Python و PyTorch و OpenCV و YOLO.
+- معرفة بـ Docker و معالجة الصور Image Processing.
+- التقديم عبر الرابط المرفق أو البريد الإلكتروني.

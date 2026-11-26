@@ -1,0 +1,9 @@
+Candidate: Test AI & Computer Vision Engineer
+Location: Cairo, Egypt
+Summary:
+Built real-time video analytics and multi-agent LLM workflows.
+Core Skills:
+Python, PyTorch, OpenCV, YOLO, CUDA, Docker, LangGraph, RAG, FastAPI, GCP
+Projects:
+- Trained YOLOv8 object detection models for industrial inspection.
+- Deployed FastAPI and LangGraph RAG services on Google Cloud Platform.

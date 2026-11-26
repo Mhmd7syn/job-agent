@@ -1,0 +1,3 @@
+Hiring ASAP: Junior AI Engineer (Cairo)
+Stack: Python, LangGraph, RAG, FastAPI.
+Apply via form: https://forms.gle/telegramAiPost88

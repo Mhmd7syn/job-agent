@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "html_fixtures": [
+    {
+      "id": "wuzzuf_external_ats",
+      "platform": "wuzzuf",
+      "file": "html_fixtures/wuzzuf_external_ats.html",
+      "source_job_url": "https://wuzzuf.net/jobs/p/1001-cv-engineer",
+      "expected_apply_url": "https://boards.greenhouse.io/cairoai/jobs/1001"
+    },
+    {
+      "id": "bayt_lever_apply",
+      "platform": "bayt",
+      "file": "html_fixtures/bayt_lever_apply.html",
+      "source_job_url": "https://www.bayt.com/en/egypt/jobs/data-analyst-2002/",
+      "expected_apply_url": "https://jobs.lever.co/menadata/2002"
+    },
+    {
+      "id": "linkedin_safety_redirect",
+      "platform": "linkedin",
+      "file": "html_fixtures/linkedin_safety_redirect.html",
+      "source_job_url": "https://www.linkedin.com/jobs/view/3003/",
+      "expected_apply_url": "https://company.wd3.myworkdayjobs.com/careers/job/3003"
+    },
+    {
+      "id": "tanqeeb_ashby_apply",
+      "platform": "tanqeeb",
+      "file": "html_fixtures/tanqeeb_ashby_apply.html",
+      "source_job_url": "https://egypt.tanqeeb.com/jobs/details/4004",
+      "expected_apply_url": "https://jobs.ashbyhq.com/niletech/4004"
+    },
+    {
+      "id": "glassdoor_forms_apply",
+      "platform": "glassdoor",
+      "file": "html_fixtures/glassdoor_forms_apply.html",
+      "source_job_url": "https://www.glassdoor.com/job-listing/stem-5005.htm",
+      "expected_apply_url": "https://forms.gle/glassdoorApply5005"
+    }
+  ],
+  "job_descriptions": [
+    {"id": "jd_01", "file": "job_descriptions/jd_01_cv_engineer_en.txt", "category": "dense_ats", "title": "Junior Computer Vision Engineer", "location": "Cairo", "expected_role_target": "Computer Vision & AI", "expected_canonical_skills": ["python", "pytorch", "opencv", "yolo", "cuda", "docker"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_02", "file": "job_descriptions/jd_02_ai_engineer_en.txt", "category": "dense_ats", "title": "AI Engineer", "location": "Cairo", "expected_role_target": "Computer Vision & AI", "expected_canonical_skills": ["python", "langgraph", "rag", "fastapi", "docker", "gcp"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_03", "file": "job_descriptions/jd_03_data_analyst_en.txt", "category": "dense_ats", "title": "Junior Data Analyst", "location": "Cairo", "expected_role_target": "Data Analytics & BI", "expected_canonical_skills": ["sql", "power bi", "dax", "star schema", "etl", "python"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_04", "file": "job_descriptions/jd_04_data_scientist_en.txt", "category": "dense_ats", "title": "Data Scientist", "location": "Cairo", "expected_role_target": "Data Science & Machine Learning", "expected_canonical_skills": ["python", "pandas", "sql", "scikit-learn", "xgboost", "statistics"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_05", "file": "job_descriptions/jd_05_cs_instructor_en.txt", "category": "dense_ats", "title": "Programming & Robotics Instructor", "location": "Cairo", "expected_role_target": "Teaching & STEM Instructor", "expected_canonical_skills": ["python", "scratch", "arduino", "curriculum design", "teaching"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_06", "file": "job_descriptions/jd_06_mixed_ar_en_cv.txt", "category": "mixed_ar_en", "title": "Junior Computer Vision Engineer", "location": "Cairo", "expected_role_target": "Computer Vision & AI", "expected_canonical_skills": ["python", "pytorch", "opencv", "yolo", "docker"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_07", "file": "job_descriptions/jd_07_mixed_ar_en_da.txt", "category": "mixed_ar_en", "title": "Data Analyst", "location": "Giza", "expected_role_target": "Data Analytics & BI", "expected_canonical_skills": ["sql", "power bi", "excel", "python", "etl"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_08", "file": "job_descriptions/jd_08_telegram_short_ai.txt", "category": "telegram_short", "title": "Junior AI Engineer", "location": "Cairo", "expected_role_target": "Computer Vision & AI", "expected_canonical_skills": ["python", "langgraph", "rag", "fastapi"], "expected_apply_url": "https://forms.gle/telegramAiPost88", "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_09", "file": "job_descriptions/jd_09_whatsapp_short_instructor.txt", "category": "whatsapp_short", "title": "Programming Instructor", "location": "Cairo", "expected_role_target": "Teaching & STEM Instructor", "expected_canonical_skills": ["scratch", "python", "arduino"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_10", "file": "job_descriptions/jd_10_multi_position_tech.txt", "category": "multi_position", "title": "Data Analyst / Machine Learning Engineer", "location": "Cairo", "expected_role_target": "Data Analytics & BI", "expected_canonical_skills": ["sql", "power bi", "dax", "etl", "python", "scikit-learn", "xgboost", "docker"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_11", "file": "job_descriptions/jd_11_senior_excluded_cv.txt", "category": "seniority_penalty", "title": "Senior Lead Computer Vision Architect", "location": "Cairo", "expected_role_target": "Computer Vision & AI", "expected_canonical_skills": ["pytorch", "cuda", "c++"], "expected_seniority_excluded": true, "expected_non_tech": false},
+    {"id": "jd_12", "file": "job_descriptions/jd_12_non_tech_disqualified.txt", "category": "non_tech", "title": "Senior HR & Sales Manager", "location": "Cairo", "expected_role_target": null, "expected_canonical_skills": [], "expected_seniority_excluded": true, "expected_non_tech": true},
+    {"id": "jd_13", "file": "job_descriptions/jd_13_synonym_cloud_backend.txt", "category": "synonym_normalization", "title": "Junior Backend / Cloud Engineer", "location": "Cairo", "expected_role_target": "Computer Vision & AI", "expected_canonical_skills": ["gcp", "k8s", "docker", "rest api", "python", "fastapi", "postgresql"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_14", "file": "job_descriptions/jd_14_inflection_mlops.txt", "category": "inflection_normalization", "title": "Junior ML / Data Engineer", "location": "Cairo", "expected_role_target": "Data Science & Machine Learning", "expected_canonical_skills": ["pipeline", "database", "python", "pytorch", "docker"], "expected_seniority_excluded": false, "expected_non_tech": false},
+    {"id": "jd_15", "file": "job_descriptions/jd_15_arabic_only_instructor.txt", "category": "arabic_only", "title": "معلم برمجة وروبوتات", "location": "Cairo", "expected_role_target": "Teaching & STEM Instructor", "expected_canonical_skills": [], "expected_seniority_excluded": false, "expected_non_tech": false}
+  ],
+  "resumes": [
+    {"id": "resume_ai_cv", "file": "resumes/resume_ai_cv.txt", "role_target": "Computer Vision & AI", "expected_canonical_skills": ["python", "pytorch", "opencv", "yolo", "cuda", "docker", "langgraph", "rag", "fastapi", "gcp"]},
+    {"id": "resume_data_analytics", "file": "resumes/resume_data_analytics.txt", "role_target": "Data Analytics & BI", "expected_canonical_skills": ["sql", "power bi", "dax", "star schema", "etl", "python", "pandas", "scikit-learn", "xgboost", "statistics"]},
+    {"id": "resume_cs_instructor", "file": "resumes/resume_cs_instructor.txt", "role_target": "Teaching & STEM Instructor", "expected_canonical_skills": ["python", "c++", "scratch", "arduino", "curriculum design", "teaching", "mentoring"]}
+  ]
+}

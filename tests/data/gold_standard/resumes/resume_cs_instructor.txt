@@ -1,0 +1,9 @@
+Candidate: Test CS & STEM Instructor
+Location: Cairo, Egypt
+Summary:
+Taught programming, robotics, and problem-solving to K-12 and university students.
+Core Skills:
+Python, C++, Scratch, Arduino, Curriculum Design, Teaching, Mentoring
+Experience:
+- Delivered live Python and Arduino robotics bootcamps for 200+ students.
+- Designed project-based STEM curriculum modules.

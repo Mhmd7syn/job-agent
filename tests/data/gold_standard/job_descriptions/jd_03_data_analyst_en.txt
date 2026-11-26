@@ -1,0 +1,5 @@
+Junior Data Analyst - Cairo, Egypt
+Responsibilities:
+- Write complex SQL queries and design Star Schema data models.
+- Build executive Power BI dashboards with DAX and automated ETL pipelines.
+- Perform exploratory data analysis (EDA) in Excel and Python.

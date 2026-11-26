@@ -1,0 +1,5 @@
+فرصة عمل: محلل بيانات (Data Analyst) - الجيزة / القاهرة
+المتطلبات:
+- إجادة SQL و Power BI و Excel.
+- خبرة في بناء التقارير وتحليل البيانات Business Intelligence.
+- يفضل وجود معرفة بـ Python و ETL.
