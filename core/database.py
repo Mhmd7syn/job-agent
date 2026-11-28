@@ -426,6 +426,8 @@ def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
                     d["apply_payload"] = json.loads(d["apply_payload"])
                 except Exception:
                     d["apply_payload"] = {}
+            if isinstance(d.get("apply_payload"), dict):
+                d["available_channels"] = d["apply_payload"].get("available_channels", [])
             return d
     except Exception:
         pass

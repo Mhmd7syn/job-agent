@@ -112,8 +112,10 @@ def generate_email_draft(
         except Exception:
             apply_payload = {}
 
-    recipient_email = apply_payload.get("recipient_email", "")
-    subject_hint = apply_payload.get("subject_hint", "")
+    from core.apply_classifier import get_channel_payload
+    email_payload = get_channel_payload(apply_payload, "email")
+    recipient_email = email_payload.get("recipient_email") or apply_payload.get("recipient_email", "")
+    subject_hint = email_payload.get("subject_hint") or apply_payload.get("subject_hint", "")
 
     # Locate role-specific resume PDF
     cv_path = get_resume_for_role(job_title)

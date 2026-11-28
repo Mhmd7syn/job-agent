@@ -283,8 +283,10 @@ def generate_whatsapp_pitch(
         except Exception:
             apply_payload = {}
 
-    phone = apply_payload.get("phone", "")
-    whatsapp_url = apply_payload.get("whatsapp_url", "")
+    from core.apply_classifier import get_channel_payload
+    wa_payload = get_channel_payload(apply_payload, "whatsapp")
+    phone = wa_payload.get("phone") or apply_payload.get("phone", "")
+    whatsapp_url = wa_payload.get("whatsapp_url") or apply_payload.get("whatsapp_url", "")
     normalized_phone = normalize_phone_number(phone)
 
     # Locate role-specific resume PDF

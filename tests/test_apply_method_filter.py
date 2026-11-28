@@ -168,3 +168,57 @@ def test_ui_apply_method_filter():
             if not any(k in e.lower() for k in ["favicon", "err_connection", "failed to load resource", "quic"])
         ]
         assert len(fatal_errors) == 0, f"Unexpected JS console errors: {fatal_errors}"
+
+
+def test_multi_channel_classification_and_payload_serialization():
+    """Verify multi-channel extraction priority and JSON payload serialization."""
+    import json
+    from core.apply_classifier import classify_and_extract
+
+    job = {
+        "title": "ML Engineer",
+        "company": "MultiChannelCorp",
+        "site": "linkedin",
+        "job_url": "https://www.linkedin.com/jobs/view/777",
+        "apply_url": "https://jobs.lever.co/multichannel/777",
+        "description": "Send CV to talent@multichannel.ai or WhatsApp +201122334455",
+    }
+    res = classify_and_extract(job)
+    assert res["apply_type"] == "platform"
+    channels = res["apply_payload"]["available_channels"]
+    assert [c["channel"] for c in channels] == ["platform", "email", "whatsapp", "job_board"]
+
+    # Round-trip JSON serialization
+    serialized = json.dumps(res["apply_payload"], ensure_ascii=False)
+    deserialized = json.loads(serialized)
+    assert len(deserialized["available_channels"]) == 4
+    assert deserialized["available_channels"][1]["payload"]["recipient_email"] == "talent@multichannel.ai"
+    assert deserialized["available_channels"][2]["payload"]["phone"] == "201122334455"
+
+
+def test_api_job_detail_exposes_available_channels(tmp_path, monkeypatch):
+    """Verify /api/jobs/{job_id} returns available_channels for multi-channel jobs."""
+    import sqlite3
+    import core.database as db_mod
+
+    temp_db = tmp_path / "test_multichannel.db"
+    monkeypatch.setattr(db_mod, "DB_PATH", str(temp_db))
+    db_mod.init_db()
+    db_mod.save_job({
+        "job_id": "mc_job_1",
+        "title": "AI Engineer",
+        "company": "Acme",
+        "location": "Cairo",
+        "job_url": "https://www.linkedin.com/jobs/view/123",
+        "apply_url": "https://boards.greenhouse.io/acme/jobs/123",
+        "site": "linkedin",
+        "description": "Email hr@acme.io or WhatsApp +201012345678",
+    })
+
+    client = TestClient(app)
+    res = client.get("/api/jobs/mc_job_1")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["apply_type"] == "platform"
+    assert [c["channel"] for c in data["available_channels"]] == ["platform", "email", "whatsapp", "job_board"]
+    assert data["apply_payload"]["available_channels"] == data["available_channels"]
