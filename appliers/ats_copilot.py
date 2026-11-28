@@ -314,7 +314,18 @@ def prepare_ats_application(job_id: str) -> Dict[str, Any]:
         except Exception:
             payload = {}
 
-    portal_url = payload.get("portal_url") or payload.get("form_url") or payload.get("job_url") or job_url
+    from core.apply_classifier import get_channel_payload
+    ats_payload = get_channel_payload(payload, "platform")
+    if ats_payload is payload:
+        ats_payload = get_channel_payload(payload, "form")
+    portal_url = (
+        ats_payload.get("portal_url")
+        or ats_payload.get("form_url")
+        or payload.get("portal_url")
+        or payload.get("form_url")
+        or payload.get("job_url")
+        or job_url
+    )
     platform_meta = detect_platform(portal_url, desc)
 
     profile = load_profile()
@@ -416,7 +427,18 @@ def launch_ats_session(job_id: str, headed: bool = True) -> Dict[str, Any]:
         except Exception:
             payload = {}
 
-    portal_url = payload.get("portal_url") or payload.get("form_url") or payload.get("job_url") or job_url
+    from core.apply_classifier import get_channel_payload
+    ats_payload = get_channel_payload(payload, "platform")
+    if ats_payload is payload:
+        ats_payload = get_channel_payload(payload, "form")
+    portal_url = (
+        ats_payload.get("portal_url")
+        or ats_payload.get("form_url")
+        or payload.get("portal_url")
+        or payload.get("form_url")
+        or payload.get("job_url")
+        or job_url
+    )
     platform_meta = detect_platform(portal_url, desc)
     cv_path = get_resume_for_role(job_title)
 

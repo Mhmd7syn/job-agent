@@ -210,6 +210,41 @@ class TestApplyClassifier(unittest.TestCase):
         self.assertEqual(res["apply_payload"]["source"], "employer_site")
         self.assertFalse(res["apply_payload"]["is_direct_employer_link"])
 
+    def test_multi_channel_priority_ats_over_email_and_whatsapp(self):
+        from core.apply_classifier import get_channel_payload
+        job = {
+            "title": "Senior AI Engineer",
+            "company": "TechCorp",
+            "site": "linkedin",
+            "job_url": "https://www.linkedin.com/jobs/view/999",
+            "apply_url": "https://boards.greenhouse.io/techcorp/jobs/12345",
+            "description": (
+                "Apply via our portal or send your CV to hiring@techcorp.io "
+                'with subject "AI Engineer". WhatsApp: +201012345678'
+            ),
+        }
+        res = classify_and_extract(job)
+        self.assertEqual(res["apply_type"], "platform")
+        self.assertEqual(res["apply_payload"]["platform"], "greenhouse")
+        channels = res["apply_payload"]["available_channels"]
+        self.assertEqual([c["channel"] for c in channels], ["platform", "email", "whatsapp", "job_board"])
+        self.assertEqual(get_channel_payload(res["apply_payload"], "email")["recipient_email"], "hiring@techcorp.io")
+        self.assertEqual(get_channel_payload(res["apply_payload"], "whatsapp")["phone"], "201012345678")
+
+    def test_multi_channel_priority_email_over_whatsapp_and_manual(self):
+        job = {
+            "title": "Data Analyst",
+            "company": "DataCo",
+            "site": "wuzzuf",
+            "job_url": "https://wuzzuf.net/jobs/p/555-data-analyst",
+            "apply_url": "https://careers.dataco.com/apply/555",
+            "description": "Send CV to jobs@dataco.com or WhatsApp 01098765432",
+        }
+        res = classify_and_extract(job)
+        self.assertEqual(res["apply_type"], "email")
+        channels = res["available_channels"]
+        self.assertEqual([c["channel"] for c in channels], ["email", "whatsapp", "manual"])
+
 
 if __name__ == "__main__":
     unittest.main()

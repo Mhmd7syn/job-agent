@@ -1,7 +1,7 @@
 import re
 import logging
 import urllib.parse
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -128,11 +128,26 @@ def extract_form_url(text: str) -> Optional[str]:
             return domain
     return None
 
+def get_channel_payload(apply_payload: Dict[str, Any], channel: str) -> Dict[str, Any]:
+    """Returns channel-specific payload from available_channels or falls back to top-level apply_payload."""
+    if not isinstance(apply_payload, dict):
+        return {}
+    for entry in apply_payload.get("available_channels") or []:
+        if isinstance(entry, dict) and entry.get("channel") == channel and isinstance(entry.get("payload"), dict):
+            return entry["payload"]
+    return apply_payload
+
+
 def classify_and_extract(job: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analyzes a job record and returns:
-      - apply_type: 'email', 'whatsapp', 'form', 'platform', 'easy_apply', 'social_post', 'job_board', or 'manual'
-      - apply_payload: Dict with extracted and structured channel data
+      - apply_type: highest-priority channel ('platform', 'easy_apply', 'form', 'email', 'whatsapp', 'social_post', 'job_board', or 'manual')
+      - apply_payload: Dict with primary channel data and 'available_channels' list
+      - available_channels: List of all viable detected channels sorted by priority:
+          1. Direct ATS / Easy Apply / Form
+          2. Recruiter / HR Direct Email
+          3. WhatsApp Direct Contact
+          4. Manual External Search / Social Post / Job Board
     """
     desc_raw = job.get("description") or ""
     url = (job.get("job_url") or "").strip()
@@ -146,82 +161,24 @@ def classify_and_extract(job: Dict[str, Any]) -> Dict[str, Any]:
             is_easy_apply_flag = bool(raw_ea)
     else:
         is_easy_apply_flag = None
-    
+
     desc = normalize_arabic_digits(desc_raw)
     combined = (url + "\n" + apply_url + "\n" + desc)
     url_lower = url.lower()
     apply_url_lower = apply_url.lower()
-    
-    # 1. Check for Recruiter Email
-    if "@" in desc:
-        emails = EMAIL_REGEX.findall(desc)
-        valid_emails = [clean_email(e) for e in emails if is_valid_recruiter_email(clean_email(e))]
-        if valid_emails:
-            recipient = valid_emails[0]
-            subject_hint = extract_subject_hint(desc)
-            return {
-                "apply_type": "email",
-                "apply_payload": {
-                    "recipient_email": recipient,
-                    "all_emails": valid_emails,
-                    "subject_hint": subject_hint or ""
-                }
-            }
 
-    # 2. Check for Application Forms (Google Forms, Typeform, Office Forms, Airtable, etc.)
-    form_in_url = extract_form_url(url) or (extract_form_url(apply_url) if apply_url else None)
-    form_in_desc = extract_form_url(desc)
-    form_url = form_in_url or form_in_desc
-    if form_url:
-        return {
-            "apply_type": "form",
-            "apply_payload": {
-                "form_url": form_url,
-                "portal_url": form_url
-            }
-        }
+    channels: List[Dict[str, Any]] = []
 
-    # 3. Check for WhatsApp
-    # 3a. Explicit wa.me / whatsapp links
-    wa_match = WHATSAPP_LINK_REGEX.search(combined)
-    if wa_match:
-        phone = wa_match.group(1) or wa_match.group(2)
-        return {
-            "apply_type": "whatsapp",
-            "apply_payload": {
-                "phone": normalize_phone_number(phone) if phone else "",
-                "whatsapp_url": wa_match.group(0)
-            }
-        }
+    def _add_channel(channel: str, priority: int, label: str, payload: Dict[str, Any]) -> None:
+        if not any(c["channel"] == channel for c in channels):
+            channels.append({
+                "channel": channel,
+                "priority": priority,
+                "label": label,
+                "payload": payload,
+            })
 
-    # 3b. Shortlink or link directly following WhatsApp prompt
-    wa_shortlink_match = re.search(r'(?:whatsapp|واتساب|واتس)[^\n\r:–—]{0,35}[\s:–—]+(https?://[^\s<>"\']+)', desc, re.IGNORECASE)
-    if wa_shortlink_match:
-        wa_url = wa_shortlink_match.group(1).rstrip('.,;)]}>"')
-        return {
-            "apply_type": "whatsapp",
-            "apply_payload": {
-                "whatsapp_url": wa_url,
-                "phone": ""
-            }
-        }
-
-    # 3c. Valid Egyptian / Gulf mobile numbers near triggers or in WhatsApp-sourced posts
-    phone_candidates = EGYPT_PHONE_REGEX.findall(desc) + GULF_PHONE_REGEX.findall(desc)
-    for cand in phone_candidates:
-        cleaned = normalize_phone_number(cand)
-        if cleaned:
-            has_trigger = any(t in desc.lower() for t in WHATSAPP_TRIGGERS)
-            if has_trigger or cleaned.startswith("201"):
-                return {
-                    "apply_type": "whatsapp",
-                    "apply_payload": {
-                        "phone": cleaned,
-                        "whatsapp_url": f"https://wa.me/{cleaned}"
-                    }
-                }
-
-    # 4. Check for Known ATS Platforms in job_url, apply_url, or description
+    # Tier 1a: Known ATS Platforms in job_url, apply_url, or description
     for ats_name, domains in ATS_PATTERNS.items():
         if any(dom in url_lower or dom in apply_url_lower or dom in desc.lower() for dom in domains):
             ats_target = apply_url if any(dom in apply_url_lower for dom in domains) else url
@@ -231,42 +188,87 @@ def classify_and_extract(job: Dict[str, Any]) -> Dict[str, Any]:
                     if m:
                         ats_target = m.group(0).rstrip('.,;)]}>"')
                         break
-            return {
-                "apply_type": "platform",
-                "apply_payload": {
-                    "platform": ats_name,
-                    "portal_url": ats_target,
-                    "is_direct_employer_link": True
-                }
-            }
+            _add_channel("platform", 1, f"{ats_name.capitalize()} ATS", {
+                "platform": ats_name,
+                "portal_url": ats_target,
+                "is_direct_employer_link": True,
+            })
+            break
 
-    # 5. Check for Easy Apply on LinkedIn, Indeed, or Glassdoor
+    # Tier 1b: Easy Apply on LinkedIn, Indeed, or Glassdoor
     if is_easy_apply_flag is True or "easy_apply" in url_lower or "ea=1" in apply_url_lower:
-        return {
-            "apply_type": "easy_apply",
-            "apply_payload": {
-                "platform": f"{site}_easy_apply" if site else "easy_apply",
-                "job_url": url
-            }
-        }
-    if "easy apply" in desc.lower() and site in ["glassdoor", "indeed", "linkedin"]:
-        return {
-            "apply_type": "easy_apply",
-            "apply_payload": {
-                "platform": f"{site}_easy_apply",
-                "job_url": url
-            }
-        }
+        _add_channel("easy_apply", 1, "Easy Apply", {
+            "platform": f"{site}_easy_apply" if site else "easy_apply",
+            "job_url": url,
+        })
+    elif "easy apply" in desc.lower() and site in ["glassdoor", "indeed", "linkedin"]:
+        _add_channel("easy_apply", 1, "Easy Apply", {
+            "platform": f"{site}_easy_apply",
+            "job_url": url,
+        })
 
-    # 6. Check for Social Hiring Posts (LinkedIn Posts, etc.)
+    # Tier 1c: Application Forms (Google Forms, Typeform, Office Forms, Airtable, etc.)
+    form_in_url = extract_form_url(url) or (extract_form_url(apply_url) if apply_url else None)
+    form_in_desc = extract_form_url(desc)
+    form_url = form_in_url or form_in_desc
+    if form_url:
+        _add_channel("form", 1, "Application Form", {
+            "form_url": form_url,
+            "portal_url": form_url,
+        })
+
+    # Tier 2: Recruiter Email
+    if "@" in desc:
+        emails = EMAIL_REGEX.findall(desc)
+        valid_emails = [clean_email(e) for e in emails if is_valid_recruiter_email(clean_email(e))]
+        if valid_emails:
+            recipient = valid_emails[0]
+            subject_hint = extract_subject_hint(desc)
+            _add_channel("email", 2, "Recruiter Email", {
+                "recipient_email": recipient,
+                "all_emails": valid_emails,
+                "subject_hint": subject_hint or "",
+            })
+
+    # Tier 3: WhatsApp (explicit links, shortlinks, or Egyptian/Gulf phone numbers)
+    wa_match = WHATSAPP_LINK_REGEX.search(combined)
+    if wa_match:
+        phone = wa_match.group(1) or wa_match.group(2)
+        _add_channel("whatsapp", 3, "WhatsApp", {
+            "phone": normalize_phone_number(phone) if phone else "",
+            "whatsapp_url": wa_match.group(0),
+        })
+    else:
+        wa_shortlink_match = re.search(
+            r'(?:whatsapp|واتساب|واتس)[^\n\r:–—]{0,35}[\s:–—]+(https?://[^\s<>"\']+)',
+            desc,
+            re.IGNORECASE,
+        )
+        if wa_shortlink_match:
+            wa_url = wa_shortlink_match.group(1).rstrip('.,;)]}>"')
+            _add_channel("whatsapp", 3, "WhatsApp", {
+                "whatsapp_url": wa_url,
+                "phone": "",
+            })
+        else:
+            phone_candidates = EGYPT_PHONE_REGEX.findall(desc) + GULF_PHONE_REGEX.findall(desc)
+            for cand in phone_candidates:
+                cleaned = normalize_phone_number(cand)
+                if cleaned:
+                    has_trigger = any(t in desc.lower() for t in WHATSAPP_TRIGGERS)
+                    if has_trigger or cleaned.startswith("201"):
+                        _add_channel("whatsapp", 3, "WhatsApp", {
+                            "phone": cleaned,
+                            "whatsapp_url": f"https://wa.me/{cleaned}",
+                        })
+                        break
+
+    # Tier 4a: Social Hiring Posts (LinkedIn Posts, etc.)
     if site in ["linkedin_posts", "lnkd"] or "/posts/" in url_lower or "lnkd.in" in url_lower:
-        return {
-            "apply_type": "social_post",
-            "apply_payload": {
-                "platform": "linkedin_post",
-                "post_url": url
-            }
-        }
+        _add_channel("social_post", 4, "LinkedIn Post", {
+            "platform": "linkedin_post",
+            "post_url": url,
+        })
 
     def _is_aggregator(u: str) -> bool:
         if not u:
@@ -277,74 +279,82 @@ def classify_and_extract(job: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             return False
 
-    # 7. Distinct external application link (employer career portal, direct ATS, or partner redirect)
+    # Tier 4b: Distinct external application link or explicit employer site
     target_apply_url = apply_url
     if not target_apply_url or target_apply_url == url:
-        # Check if description has an authentic employer career/apply link
-        career_matches = re.findall(r'https?://[^\s<>"\']+(?:/careers?|/jobs?|/apply|jobdetail|search-jobs)[^\s<>"\']*', desc, re.IGNORECASE)
+        career_matches = re.findall(
+            r'https?://[^\s<>"\']+(?:/careers?|/jobs?|/apply|jobdetail|search-jobs)[^\s<>"\']*',
+            desc,
+            re.IGNORECASE,
+        )
         for cand in career_matches:
             cand_clean = cand.rstrip('.,;)]}>"\'')
             if not _is_aggregator(cand_clean) and not any(ign in cand_clean.lower() for ign in ['facebook.', 'twitter.', 'google.']):
                 target_apply_url = cand_clean
                 break
 
-    if target_apply_url and target_apply_url != url and not is_easy_apply_flag:
+    already_covered_urls = {
+        c["payload"].get("portal_url") or c["payload"].get("form_url")
+        for c in channels
+        if c["channel"] in ("platform", "form")
+    }
+
+    has_manual_employer = False
+    if target_apply_url and target_apply_url != url and not is_easy_apply_flag and target_apply_url not in already_covered_urls:
         is_direct_employer = not _is_aggregator(target_apply_url)
-        return {
-            "apply_type": "manual",
-            "apply_payload": {
-                "portal_url": target_apply_url,
-                "job_url": url,
-                "source": "employer_site" if (is_direct_employer or site in ["glassdoor", "indeed"]) else (site or "external"),
-                "is_direct_employer_link": is_direct_employer
-            }
-        }
-
-    # 8. Glassdoor job requiring external application ("Apply on employer site" / directApply is false)
-    if site == "glassdoor" and (is_easy_apply_flag is False or "employer site" in desc.lower() or "company site" in desc.lower()):
+        _add_channel("manual", 4, "Employer Site" if is_direct_employer else "External Link", {
+            "portal_url": target_apply_url,
+            "job_url": url,
+            "source": "employer_site" if (is_direct_employer or site in ["glassdoor", "indeed"]) else (site or "external"),
+            "is_direct_employer_link": is_direct_employer,
+        })
+        has_manual_employer = True
+    elif site == "glassdoor" and (is_easy_apply_flag is False or "employer site" in desc.lower() or "company site" in desc.lower()):
         effective_portal = target_apply_url or url
         is_direct = bool(target_apply_url and not _is_aggregator(target_apply_url))
-        return {
-            "apply_type": "manual",
-            "apply_payload": {
-                "portal_url": effective_portal,
-                "job_url": url,
-                "source": "employer_site",
-                "is_direct_employer_link": is_direct
-            }
-        }
-
-    # 8b. Indeed job with explicit external redirect ("Apply on company site")
-    if site == "indeed" and (is_easy_apply_flag is False or "apply on company site" in desc.lower() or "apply on employer site" in desc.lower()):
+        _add_channel("manual", 4, "Employer Site", {
+            "portal_url": effective_portal,
+            "job_url": url,
+            "source": "employer_site",
+            "is_direct_employer_link": is_direct,
+        })
+        has_manual_employer = True
+    elif site == "indeed" and (is_easy_apply_flag is False or "apply on company site" in desc.lower() or "apply on employer site" in desc.lower()):
         effective_portal = target_apply_url or url
         is_direct = bool(target_apply_url and not _is_aggregator(target_apply_url))
-        return {
-            "apply_type": "manual",
-            "apply_payload": {
-                "portal_url": effective_portal,
-                "job_url": url,
-                "source": "employer_site",
-                "is_direct_employer_link": is_direct
-            }
-        }
+        _add_channel("manual", 4, "Employer Site", {
+            "portal_url": effective_portal,
+            "job_url": url,
+            "source": "employer_site",
+            "is_direct_employer_link": is_direct,
+        })
+        has_manual_employer = True
 
-    # 9. Native Job Boards
-    for domain_key, board_name in JOB_BOARD_DOMAINS.items():
-        if domain_key in url_lower or domain_key in site:
-            return {
-                "apply_type": "job_board",
-                "apply_payload": {
+    # Tier 4c: Native Job Boards
+    if not has_manual_employer:
+        for domain_key, board_name in JOB_BOARD_DOMAINS.items():
+            if domain_key in url_lower or domain_key in site:
+                _add_channel("job_board", 4, board_name, {
                     "board_name": board_name,
-                    "job_url": url
-                }
-            }
+                    "job_url": url,
+                })
+                break
 
-    # 10. Default to Manual External Link
+    # Tier 4d: Default fallback
+    if not channels:
+        _add_channel("manual", 4, "External Link", {
+            "job_url": url,
+        })
+
+    channels.sort(key=lambda c: c["priority"])
+    primary = channels[0]
+    primary_payload = dict(primary["payload"])
+    primary_payload["available_channels"] = channels
+
     return {
-        "apply_type": "manual",
-        "apply_payload": {
-            "job_url": url
-        }
+        "apply_type": primary["channel"],
+        "apply_payload": primary_payload,
+        "available_channels": channels,
     }
 
 

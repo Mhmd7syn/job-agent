@@ -95,7 +95,9 @@ def prepare_easy_apply(job_id: str) -> Dict[str, Any]:
         except Exception:
             payload = {}
 
-    target_url = payload.get("portal_url") or payload.get("job_url") or job_url
+    from core.apply_classifier import get_channel_payload
+    ea_payload = get_channel_payload(payload, "easy_apply")
+    target_url = ea_payload.get("portal_url") or ea_payload.get("job_url") or payload.get("portal_url") or payload.get("job_url") or job_url
 
     profile = load_profile()
     personal = profile.get("personal_info", {})
@@ -156,7 +158,9 @@ def launch_easy_apply_session(job_id: str, headed: bool = True) -> Dict[str, Any
             payload = json.loads(payload)
         except Exception:
             payload = {}
-    target_url = payload.get("portal_url") or payload.get("job_url") or job_url
+    from core.apply_classifier import get_channel_payload
+    ea_payload = get_channel_payload(payload, "easy_apply")
+    target_url = ea_payload.get("portal_url") or ea_payload.get("job_url") or payload.get("portal_url") or payload.get("job_url") or job_url
 
     cv_path = get_resume_for_role(job_title)
 

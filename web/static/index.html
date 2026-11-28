@@ -876,8 +876,9 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <button id="job-details-applied-toggle-btn" class="btn btn-apply" onclick="toggleAppliedFromModal()"><i class="fa-solid fa-check"></i> Mark Applied</button>
                 </div>
-                <div style="display: flex; gap: 0.5rem;">
+                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                     <a id="job-details-view-link" href="#" target="_blank" class="btn btn-secondary hidden"><i class="fa-solid fa-arrow-up-right-from-square"></i> View Original Job</a>
+                    <div id="job-details-secondary-channels" style="display: none; gap: 0.5rem; align-items: center; flex-wrap: wrap;"></div>
                     <button id="job-details-copilot-btn" class="btn btn-primary" onclick="launchCoPilotApply()"><i class="fa-solid fa-paper-plane"></i> Apply Now (Co-Pilot)</button>
                     <button class="btn btn-secondary" onclick="hideJobDetailsModal()"><i class="fa-solid fa-xmark"></i> Close</button>
                 </div>

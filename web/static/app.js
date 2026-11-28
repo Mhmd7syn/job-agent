@@ -3386,12 +3386,52 @@ function openJobDetailsModal(jobId) {
             }
         }
 
+        const availableChannels = Array.isArray(job.available_channels)
+            ? job.available_channels
+            : (Array.isArray(payload.available_channels) ? payload.available_channels : []);
+        const seenChannels = new Set([applyType]);
+        const secondaryChannels = availableChannels.filter(ch => {
+            if (!ch || !ch.channel || seenChannels.has(ch.channel)) return false;
+            seenChannels.add(ch.channel);
+            return true;
+        });
+
+        const secondaryLabels = {
+            email: '<i class="fa-solid fa-envelope"></i> Or Apply via Recruiter Email',
+            whatsapp: '<i class="fa-brands fa-whatsapp"></i> Or Contact via WhatsApp',
+            platform: '<i class="fa-solid fa-network-wired"></i> Or Open ATS Co-Pilot',
+            form: '<i class="fa-solid fa-file-waveform"></i> Or Open Form Assistant',
+            easy_apply: '<i class="fa-solid fa-bolt"></i> Or Launch Easy Apply',
+            social_post: '<i class="fa-brands fa-linkedin"></i> Or View LinkedIn Post',
+            job_board: '<i class="fa-solid fa-briefcase"></i> Or Open on Job Board',
+            manual: '<i class="fa-solid fa-arrow-up-right-from-square"></i> Or Open External Link'
+        };
+
+        const secondaryContainer = document.getElementById('job-details-secondary-channels');
+        if (secondaryContainer) {
+            if (secondaryChannels.length > 0) {
+                secondaryContainer.innerHTML = secondaryChannels.map(ch => {
+                    const btnLabel = secondaryLabels[ch.channel] || `Or Apply via ${escapeHtml(ch.label || ch.channel)}`;
+                    return `<button class="btn btn-secondary secondary-channel-btn" data-channel="${escapeHtml(ch.channel)}" onclick="launchCoPilotApply('${escapeHtml(ch.channel)}')">${btnLabel}</button>`;
+                }).join('');
+                secondaryContainer.style.display = 'inline-flex';
+            } else {
+                secondaryContainer.innerHTML = '';
+                secondaryContainer.style.display = 'none';
+            }
+        }
+
+        const alternateSummary = secondaryChannels.length > 0
+            ? `<div class="detail-row" style="font-size: 0.8rem; color: var(--text-muted);"><span class="detail-label"><i class="fa-solid fa-code-branch"></i> Alternate Channels:</span><span class="detail-value">${secondaryChannels.map(ch => escapeHtml(ch.label || ch.channel)).join(', ')}</span></div>`
+            : '';
+
         applyBoxEl.innerHTML = `
             <div class="badge-header">
                 <span style="font-weight: 600; color: var(--text-main); font-size: 0.95rem;">Application Intelligence</span>
                 <span class="tag-channel ${channelBadgeClass}"><i class="${channelIcon}"></i>${channelTitle}</span>
             </div>
             ${detailRows}
+            ${alternateSummary}
         `;
     }
 
@@ -3496,7 +3536,7 @@ function toggleAppliedFromModal() {
     }
 }
 
-function launchCoPilotApply() {
+function launchCoPilotApply(overrideChannel = null) {
     if (!currentModalJobId) return;
     const job = allJobs.find(j => String(j.job_id) === String(currentModalJobId));
     if (!job) return;
@@ -3510,7 +3550,12 @@ function launchCoPilotApply() {
         }
     }
 
-    const applyType = getEffectiveApplyType(job);
+    const applyType = overrideChannel || getEffectiveApplyType(job);
+    const availableChannels = Array.isArray(job.available_channels)
+        ? job.available_channels
+        : (Array.isArray(payload.available_channels) ? payload.available_channels : []);
+    const matchedChannel = availableChannels.find(c => c && c.channel === applyType);
+    const channelPayload = (matchedChannel && matchedChannel.payload) ? matchedChannel.payload : payload;
 
     if (applyType === 'email') {
         openEmailCopilotModal(job.job_id);
@@ -3525,7 +3570,7 @@ function launchCoPilotApply() {
         openAtsCopilotModal(job.job_id);
         return;
     } else if (applyType === 'social_post') {
-        const postUrl = payload.post_url || job.job_url;
+        const postUrl = channelPayload.post_url || payload.post_url || job.job_url;
         if (postUrl) {
             window.open(postUrl, '_blank');
             showToast('Opened LinkedIn post in new tab!', 'info', 'fa-brands fa-linkedin');
@@ -3533,15 +3578,15 @@ function launchCoPilotApply() {
             showToast('No post URL found.', 'warning', 'fa-circle-exclamation');
         }
     } else if (applyType === 'job_board') {
-        const boardUrl = payload.job_url || job.job_url;
+        const boardUrl = channelPayload.job_url || payload.job_url || job.job_url;
         if (boardUrl) {
             window.open(boardUrl, '_blank');
-            showToast(`Opened on ${payload.board_name || 'job board'}!`, 'info', 'fa-briefcase');
+            showToast(`Opened on ${channelPayload.board_name || payload.board_name || 'job board'}!`, 'info', 'fa-briefcase');
         } else {
             showToast('No job URL found.', 'warning', 'fa-circle-exclamation');
         }
     } else {
-        const targetUrl = payload.portal_url || payload.job_url || job.job_url;
+        const targetUrl = channelPayload.portal_url || channelPayload.job_url || payload.portal_url || payload.job_url || job.job_url;
         if (targetUrl) {
             window.open(targetUrl, '_blank');
             showToast('Opening external application portal...', 'info', 'fa-arrow-up-right-from-square');
